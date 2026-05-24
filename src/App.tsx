@@ -9,7 +9,7 @@ import { DeveloperGuide } from "./components/DeveloperGuide";
 import { VessatorieModal } from "./components/VessatorieModal";
 import { 
   Cpu, Layers, Network, BookOpen, MessageSquare, ShieldCheck, Info, CheckCircle, 
-  AlertTriangle, AlertCircle, Plus, Search, Folder, Sliders, LogOut, Settings, 
+  AlertTriangle, AlertCircle, Plus, Search, Sliders, LogOut, Settings, 
   Sparkles, HelpCircle, Briefcase, User, Database, ShieldAlert, Key, Download,
   Menu, ChevronDown
 } from "lucide-react";
