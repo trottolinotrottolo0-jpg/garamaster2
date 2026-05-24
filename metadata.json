@@ -1,0 +1,6 @@
+{
+  "name": "Gara Master AI Blueprint",
+  "description": "Un prototipo e guida architetturale interattiva per trasformare un software di gare d'appalto in un assistente AI avanzato con protocollo MCP.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
