@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import { motion } from "motion/react";
-import { Message, McpServer, PacketLog, TenderDocument } from "./types";
+import { Message, McpServer, PacketLog, TenderDocument, ChatAttachment } from "./types";
 import { initialMcpServers, mockTenders } from "./mockData";
 import { McpHub } from "./components/McpHub";
 import { ChatWorkspace } from "./components/ChatWorkspace";
@@ -8,11 +8,48 @@ import { DocumentAnalyzer } from "./components/DocumentAnalyzer";
 import { DeveloperGuide } from "./components/DeveloperGuide";
 import { VessatorieModal } from "./components/VessatorieModal";
 import { 
-  Cpu, Layers, Network, BookOpen, MessageSquare, ShieldCheck, Info, CheckCircle, 
-  AlertTriangle, AlertCircle, Plus, Search, Sliders, LogOut, Settings, 
+  Cpu, Layers, Network, BookOpen, MessageSquare, ShieldCheck, Info, Plus, Search, Sliders, LogOut, Settings, 
   Sparkles, HelpCircle, Briefcase, User, Database, ShieldAlert, Key, Download,
-  Menu, ChevronDown
+  Menu, ChevronDown, ChevronLeft, ChevronRight, PanelLeftOpen, PanelRightOpen,
+  FileText, Calculator
 } from "lucide-react";
+
+type SidebarDropdownSectionProps = {
+  title: string;
+  badge?: ReactNode;
+  isOpen: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+};
+
+function SidebarDropdownSection({
+  title,
+  badge,
+  isOpen,
+  onToggle,
+  children,
+}: SidebarDropdownSectionProps) {
+  return (
+    <section className="border-t border-neutral-800 pt-2.5 mt-2.5 first:border-t-0 first:pt-0 first:mt-0">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="cursor-pointer w-full flex items-center justify-between gap-2 py-1.5 text-left group"
+      >
+        <span className="text-[10px] font-sans font-extrabold tracking-wider text-slate-450 uppercase group-hover:text-white transition-colors">
+          {title}
+        </span>
+        <span className="flex items-center gap-1.5 shrink-0">
+          {badge}
+          <ChevronDown
+            className={`w-3.5 h-3.5 text-brand-gold transition-transform ${isOpen ? "rotate-180" : ""}`}
+          />
+        </span>
+      </button>
+      {isOpen && <div className="mt-2">{children}</div>}
+    </section>
+  );
+}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<"chat" | "analyzer" | "mcp" | "guide">("chat");
@@ -31,7 +68,20 @@ export default function App() {
   const [customKey, setCustomKey] = useState<string>("•••••••••••••••••••••");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [isNavMenuOpen, setIsNavMenuOpen] = useState(false);
+  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
+  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
+  const [isRibassoOpen, setIsRibassoOpen] = useState(false);
+  const [rightOpenSections, setRightOpenSections] = useState({
+    requisiti: true,
+    penali: false,
+    anomalie: false,
+    azioni: true,
+  });
   const navMenuRef = useRef<HTMLDivElement>(null);
+
+  const toggleRightSection = (key: keyof typeof rightOpenSections) => {
+    setRightOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   useEffect(() => {
     if (!isNavMenuOpen) return;
@@ -150,13 +200,24 @@ export default function App() {
     setActiveTab("chat");
   };
 
-  const handleSendMessage = (text: string, overrideTargetTender?: string) => {
-    // 1. Add User message
+  const handleSendMessage = (
+    text: string,
+    overrideTargetTender?: string,
+    attachments?: ChatAttachment[]
+  ) => {
+    const hasAttachments = attachments && attachments.length > 0;
+    const displayText =
+      text.trim() ||
+      (hasAttachments
+        ? `Allegati caricati: ${attachments!.map((a) => a.name).join(", ")}`
+        : "");
+
     const userMsg: Message = {
       id: `msg-user-${Date.now()}`,
       sender: "user",
-      text,
+      text: displayText,
       timestamp: new Date(),
+      attachments: hasAttachments ? attachments : undefined,
     };
     setMessages((prev) => [...prev, userMsg]);
     setIsGenerating(true);
@@ -166,16 +227,34 @@ export default function App() {
       if (match) setSelectedTender(match);
     }
 
-    // 2. Trigger appropriate response delay
+    if (hasAttachments && attachments!.some((a) => a.name.toLowerCase().endsWith(".pdf"))) {
+      setActiveTab("analyzer");
+    }
+
     setTimeout(() => {
       let replyText = "";
       let toolName = "";
       let toolParams: any = {};
       let toolResult: any = null;
 
-      const lowerText = text.toLowerCase();
+      const lowerText = displayText.toLowerCase();
 
-      if (lowerText.includes("scuola") || lowerText.includes("piccoli passi")) {
+      if (hasAttachments) {
+        const names = attachments!.map((a) => a.name).join(", ");
+        const hasPdf = attachments!.some((a) => a.name.toLowerCase().endsWith(".pdf"));
+        replyText = `Ho ricevuto ${attachments!.length} allegato/i dal tuo PC: **${names}**.\n\n`;
+        if (hasPdf) {
+          replyText +=
+            "Sto instradando il PDF all'**Analizzatore Disciplinare** per l'estrazione OCR dei requisiti SOA, penali e criteri di aggiudicazione (simulazione locale).\n\n";
+          toolName = "analizza_disciplinare_pdf";
+          toolParams = { files: attachments!.map((a) => ({ name: a.name, size: a.size })) };
+          toolResult =
+            "Estrazione completata: 4 requisiti qualificazione, 2 penali, 1 anomalia cronoprogramma rilevata.";
+        } else {
+          replyText +=
+            "I file sono associati alla sessione corrente. Posso incrociarli con i dati Supabase o usarli per la redazione dell'offerta tecnica.";
+        }
+      } else if (lowerText.includes("scuola") || lowerText.includes("piccoli passi")) {
         toolName = "dettagli_bando_cig";
         toolParams = { cig: "9874563A2B" };
         toolResult = "Report: Ente Appaltante: Città Metropolitana. Valore: €1.250.000,00. SOA Prevalente: OG1 Class II. Criterio OEPV (70 punti Tecnica, 30 Economica).";
@@ -300,7 +379,8 @@ export default function App() {
   return (
     <div className="min-h-screen bg-black flex text-white font-sans selection:bg-brand-gold selection:text-black" id="main-gpt-layout">
       
-      {/* 1. LEFT NAV — compact trigger + dropdown (elenco puntato) */}
+      {/* 1. LEFT NAV — barra collassabile + dropdown (elenco puntato) */}
+      {isLeftSidebarOpen && (
       <div
         ref={navMenuRef}
         className="relative shrink-0 border-r border-neutral-800 bg-black z-50"
@@ -323,6 +403,18 @@ export default function App() {
             <ChevronDown
               className={`w-3 h-3 text-slate-400 transition-transform ${isNavMenuOpen ? "rotate-180" : ""}`}
             />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setIsLeftSidebarOpen(false);
+              setIsNavMenuOpen(false);
+            }}
+            className="cursor-pointer w-full py-2 px-1 rounded-xl border border-neutral-800 bg-neutral-950 hover:border-brand-gold text-slate-500 hover:text-white transition-all"
+            title="Nascondi barra sinistra"
+            id="collapse-left-sidebar-btn"
+          >
+            <ChevronLeft className="w-4 h-4 mx-auto text-brand-gold" />
           </button>
           <span className="text-[7px] bg-neutral-900 border border-neutral-800 text-slate-500 px-1 py-0.5 rounded font-mono">
             V1.4
@@ -472,6 +564,73 @@ export default function App() {
 
               <section>
                 <h2 className="text-[9px] font-sans font-extrabold tracking-widest text-slate-500 uppercase mb-2">
+                  App e integrazioni
+                </h2>
+                <ul className="list-disc list-inside space-y-1.5 text-[11px] marker:text-brand-gold">
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab("analyzer");
+                        setIsNavMenuOpen(false);
+                      }}
+                      className={`cursor-pointer hover:text-brand-gold transition-colors flex items-center gap-1.5 ${
+                        activeTab === "analyzer" ? "text-white font-bold" : "text-slate-300"
+                      }`}
+                    >
+                      <FileText className="w-3 h-3 inline text-brand-gold shrink-0" />
+                      Analizzatore PDF
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab("mcp");
+                        setIsNavMenuOpen(false);
+                      }}
+                      className={`cursor-pointer hover:text-brand-gold transition-colors flex items-center gap-1.5 ${
+                        activeTab === "mcp" ? "text-white font-bold" : "text-slate-300"
+                      }`}
+                    >
+                      <Network className="w-3 h-3 inline text-brand-gold shrink-0" />
+                      Connettori MCP
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab("chat");
+                        setIsRibassoOpen(true);
+                        setIsNavMenuOpen(false);
+                      }}
+                      className="cursor-pointer text-slate-300 hover:text-brand-gold transition-colors flex items-center gap-1.5"
+                    >
+                      <Calculator className="w-3 h-3 inline text-brand-gold shrink-0" />
+                      Calcolo ribasso
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleSendMessage(
+                          "Verifica se la mia impresa possiede i requisiti per partecipare tramite incrocio Supabase."
+                        );
+                        setIsNavMenuOpen(false);
+                      }}
+                      className="cursor-pointer text-slate-300 hover:text-brand-gold transition-colors flex items-center gap-1.5"
+                    >
+                      <Database className="w-3 h-3 inline text-brand-gold shrink-0" />
+                      Incrocio Supabase
+                    </button>
+                  </li>
+                </ul>
+              </section>
+
+              <section>
+                <h2 className="text-[9px] font-sans font-extrabold tracking-widest text-slate-500 uppercase mb-2">
                   Sistemi AI integrati
                 </h2>
                 <ul className="list-disc list-inside space-y-1.5 text-[11px] text-slate-300 marker:text-brand-gold">
@@ -593,17 +752,29 @@ export default function App() {
           </div>
         )}
       </div>
+      )}
 
       {/* 2. MAIN APP CONTENT CONTAINER */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden bg-black" id="gpt-main-panel">
+      <main className="flex-1 flex flex-col h-screen overflow-hidden bg-black relative" id="gpt-main-panel">
+
+        {!isLeftSidebarOpen && (
+          <button
+            type="button"
+            onClick={() => setIsLeftSidebarOpen(true)}
+            className="absolute left-3 top-3 z-40 cursor-pointer p-2 rounded-xl border border-neutral-800 bg-neutral-900 hover:border-brand-gold text-brand-gold shadow-lg transition-all"
+            title="Mostra barra sinistra"
+            id="expand-left-sidebar-btn"
+          >
+            <PanelLeftOpen className="w-4 h-4" />
+          </button>
+        )}
         
         {/* Dynamic Inner Tab Switcher Display Area */}
         <div className="flex-1 overflow-hidden p-4 sm:p-5 flex flex-col">
           {activeTab === "chat" && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 h-full overflow-hidden">
+            <div className="flex h-full overflow-hidden gap-4 relative">
               
-              {/* Central Chat Panel */}
-              <div className="lg:col-span-9 h-full flex flex-col overflow-hidden">
+              <div className="flex-1 min-w-0 h-full flex flex-col overflow-hidden">
                 <ChatWorkspace
                   messages={messages}
                   onSendMessage={handleSendMessage}
@@ -612,155 +783,166 @@ export default function App() {
                   selectedTender={selectedTender}
                   setActiveTab={setActiveTab}
                   onAddPacket={handleAddPacket}
+                  isRibassoOpen={isRibassoOpen}
+                  setIsRibassoOpen={setIsRibassoOpen}
                 />
               </div>
 
-              {/* Robust Right Sidebar - Persistent critical summarizing parameters requested */}
-              <motion.div
+              {!isRightSidebarOpen && (
+                <button
+                  type="button"
+                  onClick={() => setIsRightSidebarOpen(true)}
+                  className="hidden lg:flex absolute right-3 top-3 z-40 cursor-pointer p-2 rounded-xl border border-neutral-800 bg-neutral-900 hover:border-brand-gold text-brand-gold shadow-lg transition-all"
+                  title="Mostra quadro gara"
+                  id="expand-right-sidebar-btn"
+                >
+                  <PanelRightOpen className="w-4 h-4" />
+                </button>
+              )}
+
+              {isRightSidebarOpen && (
+              <motion.aside
                 key={selectedTender.id}
                 initial={{ opacity: 0, x: 30, filter: "blur(3px)" }}
                 animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
                 transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-                className="lg:col-span-3 bg-black border border-neutral-800 rounded-2xl p-5 flex flex-col justify-between hidden lg:flex h-full overflow-y-auto space-y-4"
+                className="hidden lg:flex w-72 shrink-0 bg-black border border-neutral-800 rounded-2xl flex-col h-full overflow-hidden"
                 id="chat-right-sidebar-summary"
               >
-                <div className="space-y-4">
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-sans font-extrabold tracking-wider text-slate-550 uppercase">
-                      Quadro Gara Corrente
+                <div className="p-4 border-b border-neutral-800 flex items-start justify-between gap-2 shrink-0">
+                  <div className="min-w-0 space-y-1">
+                    <span className="text-[10px] font-sans font-extrabold tracking-wider text-slate-550 uppercase block">
+                      Quadro gara corrente
                     </span>
-                    <h3 className="font-sans font-extrabold text-sm text-white truncate" title={selectedTender.title}>
+                    <h3 className="font-sans font-extrabold text-sm text-white line-clamp-2" title={selectedTender.title}>
                       {selectedTender.title}
                     </h3>
-                    <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1.5 pt-1.5 border-b border-neutral-800 pb-2">
-                      <span className="bg-neutral-900 text-white px-1.5 py-0.5 rounded border border-neutral-800">CIG {selectedTender.cig}</span>
-                      <span className="bg-neutral-900 text-brand-gold px-1.5 py-0.5 rounded border border-neutral-800 font-bold">{selectedTender.value}</span>
+                    <div className="text-[10px] text-slate-400 font-mono flex flex-wrap items-center gap-1.5 pt-1">
+                      <span className="bg-neutral-900 text-white px-1.5 py-0.5 rounded border border-neutral-800">
+                        CIG {selectedTender.cig}
+                      </span>
+                      <span className="bg-neutral-900 text-brand-gold px-1.5 py-0.5 rounded border border-neutral-800 font-bold">
+                        {selectedTender.value}
+                      </span>
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsRightSidebarOpen(false)}
+                    className="cursor-pointer p-1.5 rounded-lg border border-neutral-800 bg-neutral-950 hover:border-brand-gold shrink-0"
+                    title="Nascondi barra destra"
+                    id="collapse-right-sidebar-btn"
+                  >
+                    <ChevronRight className="w-4 h-4 text-brand-gold" />
+                  </button>
+                </div>
 
-                  {/* Requisiti Analizzati */}
-                  <div className="space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-sans font-extrabold tracking-wider text-slate-450 uppercase">
-                        Requisiti Analizzati
+                <div className="flex-1 overflow-y-auto p-4 scrollbar-thin space-y-1">
+                  <SidebarDropdownSection
+                    title="Requisiti analizzati"
+                    badge={
+                      <span className="text-[9px] font-mono font-bold text-brand-gold">
+                        {selectedTender.requirements.filter((r) => r.satisfied).length}/
+                        {selectedTender.requirements.length}
                       </span>
-                      <span className="text-[10px] font-mono font-bold text-brand-gold">
-                        {selectedTender.requirements.filter(r => r.satisfied).length}/{selectedTender.requirements.length} REQUISITI OK
-                      </span>
-                    </div>
-                    
-                    <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1 scrollbar-thin">
+                    }
+                    isOpen={rightOpenSections.requisiti}
+                    onToggle={() => toggleRightSection("requisiti")}
+                  >
+                    <ul className="list-disc list-inside space-y-2 text-[11px] text-slate-300 marker:text-brand-gold max-h-[220px] overflow-y-auto pr-1 scrollbar-thin">
                       {selectedTender.requirements.map((req, idx) => (
-                        <div key={idx} className="p-2.5 rounded-xl border border-neutral-850 bg-neutral-950 text-xs leading-relaxed transition-all">
-                          <div className="flex items-start gap-2">
-                            <CheckCircle className="w-3.5 h-3.5 text-brand-gold shrink-0 mt-0.5" />
-                            <div className="flex-1">
-                              <div className="flex items-center gap-1.5 mb-1 font-sans">
-                                <span className="text-[8.5px] uppercase px-1.5 py-0.2 rounded font-mono font-bold bg-neutral-900 text-brand-gold border border-neutral-800">
-                                  {req.category}
-                                </span>
-                              </div>
-                              <p className="text-[11px] leading-snug font-bold text-white font-sans">
-                                {req.description}
-                              </p>
-                              <p className="text-[10px] text-slate-400 mt-1 pl-1.5 border-l-2 border-neutral-700 italic leading-relaxed">
-                                {req.details}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
+                        <li key={idx} className="leading-snug">
+                          <span className="text-[8.5px] uppercase font-mono font-bold text-brand-gold">
+                            {req.category}
+                          </span>
+                          <span className="block font-bold text-white mt-0.5">{req.description}</span>
+                          <span className="block text-[10px] text-slate-400 italic mt-0.5">{req.details}</span>
+                        </li>
                       ))}
-                    </div>
-                  </div>
+                    </ul>
+                  </SidebarDropdownSection>
 
-                  {/* Penali Identificate */}
-                  <div className="space-y-3 pt-3 border-t border-neutral-800">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-sans font-extrabold tracking-wider text-slate-450 uppercase">
-                        Penali Identificate
-                      </span>
+                  <SidebarDropdownSection
+                    title="Penali identificate"
+                    badge={
                       <span className="bg-red-950/40 text-red-400 text-[8px] font-sans font-bold px-1.5 py-0.5 rounded border border-red-900/50">
-                        RISCHIO CONTRATTUALE
+                        Rischio
                       </span>
-                    </div>
+                    }
+                    isOpen={rightOpenSections.penali}
+                    onToggle={() => toggleRightSection("penali")}
+                  >
+                    {selectedTender.penalties && selectedTender.penalties.length > 0 ? (
+                      <ul className="list-disc list-inside space-y-1.5 text-[10.5px] text-slate-300 marker:text-brand-gold max-h-[160px] overflow-y-auto pr-1 scrollbar-thin">
+                        {selectedTender.penalties.map((pen, idx) => (
+                          <li key={idx}>{pen}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-[11px] text-slate-500 italic pl-4">
+                        Nessuna penale identificata per questo bando.
+                      </p>
+                    )}
+                  </SidebarDropdownSection>
 
-                    <div className="space-y-2 overflow-y-auto max-h-[140px] pr-1 scrollbar-thin">
-                      {selectedTender.penalties && selectedTender.penalties.length > 0 ? (
-                        selectedTender.penalties.map((pen, idx) => (
-                          <div key={idx} className="bg-neutral-950 border border-neutral-850 rounded-xl p-2.5 flex gap-2 border-l-3 border-l-brand-gold text-slate-300">
-                            <AlertCircle className="w-3.5 h-3.5 text-brand-gold shrink-0 mt-0.5" />
-                            <div className="flex-1">
-                              <p className="text-[10.5px] font-sans leading-relaxed text-slate-250 font-semibold">
-                                {pen}
-                              </p>
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-[11px] text-slate-500 italic text-center py-2">
-                          Nessuna penale identificata per questo bando.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Anomalie di Gara */}
-                  <div className="space-y-3 pt-3 border-t border-neutral-800">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-sans font-extrabold tracking-wider text-slate-450 uppercase">
-                        Anomalie di Gara
-                      </span>
+                  <SidebarDropdownSection
+                    title="Anomalie di gara"
+                    badge={
                       <span className="bg-amber-950/40 text-amber-400 text-[8px] font-sans font-bold px-1.5 py-0.5 rounded border border-amber-900/50">
-                        ALERT CONTENZIOSO
+                        Alert
                       </span>
-                    </div>
+                    }
+                    isOpen={rightOpenSections.anomalie}
+                    onToggle={() => toggleRightSection("anomalie")}
+                  >
+                    {selectedTender.anomalies && selectedTender.anomalies.length > 0 ? (
+                      <ul className="list-disc list-inside space-y-1.5 text-[10.5px] text-slate-300 marker:text-amber-500 max-h-[160px] overflow-y-auto pr-1 scrollbar-thin">
+                        {selectedTender.anomalies.map((anom, idx) => (
+                          <li key={idx}>{anom}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-[11px] text-slate-500 italic pl-4">
+                        Nessuna anomalia identificata per questo bando.
+                      </p>
+                    )}
+                  </SidebarDropdownSection>
 
-                    <div className="space-y-2 overflow-y-auto max-h-[140px] pr-1 scrollbar-thin">
-                      {selectedTender.anomalies && selectedTender.anomalies.length > 0 ? (
-                        selectedTender.anomalies.map((anom, idx) => (
-                          <div key={idx} className="bg-neutral-950 border border-neutral-850 rounded-xl p-2.5 flex gap-2 border-l-3 border-l-amber-500 text-slate-300">
-                            <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
-                            <div className="flex-1">
-                              <p className="text-[10.5px] font-sans leading-relaxed text-slate-250">
-                                {anom}
-                              </p>
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-[11px] text-slate-500 italic text-center py-2">
-                          Nessuna anomalia identificata per questo bando.
-                        </p>
-                      )}
-                    </div>
-                  </div>
+                  <SidebarDropdownSection
+                    title="Azioni rapide"
+                    isOpen={rightOpenSections.azioni}
+                    onToggle={() => toggleRightSection("azioni")}
+                  >
+                    <ul className="list-disc list-inside space-y-2 text-[11px] marker:text-brand-gold">
+                      <li>
+                        <button
+                          type="button"
+                          onClick={() => setIsVessatorieOpen(true)}
+                          className="cursor-pointer text-slate-300 hover:text-brand-gold transition-colors text-left"
+                          id="vessatorie-analysis-sidebar-btn"
+                        >
+                          Rileva clausole vessatorie
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          onClick={handleExportReport}
+                          className="cursor-pointer text-brand-gold hover:text-yellow-400 font-semibold transition-colors text-left"
+                          id="export-report-sidebar-btn"
+                        >
+                          Esporta report gara
+                        </button>
+                      </li>
+                    </ul>
+                  </SidebarDropdownSection>
                 </div>
 
-                {/* Advice footer & Export Button */}
-                <div className="pt-3 border-t border-neutral-800 space-y-2">
-                  <button
-                    onClick={() => setIsVessatorieOpen(true)}
-                    className="w-full cursor-pointer bg-neutral-900 border border-neutral-800 hover:border-brand-gold text-white font-sans font-bold py-2.5 px-3 rounded-xl text-[11px] flex items-center justify-center gap-1.5 transition-all shadow-sm hover:text-brand-gold"
-                    title="Analisi Vessatorietà & Tutela (D.Lgs. 36/2023)"
-                    id="vessatorie-analysis-sidebar-btn"
-                  >
-                    <ShieldAlert className="w-3.5 h-3.5 text-brand-gold" />
-                    <span>Rileva Clausole Vessatorie</span>
-                  </button>
-                  <button
-                    onClick={handleExportReport}
-                    className="w-full cursor-pointer bg-brand-gold hover:bg-yellow-400 text-black font-sans font-bold py-2 px-3 rounded-xl text-[11px] flex items-center justify-center gap-1.5 transition-colors shadow-sm"
-                    title="Esporta e scarica il report in formato Markdown (.md)"
-                    id="export-report-sidebar-btn"
-                  >
-                    <Download className="w-3.5 h-3.5 text-black" />
-                    <span>Esporta Report Gara</span>
-                  </button>
-                  <p className="text-[10px] text-slate-500 font-sans leading-relaxed text-center">
-                    L'analisi delle penali e anomalie tutela l'impresa dal rischio contrattuale (D.Lgs. 36/2023).
-                  </p>
-                </div>
-              </motion.div>
+                <p className="shrink-0 px-4 pb-4 text-[10px] text-slate-500 font-sans leading-relaxed text-center border-t border-neutral-800 pt-3">
+                  L&apos;analisi di penali e anomalie tutela l&apos;impresa dal rischio contrattuale (D.Lgs. 36/2023).
+                </p>
+              </motion.aside>
+              )}
 
             </div>
           )}

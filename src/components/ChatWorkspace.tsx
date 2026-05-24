@@ -1,19 +1,31 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Message, TenderDocument, PacketLog } from "../types";
+import { Message, TenderDocument, PacketLog, ChatAttachment } from "../types";
 import { 
-  Cpu, Send, RefreshCw, FileText, CheckCircle2, ChevronDown, ChevronUp, AlertCircle, Sparkles, 
-  Mic, Paperclip, HelpCircle, CheckCircle, Database, Calculator, Network, HelpCircle as InfoIcon
+  Cpu, Send, RefreshCw, ChevronDown, ChevronUp, Sparkles, 
+  Mic, Paperclip, CheckCircle, Database, Calculator, X, FileText
 } from "lucide-react";
+
+const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
+const ACCEPTED_FILE_TYPES =
+  ".pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,image/jpeg,image/png,image/webp,image/gif";
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 import { samplePrompts, mockTenders } from "../mockData";
 
 interface ChatWorkspaceProps {
   messages: Message[];
-  onSendMessage: (text: string, overrideTargetTender?: string) => void;
+  onSendMessage: (text: string, overrideTargetTender?: string, attachments?: ChatAttachment[]) => void;
   isGenerating: boolean;
   onSelectTender: (tender: TenderDocument) => void;
   selectedTender: TenderDocument;
   setActiveTab: (tab: "chat" | "analyzer" | "mcp" | "guide") => void;
   onAddPacket: (packet: PacketLog) => void;
+  isRibassoOpen: boolean;
+  setIsRibassoOpen: (open: boolean) => void;
 }
 
 export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
@@ -24,14 +36,17 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
   selectedTender,
   setActiveTab,
   onAddPacket,
+  isRibassoOpen,
+  setIsRibassoOpen,
 }) => {
   const [inputText, setInputText] = useState("");
   const [openTools, setOpenTools] = useState<{ [key: string]: boolean }>({});
   const [isThinkingOpen, setIsThinkingOpen] = useState(false);
-  const [isRibassoOpen, setIsRibassoOpen] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
   const [calculatedRibasso, setCalculatedRibasso] = useState<number | null>(null);
   const [ribassoInput, setRibassoInput] = useState({ importo: 1250000, percentuale: 11.5 });
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
@@ -123,11 +138,63 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  const readFileAsAttachment = (file: File): Promise<ChatAttachment> =>
+    new Promise((resolve, reject) => {
+      const base: ChatAttachment = {
+        id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+        name: file.name,
+        size: file.size,
+        type: file.type || "application/octet-stream",
+      };
+      if (file.size > 2 * 1024 * 1024) {
+        resolve(base);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => resolve({ ...base, dataUrl: reader.result as string });
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files?.length) return;
+
+    const newAttachments: ChatAttachment[] = [];
+    for (const file of Array.from(files) as File[]) {
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        alert(`File troppo grande (max 15 MB): ${file.name}`);
+        continue;
+      }
+      try {
+        newAttachments.push(await readFileAsAttachment(file));
+      } catch {
+        alert(`Impossibile leggere il file: ${file.name}`);
+      }
+    }
+
+    if (newAttachments.length > 0) {
+      setPendingAttachments((prev) => [...prev, ...newAttachments]);
+    }
+    e.target.value = "";
+  };
+
+  const removePendingAttachment = (id: string) => {
+    setPendingAttachments((prev) => prev.filter((a) => a.id !== id));
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim() || isGenerating) return;
-    onSendMessage(inputText);
+    if (isGenerating) return;
+    if (!inputText.trim() && pendingAttachments.length === 0) return;
+
+    onSendMessage(
+      inputText,
+      undefined,
+      pendingAttachments.length > 0 ? pendingAttachments : undefined
+    );
     setInputText("");
+    setPendingAttachments([]);
   };
 
   const handleChipClick = (prompt: string, targetTenderId?: string) => {
@@ -293,6 +360,17 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
                         {m.text}
                       </div>
 
+                      {m.attachments && m.attachments.length > 0 && (
+                        <ul className="mt-3 pt-3 border-t border-neutral-700/80 space-y-1.5 list-disc list-inside marker:text-brand-gold">
+                          {m.attachments.map((att) => (
+                            <li key={att.id} className="text-[10.5px] text-slate-300">
+                              <span className="font-semibold text-white">{att.name}</span>
+                              <span className="text-slate-500 ml-1">({formatFileSize(att.size)})</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+
                       {/* If response mentions school / road and helper option */}
                       {!isUser && (m.text.includes("Piccoli Passi") || m.text.includes("Bologna") || m.text.includes("Bozza")) && (
                         <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between flex-wrap gap-2 text-[11.5px]">
@@ -367,19 +445,51 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
       {/* Main prompt bar following ChatGPT styling */}
       <div className="p-4 border-t border-neutral-800 bg-black flex gap-3 items-stretch" id="chat-input-controls-area">
         <form onSubmit={handleSubmit} className="relative flex flex-col bg-neutral-950 border border-neutral-800 rounded-2xl p-2 shadow-2xl flex-1">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept={ACCEPTED_FILE_TYPES}
+            className="hidden"
+            onChange={handleFileChange}
+            id="chat-file-upload-input"
+          />
+
+          {pendingAttachments.length > 0 && (
+            <div className="px-2 pt-1 pb-2 border-b border-neutral-800 flex flex-wrap gap-1.5">
+              {pendingAttachments.map((att) => (
+                <span
+                  key={att.id}
+                  className="inline-flex items-center gap-1.5 bg-neutral-900 border border-neutral-800 rounded-lg px-2 py-1 text-[10px] text-slate-200"
+                >
+                  <Paperclip className="w-3 h-3 text-brand-gold shrink-0" />
+                  <span className="truncate max-w-[140px]" title={att.name}>
+                    {att.name}
+                  </span>
+                  <span className="text-slate-500 shrink-0">{formatFileSize(att.size)}</span>
+                  <button
+                    type="button"
+                    onClick={() => removePendingAttachment(att.id)}
+                    className="cursor-pointer text-slate-500 hover:text-white p-0.5"
+                    title="Rimuovi allegato"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
           
           <div className="flex items-center flex-1 px-2">
             
-            {/* Attachment Button */}
             <button
               type="button"
-              onClick={() => {
-                setActiveTab("analyzer");
-              }}
+              onClick={() => fileInputRef.current?.click()}
               className="p-2 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer"
-              title="Carica un nuovo bando della gara (.pdf)"
+              title="Carica allegati dal PC (PDF, Office, immagini, ZIP)"
+              id="chat-attach-file-btn"
             >
-              <Paperclip className="w-5 h-5" />
+              <Paperclip className="w-5 h-5 text-brand-gold" />
             </button>
 
             {/* Input area */}
@@ -434,7 +544,7 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
             {/* Submit btn */}
             <button
               type="submit"
-              disabled={!inputText.trim() || isGenerating}
+              disabled={(!inputText.trim() && pendingAttachments.length === 0) || isGenerating}
               className="cursor-pointer bg-brand-gold font-bold text-black rounded-xl p-2.5 flex items-center justify-center shrink-0 disabled:opacity-45 hover:bg-yellow-400 transition-all"
               id="chat-send-btn"
             >
@@ -474,56 +584,7 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
         </button>
       </div>
 
-      {/* Dynamic Shortcut buttons requested "sotto il box della chat gli strumenti da usare come short cut come analizzatore di disciplinare e i vari connettori" */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 mt-3 pt-2 text-center" id="chat-shortcuts-below">
-        
-        <button
-          onClick={() => {
-            setActiveTab("analyzer");
-          }}
-          className="flex items-center justify-center gap-1.5 bg-neutral-950 hover:bg-neutral-900 border border-neutral-800 p-2.5 rounded-lg text-[11px] text-white font-sans font-bold transition-all hover:border-brand-gold cursor-pointer"
-          title="Apri l'analizzatore disciplinare (PDF OCR)"
-        >
-          <FileText className="w-3.5 h-3.5 text-brand-gold" />
-          <span>1. Analizzatore PDF</span>
-        </button>
-
-        <button
-          onClick={() => {
-            setActiveTab("mcp");
-          }}
-          className="flex items-center justify-center gap-1.5 bg-neutral-950 hover:bg-neutral-900 border border-neutral-800 p-2.5 rounded-lg text-[11px] text-white font-sans font-bold transition-all hover:border-brand-gold cursor-pointer"
-          title="Vedi schemas e logs MCP"
-        >
-          <Network className="w-3.5 h-3.5 text-brand-gold" />
-          <span>2. Connettori MCP</span>
-        </button>
-
-        <button
-          onClick={() => {
-            setIsRibassoOpen(!isRibassoOpen);
-          }}
-          className="flex items-center justify-center gap-1.5 bg-neutral-950 hover:bg-neutral-900 border border-neutral-800 p-2.5 rounded-lg text-[11px] text-white font-sans font-bold transition-all hover:border-brand-gold cursor-pointer animate-pulse"
-          title="Apri calcolatore di ribasso"
-        >
-          <Calculator className="w-3.5 h-3.5 text-brand-gold" />
-          <span>3. Calcolo Ribasso</span>
-        </button>
-
-        <button
-          onClick={() => {
-            onSendMessage("Verifica se la mia impresa possiede i requisiti per partecipare.");
-          }}
-          className="flex items-center justify-center gap-1.5 bg-neutral-950 hover:bg-neutral-900 border border-neutral-800 p-2.5 rounded-lg text-[11px] text-white font-sans font-bold transition-all hover:border-brand-gold cursor-pointer"
-          title="Esegui query incrocio con dati Supabase"
-        >
-          <Database className="w-3.5 h-3.5 text-brand-gold" />
-          <span>4. Incrocio Supabase</span>
-        </button>
-
-      </div>
-
-      {/* Embedded calculator box if toggled */}
+      {/* Calcolatore ribasso (aperto da menu App e integrazioni) */}
       {isRibassoOpen && (
         <div className="mt-3 bg-neutral-950 border border-neutral-800 p-4 rounded-xl text-xs space-y-3 font-sans max-w-lg mx-auto transition-all animate-fade-in shadow-xl">
           <div className="flex items-center justify-between border-b border-neutral-800 pb-2">

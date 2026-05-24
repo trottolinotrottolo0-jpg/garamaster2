@@ -28,11 +28,20 @@ export interface PacketLog {
   payload: any;
 }
 
+export interface ChatAttachment {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  dataUrl?: string;
+}
+
 export interface Message {
   id: string;
   sender: "user" | "assistant" | "system" | "mcp-call";
   text: string;
   timestamp: Date;
+  attachments?: ChatAttachment[];
   toolUsage?: {
     toolName: string;
     params: any;
