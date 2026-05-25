@@ -78,3 +78,87 @@ export interface TenderDocument {
   anomalies: string[];
   penalties: string[];
 }
+
+// ─── SOA FOUNDATION TYPES ───────────────────────────────────────────────────
+
+export type SOACategoryCode =
+  | "OG1" | "OG2" | "OG3" | "OG4" | "OG5" | "OG6" | "OG7" | "OG8"
+  | "OG9" | "OG10" | "OG11" | "OG12" | "OG13"
+  | "OS1" | "OS2-A" | "OS2-B" | "OS3" | "OS4" | "OS5" | "OS6"
+  | "OS7" | "OS8" | "OS9" | "OS10" | "OS11" | "OS12-A" | "OS12-B"
+  | "OS13" | "OS14" | "OS15" | "OS16" | "OS17" | "OS18-A" | "OS18-B"
+  | "OS19" | "OS20-A" | "OS20-B" | "OS21" | "OS22" | "OS23" | "OS24"
+  | "OS25" | "OS26" | "OS27" | "OS28" | "OS29" | "OS30" | "OS31"
+  | "OS32" | "OS33" | "OS34" | "OS35";
+
+export type SOAClassifica = "I" | "II" | "III" | "III-bis" | "IV" | "IV-bis" | "V" | "VI" | "VII" | "VIII";
+
+export interface SOACategory {
+  code: SOACategoryCode;
+  classifica: SOAClassifica;
+  expiryDate: string; // ISO date string "YYYY-MM-DD"
+  isScorporabile?: boolean;
+  isPrevale?: boolean;
+}
+
+// ─── COMPANY PROFILE ────────────────────────────────────────────────────────
+
+export type GeographicArea =
+  | "Nord-Ovest" | "Nord-Est" | "Centro" | "Sud" | "Isole" | "Nazionale";
+
+export type WorkSector =
+  | "Edilizia civile" | "Edilizia industriale" | "Infrastrutture"
+  | "Impianti" | "Restauro" | "Verde pubblico" | "Strade e autostrade"
+  | "Idraulica" | "Bonifica" | "Altro";
+
+export interface CompanyProfile {
+  // Anagrafica
+  companyName: string;
+  vatNumber: string;
+  legalForm: string;
+  foundedYear: number;
+
+  // SOA
+  soaCategories: SOACategory[];
+  soaAttestatoreName?: string;
+
+  // Operatività
+  geographicAreas: GeographicArea[];
+  workSectors: WorkSector[];
+  targetImportMin: number;
+  targetImportMax: number;
+
+  // Capacità
+  employeesCount: number;
+  activeSquads: number;
+  activeJobsites: number;
+
+  // Economici
+  lastYearRevenue: number;
+  avgMarginPercent: number;
+
+  // Storico libero
+  historicalNotes: string;
+
+  // Metadata
+  lastUpdated: string; // ISO date string
+}
+
+// ─── BID/NO-BID ENGINE ──────────────────────────────────────────────────────
+
+export type BidDecision = "GO" | "CAUTELA" | "NO-GO";
+
+export interface BidNoBidResult {
+  decision: BidDecision;
+  scoreComplessivo: number;
+  motivazioneSintetica: string;
+  motiviPro: string[];
+  motiviContro: string[];
+  criticitaPrincipale: string;
+  suggerimento: string;
+  soaCompatibile: boolean;
+  capacitaSufficiente: boolean;
+  areaGeograficaOk: boolean;
+  importoInTarget: boolean;
+  generatedAt: string;
+}
