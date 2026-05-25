@@ -6,6 +6,7 @@ import { McpHub } from "./components/McpHub";
 import { ChatWorkspace } from "./components/ChatWorkspace";
 import { DocumentAnalyzer } from "./components/DocumentAnalyzer";
 import { DeveloperGuide } from "./components/DeveloperGuide";
+import { CompanyProfile } from "./components/CompanyProfile";
 import { VessatorieModal } from "./components/VessatorieModal";
 import { 
   Cpu, Layers, Network, BookOpen, MessageSquare, ShieldCheck, Info, Plus, Search, Sliders, LogOut, Settings, 
@@ -52,7 +53,7 @@ function SidebarDropdownSection({
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<"chat" | "analyzer" | "mcp" | "guide">("chat");
+  const [activeTab, setActiveTab] = useState<"chat" | "analyzer" | "mcp" | "guide" | "profile">("chat");
   const [servers, setServers] = useState<McpServer[]>(initialMcpServers);
   const [selectedTender, setSelectedTender] = useState<TenderDocument>(mockTenders[0]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -525,6 +526,20 @@ export default function App() {
                       }`}
                     >
                       Libreria disciplinari
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab("profile");
+                        setIsNavMenuOpen(false);
+                      }}
+                      className={`cursor-pointer hover:text-brand-gold transition-colors ${
+                        activeTab === "profile" ? "text-white font-bold" : "text-slate-300"
+                      }`}
+                    >
+                      Profilo azienda
                     </button>
                   </li>
                   {!isSimplifiedMode && (
@@ -1020,6 +1035,28 @@ export default function App() {
               </div>
 
               <DeveloperGuide />
+            </div>
+          )}
+
+          {activeTab === "profile" && (
+            <div className="h-full overflow-y-auto p-2">
+              <div className="mb-4 bg-black border border-neutral-800 p-4 rounded-xl flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-bold text-white uppercase flex items-center gap-1.5">
+                    <Briefcase className="w-4 h-4 text-brand-gold" />
+                    Profilo Azienda & Qualificazioni SOA
+                  </h2>
+                  <p className="text-xs text-slate-400">Anagrafica impresa, categorie SOA, aree operative e dati economici</p>
+                </div>
+                <button
+                  onClick={() => setActiveTab("chat")}
+                  className="cursor-pointer bg-brand-gold hover:bg-yellow-400 text-black text-xs font-bold px-3.5 py-1.5 rounded-lg transition-colors"
+                >
+                  Torna alla Chat
+                </button>
+              </div>
+
+              <CompanyProfile />
             </div>
           )}
         </div>
