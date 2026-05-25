@@ -8,11 +8,18 @@ export async function runBidNoBid(
   tender: TenderDocument,
   profile: CompanyProfile
 ): Promise<BidNoBidResult> {
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
   const prompt = `Sei un motore decisionale esperto in gare d'appalto pubbliche italiane (D.Lgs. 36/2023).
-Analizza la compatibilità tra il profilo dell'impresa e la gara.
-Rispondi SOLO con un oggetto JSON valido, senza markdown, senza backtick, senza testo aggiuntivo.
+Prima di rispondere, ragiona internamente in modo approfondito su tutti i fattori rilevanti.
+Analizza la compatibilità tra il profilo dell'impresa e la gara con massima precisione.
+
+Il tuo output deve essere SOLO un oggetto JSON valido, senza markdown, senza backtick, senza testo aggiuntivo prima o dopo.
+Ogni campo stringa deve essere dettagliato e motivato, non generico.
+motiviPro e motiviContro devono avere almeno 3 elementi ciascuno quando i dati lo consentono.
+motivazioneSintetica deve essere 2-3 frasi precise, non una riga vaga.
+suggerimento deve essere un'azione operativa concreta (es. "Attiva avvalimento per OG3 classifica IV tramite impresa ausiliaria — verifica art. 104 D.Lgs. 36/2023").
+
 Il JSON deve rispettare esattamente questa struttura:
 {
   "decision": "GO" | "CAUTELA" | "NO-GO",
@@ -53,7 +60,15 @@ DATI GARA:
 - Anomalie rilevate: ${tender.anomalies.join(", ") || "nessuna"}
 - Penali: ${tender.penalties.join(", ") || "nessuna"}`;
 
-  const result = await model.generateContent(prompt);
+  const result = await model.generateContent({
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: {
+      thinkingConfig: {
+        thinkingBudget: 8000,
+      },
+      maxOutputTokens: 8000,
+    },
+  } as Parameters<typeof model.generateContent>[0]);
   const text = result.response.text().trim();
 
   let parsed: Omit<BidNoBidResult, "generatedAt">;
