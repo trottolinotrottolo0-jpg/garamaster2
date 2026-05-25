@@ -8,11 +8,12 @@ import { DocumentAnalyzer } from "./components/DocumentAnalyzer";
 import { DeveloperGuide } from "./components/DeveloperGuide";
 import { CompanyProfile } from "./components/CompanyProfile";
 import { VessatorieModal } from "./components/VessatorieModal";
+import { BidNoBidEngine } from "./components/BidNoBidEngine";
 import { 
   Cpu, Layers, Network, BookOpen, MessageSquare, ShieldCheck, Info, Plus, Search, Sliders, LogOut, Settings, 
   Sparkles, HelpCircle, Briefcase, User, Database, ShieldAlert, Key, Download,
   Menu, ChevronDown, ChevronLeft, ChevronRight, PanelLeftOpen, PanelRightOpen,
-  FileText, Calculator
+  FileText, Calculator, Scale
 } from "lucide-react";
 
 type SidebarDropdownSectionProps = {
@@ -60,6 +61,7 @@ export default function App() {
   const [packets, setPackets] = useState<PacketLog[]>([]);
   const [isSimplifiedMode, setIsSimplifiedMode] = useState<boolean>(true);
   const [isVessatorieOpen, setIsVessatorieOpen] = useState<boolean>(false);
+  const [isBidNoBidOpen, setIsBidNoBidOpen] = useState(false);
   
   // Custom states for settings
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -616,6 +618,19 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => {
+                        setIsBidNoBidOpen(true);
+                        setIsNavMenuOpen(false);
+                      }}
+                      className="cursor-pointer text-slate-300 hover:text-brand-gold transition-colors flex items-center gap-1.5"
+                    >
+                      <Scale className="w-3 h-3 inline text-brand-gold shrink-0" />
+                      Bid / No-Bid Engine
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => {
                         setActiveTab("chat");
                         setIsRibassoOpen(true);
                         setIsNavMenuOpen(false);
@@ -942,6 +957,17 @@ export default function App() {
                       <li>
                         <button
                           type="button"
+                          onClick={() => setIsBidNoBidOpen(true)}
+                          className="cursor-pointer text-slate-300 hover:text-brand-gold transition-colors text-left flex items-center gap-1.5"
+                          id="bid-no-bid-sidebar-btn"
+                        >
+                          <Scale className="w-3 h-3 text-brand-gold shrink-0" />
+                          Bid / No-Bid Engine
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
                           onClick={handleExportReport}
                           className="cursor-pointer text-brand-gold hover:text-yellow-400 font-semibold transition-colors text-left"
                           id="export-report-sidebar-btn"
@@ -1197,6 +1223,12 @@ export default function App() {
           </div>
         </div>
       )}
+
+      <BidNoBidEngine
+        tender={selectedTender}
+        isOpen={isBidNoBidOpen}
+        onClose={() => setIsBidNoBidOpen(false)}
+      />
 
       {/* Deep D.Lgs. 36/2023 Vessatorie/Abusive Rules protective shield */}
       <VessatorieModal

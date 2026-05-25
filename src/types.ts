@@ -143,3 +143,22 @@ export interface CompanyProfile {
   // Metadata
   lastUpdated: string; // ISO date string
 }
+
+// ─── BID/NO-BID ENGINE ──────────────────────────────────────────────────────
+
+export type BidDecision = "GO" | "CAUTELA" | "NO-GO";
+
+export interface BidNoBidResult {
+  decision: BidDecision;
+  scoreComplessivo: number;
+  motivazioneSintetica: string;
+  motiviPro: string[];
+  motiviContro: string[];
+  criticitaPrincipale: string;
+  suggerimento: string;
+  soaCompatibile: boolean;
+  capacitaSufficiente: boolean;
+  areaGeograficaOk: boolean;
+  importoInTarget: boolean;
+  generatedAt: string;
+}
