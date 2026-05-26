@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import type { TenderDocument, CompanyProfile, BidNoBidResult } from "../types";
+import type { TenderDocument, CompanyProfile, BidNoBidResult, BidPricingResult, PricingScenario } from "../types";
 
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY as string);
 
@@ -79,4 +79,99 @@ DATI GARA:
   }
 
   return { ...parsed, generatedAt: new Date().toISOString() };
+}
+
+function parseTenderValue(valueStr: string): number {
+  const cleaned = valueStr
+    .replace(/[€\s]/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".");
+  return parseFloat(cleaned) || 0;
+}
+
+function calcScenario(
+  ribasso: number,
+  importoGara: number,
+  profile: CompanyProfile,
+  label: PricingScenario["label"]
+): PricingScenario {
+  const importoOfferto = importoGara * (1 - ribasso / 100);
+  const costiStimati =
+    importoOfferto * (1 - profile.avgMarginPercent / 100) +
+    importoOfferto * (profile.incidenzaSpeseGenerali / 100) +
+    importoOfferto * (profile.incidenzaRischioMedio / 100);
+  const margineEuro = importoOfferto - costiStimati;
+  const margineStimato = importoOfferto > 0 ? (margineEuro / importoOfferto) * 100 : 0;
+  const rischioAlert = margineStimato < profile.minMargineAccettabile;
+  return { ribasso, importoOfferto, margineStimato, margineEuro, label, rischioAlert };
+}
+
+export async function runBidPricing(
+  tender: TenderDocument,
+  profile: CompanyProfile,
+  ribassoPersonalizzato: number
+): Promise<BidPricingResult> {
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+  const importoGara = parseTenderValue(tender.value);
+
+  const scenari: PricingScenario[] = [
+    calcScenario(profile.avgRibassoPercent + 3, importoGara, profile, "Aggressivo"),
+    calcScenario(profile.avgRibassoPercent, importoGara, profile, "Bilanciato"),
+    calcScenario(Math.max(0, profile.avgRibassoPercent - 3), importoGara, profile, "Conservativo"),
+    calcScenario(ribassoPersonalizzato, importoGara, profile, "Personalizzato"),
+  ];
+
+  const prompt = `Sei un esperto di pricing per gare d'appalto pubbliche italiane (D.Lgs. 36/2023).
+Analizza la situazione e restituisci SOLO un oggetto JSON valido, senza markdown, senza backtick.
+
+Struttura JSON richiesta:
+{
+  "rangeMinRibasso": number,
+  "rangeMaxRibasso": number,
+  "ribassoOttimale": number,
+  "motivazioneRange": string (3-4 frasi precise con riferimenti ai dati aziendali),
+  "alertMargine": boolean,
+  "alertText": string (vuoto se alertMargine false, altrimenti descrivi il rischio concreto),
+  "winRatePrudente": number (% stima prudente, NON ottimistica),
+  "winRateMotivazione": string (2-3 frasi che spiegano la stima)
+}
+
+Logica per il range:
+- rangeMin = ribasso sotto cui il margine scende sotto minMargineAccettabile
+- rangeMax = ribasso massimo sostenibile mantenendo margine accettabile
+- ribassoOttimale = punto di equilibrio tra competitività e margine
+- alertMargine = true se anche ribassoOttimale porta margine vicino al limite (< minMargine + 2%)
+- winRatePrudente: considera storico impresa, fit gara, complessità — rimani prudente
+
+PROFILO IMPRESA:
+${JSON.stringify(profile, null, 2)}
+
+DATI GARA:
+- Titolo: ${tender.title}
+- Importo base: ${tender.value}
+- Categoria: ${tender.category}
+- Regione: ${tender.region}
+- Requisiti: ${JSON.stringify(tender.requirements)}
+- Anomalie: ${tender.anomalies.join(", ") || "nessuna"}
+
+SCENARI PRE-CALCOLATI (per contesto):
+${JSON.stringify(scenari, null, 2)}`;
+
+  const result = await model.generateContent({
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: {
+      thinkingConfig: { thinkingBudget: 8000 },
+      maxOutputTokens: 8000,
+    },
+  } as Parameters<typeof model.generateContent>[0]);
+
+  const text = result.response.text().trim();
+  let parsed: Omit<BidPricingResult, "scenari" | "generatedAt">;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error("Risposta Gemini non valida — riprova");
+  }
+
+  return { ...parsed, scenari, generatedAt: new Date().toISOString() };
 }

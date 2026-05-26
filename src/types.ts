@@ -137,11 +137,46 @@ export interface CompanyProfile {
   lastYearRevenue: number;
   avgMarginPercent: number;
 
+  // Storico ribassi e pricing
+  avgRibassoPercent: number;
+  avgWinRatePercent: number;
+  minMargineAccettabile: number;
+
+  // Costi interni
+  costoOraOperaio: number;
+  costoOraCaposquadra: number;
+  incidenzaSpeseGenerali: number;
+  incidenzaRischioMedio: number;
+
   // Storico libero
   historicalNotes: string;
 
   // Metadata
   lastUpdated: string; // ISO date string
+}
+
+// ─── BID PRICING ENGINE ─────────────────────────────────────────────────────
+
+export interface PricingScenario {
+  ribasso: number;
+  importoOfferto: number;
+  margineStimato: number;
+  margineEuro: number;
+  label: "Aggressivo" | "Bilanciato" | "Conservativo" | "Personalizzato";
+  rischioAlert: boolean;
+}
+
+export interface BidPricingResult {
+  rangeMinRibasso: number;
+  rangeMaxRibasso: number;
+  ribassoOttimale: number;
+  scenari: PricingScenario[];
+  motivazioneRange: string;
+  alertMargine: boolean;
+  alertText: string;
+  winRatePrudente: number;
+  winRateMotivazione: string;
+  generatedAt: string;
 }
 
 // ─── BID/NO-BID ENGINE ──────────────────────────────────────────────────────

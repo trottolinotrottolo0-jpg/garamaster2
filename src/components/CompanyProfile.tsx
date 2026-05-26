@@ -33,6 +33,8 @@ const emptyProfile: CompanyProfileType = {
   targetImportMin: 0, targetImportMax: 0,
   employeesCount: 0, activeSquads: 0, activeJobsites: 0,
   lastYearRevenue: 0, avgMarginPercent: 0,
+  avgRibassoPercent: 0, avgWinRatePercent: 0, minMargineAccettabile: 0,
+  costoOraOperaio: 0, costoOraCaposquadra: 0, incidenzaSpeseGenerali: 0, incidenzaRischioMedio: 0,
   historicalNotes: "", lastUpdated: "",
 };
 
@@ -391,6 +393,104 @@ export function CompanyProfile() {
               value={profile.avgMarginPercent}
               onChange={(e) => set("avgMarginPercent", parseFloat(e.target.value) || 0)}
               step="0.1"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Storico pricing & costi interni */}
+      <div className="bg-black border border-neutral-800 rounded-xl p-5 space-y-4">
+        <SectionTitle>Storico pricing &amp; costi interni</SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Ribasso medio storico offerto (%)
+            </label>
+            <input
+              type="number"
+              className={inputCls()}
+              value={profile.avgRibassoPercent}
+              onChange={(e) => set("avgRibassoPercent", parseFloat(e.target.value) || 0)}
+              step="0.1"
+              placeholder="12"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Tasso aggiudicazione storico (%)
+            </label>
+            <input
+              type="number"
+              className={inputCls()}
+              value={profile.avgWinRatePercent}
+              onChange={(e) => set("avgWinRatePercent", parseFloat(e.target.value) || 0)}
+              step="0.1"
+              placeholder="25"
+            />
+            <p className="text-[9px] text-slate-600 mt-1">Stima prudente basata sullo storico</p>
+          </div>
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Margine minimo accettabile (%)
+            </label>
+            <input
+              type="number"
+              className={inputCls()}
+              value={profile.minMargineAccettabile}
+              onChange={(e) => set("minMargineAccettabile", parseFloat(e.target.value) || 0)}
+              step="0.1"
+              placeholder="8"
+            />
+            <p className="text-[9px] text-slate-600 mt-1">Sotto questa soglia il sistema lancia alert</p>
+          </div>
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Incidenza spese generali (%)
+            </label>
+            <input
+              type="number"
+              className={inputCls()}
+              value={profile.incidenzaSpeseGenerali}
+              onChange={(e) => set("incidenzaSpeseGenerali", parseFloat(e.target.value) || 0)}
+              step="0.1"
+              placeholder="15"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Incidenza rischio medio (%)
+            </label>
+            <input
+              type="number"
+              className={inputCls()}
+              value={profile.incidenzaRischioMedio}
+              onChange={(e) => set("incidenzaRischioMedio", parseFloat(e.target.value) || 0)}
+              step="0.1"
+              placeholder="3"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Costo ora operaio interno (€/h)
+            </label>
+            <input
+              type="number"
+              className={inputCls()}
+              value={profile.costoOraOperaio}
+              onChange={(e) => set("costoOraOperaio", parseFloat(e.target.value) || 0)}
+              placeholder="28"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Costo ora caposquadra (€/h)
+            </label>
+            <input
+              type="number"
+              className={inputCls()}
+              value={profile.costoOraCaposquadra}
+              onChange={(e) => set("costoOraCaposquadra", parseFloat(e.target.value) || 0)}
+              placeholder="38"
             />
           </div>
         </div>
