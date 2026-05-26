@@ -179,6 +179,51 @@ export interface BidPricingResult {
   generatedAt: string;
 }
 
+// ─── RED FLAG & CLAUSE RISK ENGINE ──────────────────────────────────────────
+
+export type RiskLevel = "high" | "medium" | "low";
+
+export interface RedFlag {
+  title: string;
+  type: string;
+  clause: string;
+  articleRef: string;
+  severity: RiskLevel;
+  simpleExplanation: string;
+  remedy: string;
+  clarificationText: string;
+}
+
+export interface RedFlagAnalysisResult {
+  redFlags: RedFlag[];
+  rischioComplessivo: RiskLevel;
+  conteggioHigh: number;
+  conteggioMedium: number;
+  conteggioLow: number;
+  sintesiRischio: string;
+  generatedAt: string;
+}
+
+// ─── CAPACITY & SATURATION ENGINE ───────────────────────────────────────────
+
+export type CapacityVerdict = "SOSTENIBILE" | "CRITICA" | "NON_SOSTENIBILE";
+
+export interface CapacityAnalysisResult {
+  verdict: CapacityVerdict;
+  scoreCapacita: number;
+  rischioSaturazione: "basso" | "medio" | "alto";
+  motivazioneSintetica: string;
+  squadreDisponibili: number;
+  caricoAttualePercent: number;
+  caricoDopoGaraPercent: number;
+  puntiForza: string[];
+  criticitaOperative: string[];
+  analisiCompatibilita: string;
+  rischioAlert: string | null;
+  suggerimentoOperativo: string;
+  generatedAt: string;
+}
+
 // ─── BID/NO-BID ENGINE ──────────────────────────────────────────────────────
 
 export type BidDecision = "GO" | "CAUTELA" | "NO-GO";

@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import type { TenderDocument, CompanyProfile, BidNoBidResult, BidPricingResult, PricingScenario } from "../types";
+import type { TenderDocument, CompanyProfile, BidNoBidResult, BidPricingResult, PricingScenario, RedFlagAnalysisResult, CapacityAnalysisResult } from "../types";
 
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY as string);
 
@@ -174,4 +174,149 @@ ${JSON.stringify(scenari, null, 2)}`;
   }
 
   return { ...parsed, scenari, generatedAt: new Date().toISOString() };
+}
+
+export async function runRedFlagAnalysis(
+  tender: TenderDocument
+): Promise<RedFlagAnalysisResult> {
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+  const prompt = `Sei un esperto legale specializzato in gare d'appalto pubbliche italiane (D.Lgs. 36/2023).
+Analizza i dati della gara e individua clausole problematiche, requisiti sproporzionati, anomalie e red flag.
+Rispondi SOLO con un oggetto JSON valido, senza markdown, senza backtick, senza testo aggiuntivo.
+
+Struttura JSON richiesta:
+{
+  "redFlags": [
+    {
+      "title": string,
+      "type": string,
+      "clause": string (citazione breve della clausola problematica, max 200 caratteri),
+      "articleRef": string (riferimento normativo preciso),
+      "severity": "high" | "medium" | "low",
+      "simpleExplanation": string (3-4 frasi in linguaggio semplice per un imprenditore edile),
+      "remedy": string (azione concreta da intraprendere),
+      "clarificationText": string (bozza lettera/quesito formale pronto per il portale gare, 80-120 parole, in italiano formale, includi CIG della gara)
+    }
+  ],
+  "rischioComplessivo": "high" | "medium" | "low",
+  "conteggioHigh": number,
+  "conteggioMedium": number,
+  "conteggioLow": number,
+  "sintesiRischio": string (2-3 frasi di sintesi sul profilo di rischio complessivo della gara)
+}
+
+Logica severity:
+- high: clausola illegittima (contra legem), requisito chiaramente sproporzionato, esclusione automatica ingiustificata
+- medium: clausola rischiosa ma contestabile, requisito al limite della proporzionalità, anomalia operativa rilevante
+- low: elemento da monitorare, clausola inusuale ma non necessariamente illegittima
+
+Logica rischioComplessivo:
+- high: almeno 1 red flag high
+- medium: solo red flag medium/low ma almeno 2 medium
+- low: solo red flag low o nessun red flag
+
+Trova tra 2 e 5 red flag. Se i dati sono insufficienti per identificare problemi specifici, genera almeno 2 osservazioni prudenziali generali sulla gara.
+Ogni clarificationText deve iniziare con "Oggetto:" e includere il CIG della gara.
+
+DATI GARA:
+- Titolo: ${tender.title}
+- CIG: ${tender.cig}
+- Importo: ${tender.value}
+- Categoria: ${tender.category}
+- Regione: ${tender.region}
+- Requisiti richiesti: ${JSON.stringify(tender.requirements, null, 2)}
+- Anomalie già rilevate: ${tender.anomalies.join(", ") || "nessuna"}
+- Penali già rilevate: ${tender.penalties.join(", ") || "nessuna"}
+- Sezioni disciplinare: ${JSON.stringify(tender.sections?.map((s) => ({ title: s.title, summary: s.summary })), null, 2)}`;
+
+  const result = await model.generateContent({
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: {
+      thinkingConfig: { thinkingBudget: 8000 },
+      maxOutputTokens: 8000,
+    },
+  } as Parameters<typeof model.generateContent>[0]);
+
+  const text = result.response.text().trim();
+  let parsed: Omit<RedFlagAnalysisResult, "generatedAt">;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error("Risposta Gemini non valida — riprova");
+  }
+
+  return { ...parsed, generatedAt: new Date().toISOString() };
+}
+
+export async function runCapacityAnalysis(
+  tender: TenderDocument,
+  profile: CompanyProfile
+): Promise<CapacityAnalysisResult> {
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+  const prompt = `Sei un esperto di organizzazione aziendale per imprese edili italiane.
+Analizza la capacità operativa dell'impresa di sostenere una nuova gara d'appalto senza andare in saturazione.
+Rispondi SOLO con un oggetto JSON valido, senza markdown, senza backtick.
+
+Struttura JSON:
+{
+  "verdict": "SOSTENIBILE" | "CRITICA" | "NON_SOSTENIBILE",
+  "scoreCapacita": number (0-100),
+  "rischioSaturazione": "basso" | "medio" | "alto",
+  "motivazioneSintetica": string (2-3 frasi),
+  "squadreDisponibili": number (stima squadre libere dopo acquisizione gara),
+  "caricoAttualePercent": number (% carico operativo attuale stimato 0-100),
+  "caricoDopoGaraPercent": number (% carico stimato se si prende la gara 0-100),
+  "puntiForza": string[] (almeno 2),
+  "criticitaOperative": string[] (almeno 1),
+  "analisiCompatibilita": string (paragrafo di 3-4 frasi sull'analisi organizzativa),
+  "rischioAlert": string | null,
+  "suggerimentoOperativo": string (azione concreta, es. "Assumi 2 operai prima di partecipare" o "Chiudi cantiere X prima di aprire questo")
+}
+
+Logica verdict:
+- SOSTENIBILE: score >= 65, carico dopo gara < 85%, squadre disponibili > 0
+- CRITICA: score 35-64, carico dopo gara 85-100%, o squadre disponibili = 0 ma colmabile
+- NON_SOSTENIBILE: score < 35, carico dopo gara > 100% (impossibile gestire), o zero dipendenti/squadre senza possibilità di recupero
+
+Logica capacità (NON applicare meccanicamente, ragiona sul contesto):
+- Squadre disponibili stimate = activeSquads - (activeJobsites * 1.2), mai sotto 0
+- I dipendenti sono una riserva: ogni 4 dipendenti liberi = 1 squadra potenziale formabile
+- Dipendenti liberi stimati = employeesCount - (activeJobsites * 3)
+- Se dipendenti liberi > 3, considera che l'impresa può formare squadre aggiuntive
+- SOSTENIBILE richiede: score >= 65 E (squadreDisponibili > 0 OPPURE dipendenti liberi >= 4)
+- CRITICA: score 35-64, o squadre = 0 ma dipendenti liberi tra 2 e 3
+- NON_SOSTENIBILE: score < 35, dipendenti = 0, o carico fisicamente impossibile
+- Un'impresa con 8 dipendenti e 2 cantieri aperti ha dipendenti liberi stimati = 8-(2*3) = 2, quindi CRITICA non NON_SOSTENIBILE
+- Importo gara > fatturato annuo è un segnale di sovraccarico finanziario-organizzativo
+
+PROFILO IMPRESA:
+${JSON.stringify(profile, null, 2)}
+
+DATI GARA:
+- Titolo: ${tender.title}
+- Importo: ${tender.value}
+- Categoria: ${tender.category}
+- Regione: ${tender.region}
+- Durata stimata: da requisiti e sezioni disciplinare
+- Requisiti: ${JSON.stringify(tender.requirements)}`;
+
+  const result = await model.generateContent({
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: {
+      thinkingConfig: { thinkingBudget: 8000 },
+      maxOutputTokens: 8000,
+    },
+  } as Parameters<typeof model.generateContent>[0]);
+
+  const text = result.response.text().trim();
+  let parsedCap: Omit<CapacityAnalysisResult, "generatedAt">;
+  try {
+    parsedCap = JSON.parse(text);
+  } catch {
+    throw new Error("Risposta Gemini non valida — riprova");
+  }
+
+  return { ...parsedCap, generatedAt: new Date().toISOString() };
 }

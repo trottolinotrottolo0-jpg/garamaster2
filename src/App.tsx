@@ -10,11 +10,12 @@ import { CompanyProfile } from "./components/CompanyProfile";
 import { VessatorieModal } from "./components/VessatorieModal";
 import { BidNoBidEngine } from "./components/BidNoBidEngine";
 import { BidPricingEngine } from "./components/BidPricingEngine";
+import { CapacitySaturationEngine } from "./components/CapacitySaturationEngine";
 import { 
   Cpu, Layers, Network, BookOpen, MessageSquare, ShieldCheck, Info, Plus, Search, Sliders, LogOut, Settings, 
   Sparkles, HelpCircle, Briefcase, User, Database, ShieldAlert, Key, Download,
   Menu, ChevronDown, ChevronLeft, ChevronRight, PanelLeftOpen, PanelRightOpen,
-  FileText, Calculator, Scale, TrendingUp
+  FileText, Calculator, Scale, TrendingUp, Activity
 } from "lucide-react";
 
 type SidebarDropdownSectionProps = {
@@ -64,6 +65,7 @@ export default function App() {
   const [isVessatorieOpen, setIsVessatorieOpen] = useState<boolean>(false);
   const [isBidNoBidOpen, setIsBidNoBidOpen] = useState(false);
   const [isBidPricingOpen, setIsBidPricingOpen] = useState(false);
+  const [isCapacityOpen, setIsCapacityOpen] = useState(false);
   
   // Custom states for settings
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -646,6 +648,19 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => {
+                        setIsCapacityOpen(true);
+                        setIsNavMenuOpen(false);
+                      }}
+                      className="cursor-pointer text-slate-300 hover:text-brand-gold transition-colors flex items-center gap-1.5"
+                    >
+                      <Activity className="w-3 h-3 inline text-brand-gold shrink-0" />
+                      Capacity Engine
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => {
                         setActiveTab("chat");
                         setIsRibassoOpen(true);
                         setIsNavMenuOpen(false);
@@ -994,6 +1009,17 @@ export default function App() {
                       <li>
                         <button
                           type="button"
+                          onClick={() => setIsCapacityOpen(true)}
+                          className="cursor-pointer text-slate-300 hover:text-brand-gold transition-colors text-left flex items-center gap-1.5"
+                          id="capacity-engine-sidebar-btn"
+                        >
+                          <Activity className="w-3 h-3 text-brand-gold shrink-0" />
+                          Capacity Engine
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
                           onClick={handleExportReport}
                           className="cursor-pointer text-brand-gold hover:text-yellow-400 font-semibold transition-colors text-left"
                           id="export-report-sidebar-btn"
@@ -1260,6 +1286,12 @@ export default function App() {
         tender={selectedTender}
         isOpen={isBidPricingOpen}
         onClose={() => setIsBidPricingOpen(false)}
+      />
+
+      <CapacitySaturationEngine
+        tender={selectedTender}
+        isOpen={isCapacityOpen}
+        onClose={() => setIsCapacityOpen(false)}
       />
 
       {/* Deep D.Lgs. 36/2023 Vessatorie/Abusive Rules protective shield */}

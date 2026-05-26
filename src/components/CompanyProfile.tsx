@@ -168,8 +168,8 @@ export function CompanyProfile() {
             <input
               type="number"
               className={inputCls()}
-              value={profile.foundedYear}
-              onChange={(e) => set("foundedYear", parseInt(e.target.value) || 0)}
+              value={profile.foundedYear === 0 ? "" : profile.foundedYear}
+              onChange={(e) => set("foundedYear", e.target.value === "" ? 0 : parseInt(e.target.value))}
             />
           </div>
         </div>
@@ -310,8 +310,8 @@ export function CompanyProfile() {
             <input
               type="number"
               className={inputCls()}
-              value={profile.targetImportMin}
-              onChange={(e) => set("targetImportMin", parseFloat(e.target.value) || 0)}
+              value={profile.targetImportMin === 0 ? "" : profile.targetImportMin}
+              onChange={(e) => set("targetImportMin", e.target.value === "" ? 0 : parseFloat(e.target.value))}
             />
           </div>
           <div>
@@ -321,8 +321,8 @@ export function CompanyProfile() {
             <input
               type="number"
               className={inputCls()}
-              value={profile.targetImportMax}
-              onChange={(e) => set("targetImportMax", parseFloat(e.target.value) || 0)}
+              value={profile.targetImportMax === 0 ? "" : profile.targetImportMax}
+              onChange={(e) => set("targetImportMax", e.target.value === "" ? 0 : parseFloat(e.target.value))}
             />
           </div>
         </div>
@@ -339,8 +339,8 @@ export function CompanyProfile() {
             <input
               type="number"
               className={inputCls()}
-              value={profile.employeesCount}
-              onChange={(e) => set("employeesCount", parseInt(e.target.value) || 0)}
+              value={profile.employeesCount === 0 ? "" : profile.employeesCount}
+              onChange={(e) => set("employeesCount", e.target.value === "" ? 0 : parseInt(e.target.value))}
             />
           </div>
           <div>
@@ -350,8 +350,8 @@ export function CompanyProfile() {
             <input
               type="number"
               className={inputCls()}
-              value={profile.activeSquads}
-              onChange={(e) => set("activeSquads", parseInt(e.target.value) || 0)}
+              value={profile.activeSquads === 0 ? "" : profile.activeSquads}
+              onChange={(e) => set("activeSquads", e.target.value === "" ? 0 : parseInt(e.target.value))}
             />
           </div>
           <div>
@@ -361,8 +361,8 @@ export function CompanyProfile() {
             <input
               type="number"
               className={inputCls()}
-              value={profile.activeJobsites}
-              onChange={(e) => set("activeJobsites", parseInt(e.target.value) || 0)}
+              value={profile.activeJobsites === 0 ? "" : profile.activeJobsites}
+              onChange={(e) => set("activeJobsites", e.target.value === "" ? 0 : parseInt(e.target.value))}
             />
           </div>
         </div>
@@ -379,8 +379,8 @@ export function CompanyProfile() {
             <input
               type="number"
               className={inputCls()}
-              value={profile.lastYearRevenue}
-              onChange={(e) => set("lastYearRevenue", parseFloat(e.target.value) || 0)}
+              value={profile.lastYearRevenue === 0 ? "" : profile.lastYearRevenue}
+              onChange={(e) => set("lastYearRevenue", e.target.value === "" ? 0 : parseFloat(e.target.value))}
             />
           </div>
           <div>
@@ -390,8 +390,8 @@ export function CompanyProfile() {
             <input
               type="number"
               className={inputCls()}
-              value={profile.avgMarginPercent}
-              onChange={(e) => set("avgMarginPercent", parseFloat(e.target.value) || 0)}
+              value={profile.avgMarginPercent === 0 ? "" : profile.avgMarginPercent}
+              onChange={(e) => set("avgMarginPercent", e.target.value === "" ? 0 : parseFloat(e.target.value))}
               step="0.1"
             />
           </div>
@@ -409,8 +409,8 @@ export function CompanyProfile() {
             <input
               type="number"
               className={inputCls()}
-              value={profile.avgRibassoPercent}
-              onChange={(e) => set("avgRibassoPercent", parseFloat(e.target.value) || 0)}
+              value={profile.avgRibassoPercent === 0 ? "" : profile.avgRibassoPercent}
+              onChange={(e) => set("avgRibassoPercent", e.target.value === "" ? 0 : parseFloat(e.target.value))}
               step="0.1"
               placeholder="12"
             />
@@ -422,8 +422,8 @@ export function CompanyProfile() {
             <input
               type="number"
               className={inputCls()}
-              value={profile.avgWinRatePercent}
-              onChange={(e) => set("avgWinRatePercent", parseFloat(e.target.value) || 0)}
+              value={profile.avgWinRatePercent === 0 ? "" : profile.avgWinRatePercent}
+              onChange={(e) => set("avgWinRatePercent", e.target.value === "" ? 0 : parseFloat(e.target.value))}
               step="0.1"
               placeholder="25"
             />
@@ -436,8 +436,8 @@ export function CompanyProfile() {
             <input
               type="number"
               className={inputCls()}
-              value={profile.minMargineAccettabile}
-              onChange={(e) => set("minMargineAccettabile", parseFloat(e.target.value) || 0)}
+              value={profile.minMargineAccettabile === 0 ? "" : profile.minMargineAccettabile}
+              onChange={(e) => set("minMargineAccettabile", e.target.value === "" ? 0 : parseFloat(e.target.value))}
               step="0.1"
               placeholder="8"
             />
@@ -450,8 +450,8 @@ export function CompanyProfile() {
             <input
               type="number"
               className={inputCls()}
-              value={profile.incidenzaSpeseGenerali}
-              onChange={(e) => set("incidenzaSpeseGenerali", parseFloat(e.target.value) || 0)}
+              value={profile.incidenzaSpeseGenerali === 0 ? "" : profile.incidenzaSpeseGenerali}
+              onChange={(e) => set("incidenzaSpeseGenerali", e.target.value === "" ? 0 : parseFloat(e.target.value))}
               step="0.1"
               placeholder="15"
             />
@@ -463,8 +463,8 @@ export function CompanyProfile() {
             <input
               type="number"
               className={inputCls()}
-              value={profile.incidenzaRischioMedio}
-              onChange={(e) => set("incidenzaRischioMedio", parseFloat(e.target.value) || 0)}
+              value={profile.incidenzaRischioMedio === 0 ? "" : profile.incidenzaRischioMedio}
+              onChange={(e) => set("incidenzaRischioMedio", e.target.value === "" ? 0 : parseFloat(e.target.value))}
               step="0.1"
               placeholder="3"
             />
@@ -476,8 +476,8 @@ export function CompanyProfile() {
             <input
               type="number"
               className={inputCls()}
-              value={profile.costoOraOperaio}
-              onChange={(e) => set("costoOraOperaio", parseFloat(e.target.value) || 0)}
+              value={profile.costoOraOperaio === 0 ? "" : profile.costoOraOperaio}
+              onChange={(e) => set("costoOraOperaio", e.target.value === "" ? 0 : parseFloat(e.target.value))}
               placeholder="28"
             />
           </div>
@@ -488,8 +488,8 @@ export function CompanyProfile() {
             <input
               type="number"
               className={inputCls()}
-              value={profile.costoOraCaposquadra}
-              onChange={(e) => set("costoOraCaposquadra", parseFloat(e.target.value) || 0)}
+              value={profile.costoOraCaposquadra === 0 ? "" : profile.costoOraCaposquadra}
+              onChange={(e) => set("costoOraCaposquadra", e.target.value === "" ? 0 : parseFloat(e.target.value))}
               placeholder="38"
             />
           </div>
