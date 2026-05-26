@@ -4,6 +4,7 @@ import {
 } from "lucide-react";
 import type { TenderDocument, CompanyProfile, CapacityAnalysisResult, CapacityVerdict } from "../types";
 import { runCapacityAnalysis } from "../lib/gemini";
+import { ExplainabilityLayer } from "./ExplainabilityLayer";
 
 interface CapacitySaturationEngineProps {
   tender: TenderDocument;
@@ -283,6 +284,8 @@ export function CapacitySaturationEngine({ tender, isOpen, onClose }: CapacitySa
                 </span>
                 <p className="text-xs text-slate-300">{result.suggerimentoOperativo}</p>
               </div>
+
+              {result.explainability && <ExplainabilityLayer data={result.explainability} />}
 
               {/* Footer */}
               <div className="pt-2 border-t border-neutral-900 space-y-3">

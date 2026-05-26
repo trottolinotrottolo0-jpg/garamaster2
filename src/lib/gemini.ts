@@ -1,6 +1,29 @@
 /// <reference types="vite/client" />
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import type { TenderDocument, CompanyProfile, BidNoBidResult, BidPricingResult, PricingScenario, RedFlagAnalysisResult, CapacityAnalysisResult, ProfitabilityGateResult } from "../types";
+import { EXPLAINABILITY_JSON_INLINE, normalizeExplainability } from "./explainability";
+import type {
+  TenderDocument,
+  CompanyProfile,
+  BidNoBidResult,
+  BidPricingResult,
+  PricingScenario,
+  RedFlagAnalysisResult,
+  CapacityAnalysisResult,
+  ProfitabilityGateResult,
+  ExplainabilityData,
+} from "../types";
+
+function parseGeminiJson<T extends Record<string, unknown>>(
+  text: string
+): T & { explainability?: ExplainabilityData } {
+  const cleaned = text.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
+  const parsed = JSON.parse(cleaned) as Record<string, unknown>;
+  const explainability = normalizeExplainability(
+    parsed.explainability as Partial<ExplainabilityData> | undefined
+  ) ?? undefined;
+  delete parsed.explainability;
+  return { ...(parsed as T), explainability };
+}
 
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY as string);
 
@@ -32,7 +55,8 @@ Il JSON deve rispettare esattamente questa struttura:
   "soaCompatibile": boolean,
   "capacitaSufficiente": boolean,
   "areaGeograficaOk": boolean,
-  "importoInTarget": boolean
+  "importoInTarget": boolean,
+  ${EXPLAINABILITY_JSON_INLINE}
 }
 
 Logica decisionale:
@@ -71,14 +95,12 @@ DATI GARA:
   } as Parameters<typeof model.generateContent>[0]);
   const text = result.response.text().trim();
 
-  let parsed: Omit<BidNoBidResult, "generatedAt">;
   try {
-    parsed = JSON.parse(text);
+    const parsed = parseGeminiJson<Omit<BidNoBidResult, "generatedAt" | "explainability">>(text);
+    return { ...parsed, generatedAt: new Date().toISOString() };
   } catch {
     throw new Error("Risposta Gemini non valida — riprova");
   }
-
-  return { ...parsed, generatedAt: new Date().toISOString() };
 }
 
 function parseTenderValue(valueStr: string): number {
@@ -133,7 +155,8 @@ Struttura JSON richiesta:
   "alertMargine": boolean,
   "alertText": string (vuoto se alertMargine false, altrimenti descrivi il rischio concreto),
   "winRatePrudente": number (% stima prudente, NON ottimistica),
-  "winRateMotivazione": string (2-3 frasi che spiegano la stima)
+  "winRateMotivazione": string (2-3 frasi che spiegano la stima),
+  ${EXPLAINABILITY_JSON_INLINE}
 }
 
 Logica per il range:
@@ -166,14 +189,14 @@ ${JSON.stringify(scenari, null, 2)}`;
   } as Parameters<typeof model.generateContent>[0]);
 
   const text = result.response.text().trim();
-  let parsed: Omit<BidPricingResult, "scenari" | "generatedAt">;
   try {
-    parsed = JSON.parse(text);
+    const parsed = parseGeminiJson<Omit<BidPricingResult, "scenari" | "generatedAt" | "explainability">>(
+      text
+    );
+    return { ...parsed, scenari, generatedAt: new Date().toISOString() };
   } catch {
     throw new Error("Risposta Gemini non valida — riprova");
   }
-
-  return { ...parsed, scenari, generatedAt: new Date().toISOString() };
 }
 
 export async function runRedFlagAnalysis(
@@ -203,7 +226,8 @@ Struttura JSON richiesta:
   "conteggioHigh": number,
   "conteggioMedium": number,
   "conteggioLow": number,
-  "sintesiRischio": string (2-3 frasi di sintesi sul profilo di rischio complessivo della gara)
+  "sintesiRischio": string (2-3 frasi di sintesi sul profilo di rischio complessivo della gara),
+  ${EXPLAINABILITY_JSON_INLINE}
 }
 
 Logica severity:
@@ -239,14 +263,14 @@ DATI GARA:
   } as Parameters<typeof model.generateContent>[0]);
 
   const text = result.response.text().trim();
-  let parsed: Omit<RedFlagAnalysisResult, "generatedAt">;
   try {
-    parsed = JSON.parse(text);
+    const parsed = parseGeminiJson<Omit<RedFlagAnalysisResult, "generatedAt" | "explainability">>(
+      text
+    );
+    return { ...parsed, generatedAt: new Date().toISOString() };
   } catch {
     throw new Error("Risposta Gemini non valida — riprova");
   }
-
-  return { ...parsed, generatedAt: new Date().toISOString() };
 }
 
 export async function runCapacityAnalysis(
@@ -272,7 +296,8 @@ Struttura JSON:
   "criticitaOperative": string[] (almeno 1),
   "analisiCompatibilita": string (paragrafo di 3-4 frasi sull'analisi organizzativa),
   "rischioAlert": string | null,
-  "suggerimentoOperativo": string (azione concreta, es. "Assumi 2 operai prima di partecipare" o "Chiudi cantiere X prima di aprire questo")
+  "suggerimentoOperativo": string (azione concreta, es. "Assumi 2 operai prima di partecipare" o "Chiudi cantiere X prima di aprire questo"),
+  ${EXPLAINABILITY_JSON_INLINE}
 }
 
 Logica verdict:
@@ -311,14 +336,14 @@ DATI GARA:
   } as Parameters<typeof model.generateContent>[0]);
 
   const text = result.response.text().trim();
-  let parsedCap: Omit<CapacityAnalysisResult, "generatedAt">;
   try {
-    parsedCap = JSON.parse(text);
+    const parsedCap = parseGeminiJson<
+      Omit<CapacityAnalysisResult, "generatedAt" | "explainability">
+    >(text);
+    return { ...parsedCap, generatedAt: new Date().toISOString() };
   } catch {
     throw new Error("Risposta Gemini non valida — riprova");
   }
-
-  return { ...parsedCap, generatedAt: new Date().toISOString() };
 }
 
 export async function runProfitabilityGate(
@@ -354,7 +379,8 @@ Struttura JSON:
   "scenarioOttimistico": number (% margine scenario favorevole),
   "scenarioRealistico": number (% margine scenario base),
   "scenarioPessimistico": number (% margine scenario avverso),
-  "puntiAttenzione": string[] (3-5 elementi che possono erodere il margine)
+  "puntiAttenzione": string[] (3-5 elementi che possono erodere il margine),
+  ${EXPLAINABILITY_JSON_INLINE}
 }
 
 Logica verdict:
@@ -397,12 +423,12 @@ DATI GARA:
   } as Parameters<typeof model.generateContent>[0]);
 
   const text = result.response.text().trim();
-  let parsed: Omit<ProfitabilityGateResult, "generatedAt">;
   try {
-    parsed = JSON.parse(text);
+    const parsed = parseGeminiJson<
+      Omit<ProfitabilityGateResult, "generatedAt" | "explainability">
+    >(text);
+    return { ...parsed, generatedAt: new Date().toISOString() };
   } catch {
     throw new Error("Risposta Gemini non valida — riprova");
   }
-
-  return { ...parsed, generatedAt: new Date().toISOString() };
 }

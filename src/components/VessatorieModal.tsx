@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { TenderDocument, RiskLevel, RedFlagAnalysisResult } from "../types";
 import { runRedFlagAnalysis } from "../lib/gemini";
+import { ExplainabilityLayer } from "./ExplainabilityLayer";
 import {
   ShieldAlert, AlertTriangle, AlertCircle, Sparkles, HelpCircle,
   ArrowRight, ArrowLeft, FileText, CheckCircle2, ChevronRight, MessageSquare, Copy,
@@ -275,6 +276,7 @@ export const VessatorieModal: React.FC<VessatorieModalProps> = ({
                   </div>
                 ))}
               </div>
+              {result.explainability && <ExplainabilityLayer data={result.explainability} />}
             </>
           )}
 

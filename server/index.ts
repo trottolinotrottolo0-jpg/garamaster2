@@ -1,0 +1,285 @@
+import express from "express";
+import dotenv from "dotenv";
+import fs from "node:fs/promises";
+import path from "path";
+import { fileURLToPath } from "url";
+import type { ChatRequestBody, ChatResponseBody } from "./chatTypes";
+import { generateGaraMasterReply } from "./geminiChat";
+import { safeGeneratePortfolioScore } from "./portfolioScore";
+import type { PortfolioScoreRequestBody } from "./portfolioScoreTypes";
+import { safeGenerateRtiAvvalimento } from "./rtiAvvalimento";
+import type { RtiAvvalimentoRequestBody } from "./rtiAvvalimentoTypes";
+import { generateGaraRoi } from "./garaRoi";
+import type { GaraRoiRequestBody } from "./garaRoiTypes";
+import { transcribeAudio } from "./transcribeAudio";
+import { parseDisciplinarePdf } from "./parseDisciplinare";
+import { generatePostGaraForensics } from "./postGaraForensics";
+import { generateSoaGapForecast } from "./soaGapForecast";
+import type { SoaGapForecastRequestBody } from "./soaGapForecastTypes";
+import type { PostGaraForensicsRequestBody } from "./postGaraForensicsTypes";
+import { resolveSupabaseAnonKey, resolveSupabaseUrl } from "./resolveSupabaseUrl";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const root = path.resolve(__dirname, "..");
+
+dotenv.config({ path: path.join(root, ".env.local") });
+dotenv.config({ path: path.join(root, ".env") });
+
+const PORT = Number(process.env.PORT) || 3000;
+const isProd = process.env.NODE_ENV === "production";
+
+async function createApp() {
+  const app = express();
+  app.use(express.json({ limit: "15mb" }));
+
+  app.get("/api/health", async (_req, res) => {
+    const anonKey = resolveSupabaseAnonKey();
+    const supabaseUrl = resolveSupabaseUrl();
+    const supabaseConfigured = Boolean(
+      supabaseUrl &&
+        anonKey &&
+        anonKey !== "YOUR_SUPABASE_ANON_KEY" &&
+        anonKey !== "YOUR_SUPABASE_PUBLISHABLE_OR_ANON_KEY"
+    );
+
+    let supabaseReachable = false;
+    if (supabaseConfigured && supabaseUrl && anonKey) {
+      try {
+        const response = await fetch(`${supabaseUrl}/auth/v1/health`, {
+          headers: { apikey: anonKey },
+        });
+        supabaseReachable = response.ok;
+      } catch {
+        supabaseReachable = false;
+      }
+    }
+
+    res.json({
+      ok: true,
+      port: PORT,
+      appUrl: process.env.VITE_APP_URL ?? process.env.APP_URL ?? `http://localhost:${PORT}`,
+      llm: Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "MY_GEMINI_API_KEY"),
+      supabase: supabaseConfigured,
+      supabaseReachable,
+    });
+  });
+
+  app.post("/api/transcribe", async (req, res) => {
+    try {
+      const { audio, mimeType } = req.body as { audio?: string; mimeType?: string };
+      if (!audio?.trim()) {
+        res.status(400).json({ error: "Audio mancante." });
+        return;
+      }
+      const text = await transcribeAudio(audio, mimeType ?? "audio/webm");
+      res.json({ text });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Errore durante la trascrizione.";
+      console.error("[/api/transcribe]", message);
+      res.status(503).json({ error: message });
+    }
+  });
+
+  app.post("/api/portfolio-score", async (req, res) => {
+    try {
+      const body = req.body as PortfolioScoreRequestBody;
+      if (!body?.tenders?.length) {
+        res.status(400).json({ error: "Catalogo gare vuoto." });
+        return;
+      }
+      const result = await safeGeneratePortfolioScore(body);
+      res.json(result);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Errore calcolo portfolio score.";
+      console.error("[/api/portfolio-score]", message);
+      res.status(503).json({ error: message });
+    }
+  });
+
+  app.post("/api/gara-roi", async (req, res) => {
+    try {
+      const body = req.body as GaraRoiRequestBody;
+      if (!body?.tender?.cig) {
+        res.status(400).json({ error: "Contesto gara mancante." });
+        return;
+      }
+      if (!body.importoGaraEuro || body.importoGaraEuro <= 0) {
+        res.status(400).json({ error: "Importo gara non valido." });
+        return;
+      }
+      const result = await generateGaraRoi(body);
+      res.json(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Errore calcolo ROI gara.";
+      console.error("[/api/gara-roi]", message);
+      res.status(503).json({ error: message });
+    }
+  });
+
+  app.post("/api/rti-avvalimento", async (req, res) => {
+    try {
+      const body = req.body as RtiAvvalimentoRequestBody;
+      if (!body?.tender?.cig) {
+        res.status(400).json({ error: "Contesto gara (tender) mancante." });
+        return;
+      }
+      const result = await safeGenerateRtiAvvalimento(body);
+      res.json(result);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Errore analisi RTI/Avvalimento.";
+      console.error("[/api/rti-avvalimento]", message);
+      res.status(503).json({ error: message });
+    }
+  });
+
+  app.post("/api/soa-gap-forecast", async (req, res) => {
+    try {
+      const body = req.body as SoaGapForecastRequestBody;
+      if (!body?.profiloSoa) {
+        res.status(400).json({ error: "Profilo SOA mancante." });
+        return;
+      }
+      const result = await generateSoaGapForecast(body);
+      res.json(result);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Errore SOA Gap Forecasting.";
+      console.error("[/api/soa-gap-forecast]", message);
+      res.status(503).json({ error: message });
+    }
+  });
+
+  app.post("/api/post-gara-forensics", async (req, res) => {
+    try {
+      const body = req.body as PostGaraForensicsRequestBody;
+      if (body.esito !== "vinta" && body.esito !== "persa") {
+        res.status(400).json({ error: "Esito deve essere vinta o persa." });
+        return;
+      }
+      if (!body.cig?.trim()) {
+        res.status(400).json({ error: "CIG gara mancante." });
+        return;
+      }
+      const result = await generatePostGaraForensics(body);
+      res.json(result);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Errore analisi post-gara.";
+      console.error("[/api/post-gara-forensics]", message);
+      res.status(503).json({ error: message });
+    }
+  });
+
+  app.post("/api/parse-disciplinare", async (req, res) => {
+    try {
+      const { pdfBase64, fileName, mimeType } = req.body as {
+        pdfBase64?: string;
+        fileName?: string;
+        mimeType?: string;
+      };
+
+      if (!pdfBase64?.trim()) {
+        res.status(400).json({ error: "PDF disciplinare mancante." });
+        return;
+      }
+
+      const name = fileName?.trim() || "disciplinare.pdf";
+      const result = await parseDisciplinarePdf({
+        pdfBase64,
+        fileName: name,
+        mimeType: mimeType ?? "application/pdf",
+      });
+
+      res.json(result);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Errore parser disciplinare.";
+      console.error("[/api/parse-disciplinare]", message);
+      res.status(503).json({ error: message });
+    }
+  });
+
+  app.post("/api/chat", async (req, res) => {
+    try {
+      const body = req.body as ChatRequestBody;
+
+      if (!body?.message?.trim() && !body?.attachments?.length) {
+        res.status(400).json({ error: "Messaggio o allegato richiesto." });
+        return;
+      }
+
+      const isGeneral = body.chatMode === "general";
+      if (!isGeneral && !body.tender?.cig) {
+        res.status(400).json({ error: "Contesto gara (tender) mancante." });
+        return;
+      }
+
+      const result = await generateGaraMasterReply(body);
+      res.json(result satisfies ChatResponseBody);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Errore durante la generazione della risposta.";
+      console.error("[/api/chat]", message);
+      res.status(503).json({ error: message });
+    }
+  });
+
+  if (isProd) {
+    const distPath = path.join(root, "dist");
+    app.use(express.static(distPath));
+    app.get("*", (_req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  } else {
+    const { createServer } = await import("vite");
+    const vite = await createServer({
+      root,
+      server: { middlewareMode: true },
+      appType: "custom",
+    });
+    app.use(vite.middlewares);
+
+    app.use("*", async (req, res, next) => {
+      if (req.method !== "GET" && req.method !== "HEAD") {
+        next();
+        return;
+      }
+
+      try {
+        const indexPath = path.join(root, "index.html");
+        let template = await fs.readFile(indexPath, "utf-8");
+        template = await vite.transformIndexHtml(req.originalUrl, template);
+        res.status(200).set({ "Content-Type": "text/html" }).end(template);
+      } catch (error) {
+        vite.ssrFixStacktrace(error as Error);
+        next(error);
+      }
+    });
+  }
+
+  return app;
+}
+
+createApp()
+  .then((app) => {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Gara Master AI → http://localhost:${PORT}`);
+      console.log(`Porta ufficiale: ${PORT} (usa solo npm run dev)`);
+      if (!process.env.GEMINI_API_KEY) {
+        console.warn("⚠ GEMINI_API_KEY assente: configura .env.local per attivare l'LLM.");
+      }
+      const anonKey = process.env.VITE_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY;
+      if (!anonKey || anonKey === "YOUR_SUPABASE_ANON_KEY") {
+        console.warn("⚠ Supabase non configurato: aggiungi VITE_SUPABASE_* in .env.local");
+      } else {
+        console.log("✓ Supabase configurato in .env.local");
+      }
+    });
+  })
+  .catch((err) => {
+    console.error("Avvio server fallito:", err);
+    process.exit(1);
+  });

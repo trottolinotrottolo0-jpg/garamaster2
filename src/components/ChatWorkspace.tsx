@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Message, TenderDocument, PacketLog, ChatAttachment } from "../types";
 import { 
   Cpu, Send, RefreshCw, ChevronDown, ChevronUp, Sparkles, 
@@ -14,7 +14,83 @@ function formatFileSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
-import { samplePrompts, mockTenders } from "../mockData";
+import { FormattedMessage } from "./FormattedMessage";
+import { ExplainabilityLayer } from "./ExplainabilityLayer";
+import { parseExplainabilityFromText } from "../lib/explainability";
+import { useVoiceDictation } from "../hooks/useVoiceDictation";
+import type { ChatMode } from "../types/chat";
+import {
+  ConnectorChips,
+  ConnectorPlusMenu,
+} from "./ConnectorPlusMenu";
+import type { InternalConnector, InternalConnectorAction } from "../lib/internalConnectors";
+import { GuidedOfferPanel } from "./GuidedOfferPanel";
+import { SoaGapBanner } from "./SoaGapBanner";
+import type { OfferBusta, OfferPreparationState } from "../lib/guidedOfferPreparation";
+import { detectSoaGaps } from "../lib/soaGapAnalysis";
+import type { ProfiloImpresaContext } from "../types/database";
+
+const GENERAL_SUGGESTED_PROMPTS = [
+  {
+    label: "Come funziona il Codice Appalti 2023?",
+    text: "Spiegami in modo operativo le novità principali del D.Lgs. 36/2023 per un'impresa edile.",
+  },
+  {
+    label: "Quando conviene un RTI?",
+    text: "In quali casi conviene costituire un RTI invece dell'avvalimento per una gara pubblica?",
+  },
+  {
+    label: "Checklist documenti di gara",
+    text: "Dammi una checklist dei documenti da preparare per partecipare a una gara sopra soglia europea.",
+  },
+];
+
+function buildOfferPreparationPrompts(tender: TenderDocument) {
+  return [
+    {
+      label: "Ribasso al 12%",
+      text: `Il ribasso previsto per la gara CIG ${tender.cig} è del 12%. Prossimo passo?`,
+    },
+    {
+      label: "Checklist documenti",
+      text: `Genera la checklist completa dei documenti per Busta Amministrativa, Tecnica ed Economica in base al disciplinare CIG ${tender.cig}.`,
+    },
+    {
+      label: "Subappalto impianti",
+      text: "Intendo subappaltare la parte impiantistica. Quali dichiarazioni e documenti servono?",
+    },
+  ];
+}
+
+function buildSuggestedPrompts(tender: TenderDocument) {
+  const missingReqs = tender.requirements.filter((r) => !r.satisfied);
+  const missingSummary =
+    missingReqs.length > 0
+      ? missingReqs
+          .slice(0, 3)
+          .map((r) => r.description)
+          .join("; ")
+      : null;
+
+  return [
+    {
+      label: "Posso partecipare con il mio profilo SOA?",
+      text: `Posso partecipare con il mio profilo SOA alla gara "${tender.title}" (CIG ${tender.cig}, categoria ${tender.category})?`,
+    },
+    {
+      label: "Quali sono i rischi principali di questa gara?",
+      text: `Quali sono i rischi principali di questa gara (CIG ${tender.cig})${
+        tender.penalties?.length ? `, considerando ${tender.penalties.length} penali` : ""
+      }${tender.anomalies?.length ? ` e ${tender.anomalies.length} anomalie` : ""}?`,
+    },
+    {
+      label: "Come strutturare un RTI per coprire i requisiti mancanti?",
+      text: missingSummary
+        ? `Come strutturare un RTI per coprire i requisiti mancanti (${missingSummary}) sulla gara CIG ${tender.cig}?`
+        : `Come strutturare un RTI per coprire i requisiti mancanti della gara CIG ${tender.cig}?`,
+    },
+  ];
+}
 
 interface ChatWorkspaceProps {
   messages: Message[];
@@ -22,10 +98,20 @@ interface ChatWorkspaceProps {
   isGenerating: boolean;
   onSelectTender: (tender: TenderDocument) => void;
   selectedTender: TenderDocument;
-  setActiveTab: (tab: "chat" | "analyzer" | "mcp" | "guide") => void;
+  chatMode?: ChatMode;
+  setActiveTab: (tab: "chat" | "analyzer" | "mcp") => void;
   onAddPacket: (packet: PacketLog) => void;
   isRibassoOpen: boolean;
   setIsRibassoOpen: (open: boolean) => void;
+  conversazioneSaveStatus?: "idle" | "saving" | "saved" | "error" | "skipped";
+  conversazioneSaveError?: string | null;
+  enabledConnectorIds?: string[];
+  onToggleConnector?: (id: string) => void;
+  onRunConnector?: (action: InternalConnectorAction, connector: InternalConnector) => void;
+  offerPreparation?: OfferPreparationState;
+  onToggleOfferChecklistItem?: (busta: OfferBusta, itemId: string) => void;
+  profilo?: ProfiloImpresaContext | null;
+  onOpenRtiAvvalimento?: () => void;
 }
 
 export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
@@ -34,10 +120,20 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
   isGenerating,
   onSelectTender,
   selectedTender,
+  chatMode = "tender",
   setActiveTab,
   onAddPacket,
   isRibassoOpen,
   setIsRibassoOpen,
+  conversazioneSaveStatus = "idle",
+  conversazioneSaveError = null,
+  enabledConnectorIds = [],
+  onToggleConnector,
+  onRunConnector,
+  offerPreparation,
+  onToggleOfferChecklistItem,
+  profilo = null,
+  onOpenRtiAvvalimento,
 }) => {
   const [inputText, setInputText] = useState("");
   const [openTools, setOpenTools] = useState<{ [key: string]: boolean }>({});
@@ -47,6 +143,37 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
   const [ribassoInput, setRibassoInput] = useState({ importo: 1250000, percentuale: 11.5 });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textInputRef = useRef<HTMLInputElement>(null);
+
+  const suggestedPrompts =
+    chatMode === "general"
+      ? GENERAL_SUGGESTED_PROMPTS
+      : chatMode === "offer_preparation"
+        ? buildOfferPreparationPrompts(selectedTender)
+        : buildSuggestedPrompts(selectedTender);
+
+  const appendTranscript = useCallback((text: string) => {
+    setInputText((prev) => {
+      const trimmed = text.trim();
+      if (!trimmed) return prev;
+      if (!prev.trim()) return trimmed;
+      return prev.endsWith(" ") ? `${prev}${trimmed}` : `${prev} ${trimmed}`;
+    });
+  }, []);
+
+  const {
+    isSupported: isSpeechSupported,
+    isListening,
+    isTranscribing,
+    error: speechError,
+    startListening,
+    stopListening,
+  } = useVoiceDictation({ onTranscript: appendTranscript });
+
+  const handleToggleDictation = () => {
+    if (isTranscribing) return;
+    startListening();
+  };
 
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
@@ -195,56 +322,17 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
     );
     setInputText("");
     setPendingAttachments([]);
+    stopListening();
   };
 
-  const handleChipClick = (prompt: string, targetTenderId?: string) => {
+  const handleSuggestedPromptClick = (prompt: string) => {
     if (isGenerating) return;
-    onSendMessage(prompt, targetTenderId);
+    setInputText(prompt);
+    textInputRef.current?.focus();
   };
 
   const toggleToolDetails = (id: string) => {
     setOpenTools((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
-
-  // Co-Pilot context-aware suggestive guidance for input
-  const getCoPilotSuggestions = () => {
-    if (selectedTender.id === "scuola-roma") {
-      return [
-        {
-          label: "💼 Strategia Avvalimento Fatturato",
-          text: "Come posso sormontare la carenza di fatturato da €2M per la gara Piccoli Passi tramite l'avvalimento sul database Supabase?",
-          bgColor: "bg-black hover:bg-neutral-900 border-neutral-800 text-white hover:border-brand-gold"
-        },
-        {
-          label: "🌱 Redazione Criterio CAM (Sostenibilità)",
-          text: "Genera una proposta d'offerta per il Criterio C sui materiali ecologici certificati CAM per l'asilo a Roma.",
-          bgColor: "bg-black hover:bg-neutral-900 border-neutral-800 text-white hover:border-brand-gold"
-        },
-        {
-          label: "⚠️ Analisi Clausola Cronoprogramma Agosto",
-          text: "Spiegami quali obiezioni legali sollevare sul cronoprogramma di 3 settimane ad agosto per la gara Piccoli Passi.",
-          bgColor: "bg-black hover:bg-neutral-900 border-neutral-800 text-white hover:border-brand-gold"
-        }
-      ];
-    } else {
-      return [
-        {
-          label: "🛣️ Rimedi Carenza SOA OG3 IV",
-          text: "Ho la classifica OG3 classe III. Quali rimedi di legge (AVVALIMENTO o RTI) posso attivare per la gara SP12 Bologna?",
-          bgColor: "bg-black hover:bg-neutral-900 border-neutral-800 text-white hover:border-brand-gold"
-        },
-        {
-          label: "⚠️ Analisi Penale Vessatoria 1.5‰",
-          text: "Verifica se la penale giornaliera dell'1.5 per mille per ritardata consegna a Bologna è conforme o vessatoria.",
-          bgColor: "bg-black hover:bg-neutral-900 border-neutral-800 text-white hover:border-brand-gold"
-        },
-        {
-          label: "📡 Smart Sensors & Criterio Sicurezza",
-          text: "Genera idee tecniche per minimizzare l'interferenza del traffico con sensori intelligenti a Bologna (40 Punti).",
-          bgColor: "bg-black hover:bg-neutral-900 border-neutral-800 text-white hover:border-brand-gold"
-        }
-      ];
-    }
   };
 
   const handleCalculateRibasso = (e: React.FormEvent) => {
@@ -253,26 +341,95 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
     setCalculatedRibasso(impNetto);
   };
 
+  const isOfferPrep = chatMode === "offer_preparation";
+  const soaGapAnalysis =
+    chatMode !== "general" ? detectSoaGaps(selectedTender, profilo) : { hasGaps: false, gaps: [], unmetRequirements: [], profiloSoaSummary: null };
+
   return (
-    <div className="flex flex-col h-full bg-black border border-neutral-800 rounded-2xl overflow-hidden shadow-2xl relative" id="chat-workspace-card">
+    <div className="flex h-full bg-black border border-neutral-800 rounded-2xl overflow-hidden shadow-2xl relative" id="chat-workspace-card">
+    <div className="flex flex-col flex-1 min-w-0 h-full">
       
       {/* Top indicator of current context */}
-      <div className="px-5 py-3 border-b border-neutral-800 bg-black flex items-center justify-between text-slate-300">
+      <div className="px-5 py-3 border-b border-neutral-800 bg-black flex items-center justify-between text-slate-300 shrink-0">
         <div className="flex items-center gap-2.5">
-          <div className="w-2.5 h-2.5 rounded-full bg-brand-gold animate-pulse"></div>
+          <div className={`w-2.5 h-2.5 rounded-full animate-pulse ${isOfferPrep ? "bg-emerald-400" : "bg-brand-gold"}`}></div>
           <span className="text-[11px] font-mono text-slate-450">
-            DISCIPLINARE SELEZIONATO: <strong className="text-white uppercase font-sans">{selectedTender.title.slice(0, 40)}...</strong>
+            {chatMode === "general" ? (
+              <>
+                MODALITÀ: <strong className="text-brand-gold uppercase font-sans">Chat libera</strong>
+                <span className="text-slate-500 ml-1">(stile ChatGPT — senza disciplinare)</span>
+              </>
+            ) : isOfferPrep ? (
+              <>
+                MODALITÀ:{" "}
+                <strong className="text-emerald-400 uppercase font-sans">Preparazione offerta</strong>
+                <span className="text-slate-500 ml-1">· CIG {selectedTender.cig}</span>
+              </>
+            ) : (
+              <>
+                DISCIPLINARE:{" "}
+                <strong className="text-white uppercase font-sans">
+                  {selectedTender.title.slice(0, 40)}...
+                </strong>
+              </>
+            )}
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] uppercase tracking-wider font-mono text-brand-gold bg-neutral-950 border border-neutral-800 px-2 py-0.5 rounded">
-            CIG: {selectedTender.cig}
-          </span>
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {conversazioneSaveStatus === "saving" && (
+            <span className="text-[10px] font-sans text-slate-400 flex items-center gap-1">
+              <RefreshCw className="w-3 h-3 animate-spin" />
+              Salvataggio chat…
+            </span>
+          )}
+          {conversazioneSaveStatus === "saved" && (
+            <span className="text-[10px] font-sans font-bold text-emerald-400 bg-emerald-950/40 border border-emerald-800/50 px-2 py-0.5 rounded">
+              ✓ Chat salvata su Supabase
+            </span>
+          )}
+          {conversazioneSaveStatus === "error" && (
+            <span
+              className="text-[10px] font-sans text-red-300 bg-red-950/40 border border-red-800/50 px-2 py-0.5 rounded max-w-[220px] truncate"
+              title={conversazioneSaveError ?? undefined}
+            >
+              ✗ Salvataggio fallito
+            </span>
+          )}
+          {conversazioneSaveStatus === "skipped" && (
+            <span className="text-[10px] font-sans text-slate-500 border border-neutral-800 px-2 py-0.5 rounded">
+              Login richiesto per salvare
+            </span>
+          )}
+          {(chatMode === "tender" || isOfferPrep) && (
+            <span className={`text-[10px] uppercase tracking-wider font-mono bg-neutral-950 border border-neutral-800 px-2 py-0.5 rounded ${
+              isOfferPrep ? "text-emerald-400" : "text-brand-gold"
+            }`}>
+              CIG: {selectedTender.cig}
+            </span>
+          )}
         </div>
       </div>
 
+      {soaGapAnalysis.hasGaps && onOpenRtiAvvalimento && (
+        <SoaGapBanner
+          analysis={soaGapAnalysis}
+          cig={selectedTender.cig}
+          onOpenConfigurator={onOpenRtiAvvalimento}
+        />
+      )}
+
+      {isOfferPrep && offerPreparation && onToggleOfferChecklistItem && (
+        <div className="xl:hidden shrink-0">
+          <GuidedOfferPanel
+            state={offerPreparation}
+            onToggleChecklistItem={onToggleOfferChecklistItem}
+            compact
+          />
+        </div>
+      )}
+
       {/* Messages layout */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-thin bg-black flex flex-col justify-between min-h-[350px]">
+      <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-thin bg-black flex flex-col justify-between min-h-[200px]">
         
         {/* If only welcome message exists, show ChatGPT styled "Da dove iniziamo?" central area */}
         {messages.length <= 1 ? (
@@ -282,7 +439,24 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
               Da dove iniziamo?
             </h2>
             <p className="text-slate-450 text-xs mt-2 max-w-md leading-relaxed font-sans">
-              Il sistema intelligente di Gara Master ha letto il disciplinare CIG <span className="text-brand-gold font-bold font-mono">{selectedTender.cig}</span> ed è pronto a guidare la tua offerta.
+              {chatMode === "general" ? (
+                <>
+                  Consulenza generale su appalti pubblici. Collega una gara dalla lista o crea una{" "}
+                  <strong className="text-white">chat su gara corrente</strong> quando serve il disciplinare.
+                </>
+              ) : isOfferPrep ? (
+                <>
+                  Preparazione offerta guidata per CIG{" "}
+                  <span className="text-emerald-400 font-bold font-mono">{selectedTender.cig}</span>.
+                  Rispondi alle domande una alla volta; a destra vedi avanzamento e checklist buste.
+                </>
+              ) : (
+                <>
+                  Disciplinare CIG{" "}
+                  <span className="text-brand-gold font-bold font-mono">{selectedTender.cig}</span>{" "}
+                  collegato a questa conversazione.
+                </>
+              )}
             </p>
           </div>
         ) : (
@@ -340,7 +514,11 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
                             <div>
                               <span className="text-brand-gold/75 font-semibold font-sans text-[9px] uppercase tracking-wider block">Dati reperiti (Database & OCR):</span>
                               <div className="bg-black p-2 rounded mt-1 text-white font-sans leading-relaxed border border-neutral-800">
-                                {m.toolUsage.result}
+                                {typeof m.toolUsage.result === "string" ? (
+                                  <FormattedMessage text={m.toolUsage.result} />
+                                ) : (
+                                  m.toolUsage.result
+                                )}
                               </div>
                             </div>
                           </div>
@@ -356,9 +534,23 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
                           : "bg-neutral-950 border border-neutral-800 text-slate-100 rounded-tl-xs shadow-md"
                       }`}
                     >
-                      <div className="prose prose-sm prose-invert max-w-none whitespace-pre-wrap text-[13px] leading-relaxed">
-                        {m.text}
-                      </div>
+                      {isUser ? (
+                        <p className="whitespace-pre-wrap text-[13px] leading-relaxed">
+                          {m.text}
+                        </p>
+                      ) : (
+                        <>
+                          {(() => {
+                            const { mainText, explainability } = parseExplainabilityFromText(m.text);
+                            return (
+                              <>
+                                <FormattedMessage text={mainText} />
+                                {explainability && <ExplainabilityLayer data={explainability} />}
+                              </>
+                            );
+                          })()}
+                        </>
+                      )}
 
                       {m.attachments && m.attachments.length > 0 && (
                         <ul className="mt-3 pt-3 border-t border-neutral-700/80 space-y-1.5 list-disc list-inside marker:text-brand-gold">
@@ -414,34 +606,6 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
         )}
       </div>
 
-      {/* Suggestive prompt Co-Pilot input guidance controller */}
-      <div className="px-5 py-3 border-t border-neutral-800 bg-black text-white">
-        <div className="flex items-center gap-1.5 mb-2.5">
-          <Sparkles className="w-3.5 h-3.5 text-brand-gold animate-pulse" />
-          <span className="text-[10.5px] uppercase font-sans font-extrabold tracking-wider text-slate-450">
-            PROMPT CO-PILOT (AI Suggerimenti d'Input per Gara Corrente)
-          </span>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-2">
-          {getCoPilotSuggestions().map((sug, idx) => (
-            <button
-              key={idx}
-              onClick={() => handleChipClick(sug.text)}
-              disabled={isGenerating}
-              className={`cursor-pointer transition-all border text-[11px] p-2.5 rounded-lg flex flex-col justify-between text-left flex-1 font-sans ${sug.bgColor}`}
-              id={`copilot-suggestion-${idx}`}
-            >
-              <span className="font-extrabold text-brand-gold text-[10px] uppercase block mb-1">
-                {sug.label}
-              </span>
-              <span className="text-white text-[10.5px] leading-snug line-clamp-1 italic font-medium font-mono">
-                "{sug.text}"
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* Main prompt bar following ChatGPT styling */}
       <div className="p-4 border-t border-neutral-800 bg-black flex gap-3 items-stretch" id="chat-input-controls-area">
         <form onSubmit={handleSubmit} className="relative flex flex-col bg-neutral-950 border border-neutral-800 rounded-2xl p-2 shadow-2xl flex-1">
@@ -454,6 +618,10 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
             onChange={handleFileChange}
             id="chat-file-upload-input"
           />
+
+          {onToggleConnector && (
+            <ConnectorChips enabledIds={enabledConnectorIds} onToggle={onToggleConnector} />
+          )}
 
           {pendingAttachments.length > 0 && (
             <div className="px-2 pt-1 pb-2 border-b border-neutral-800 flex flex-wrap gap-1.5">
@@ -485,15 +653,25 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="p-2 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer"
+              className="p-2 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer shrink-0"
               title="Carica allegati dal PC (PDF, Office, immagini, ZIP)"
               id="chat-attach-file-btn"
             >
               <Paperclip className="w-5 h-5 text-brand-gold" />
             </button>
 
+            {onToggleConnector && onRunConnector && (
+              <ConnectorPlusMenu
+                enabledIds={enabledConnectorIds}
+                onToggle={onToggleConnector}
+                onRunConnector={onRunConnector}
+                disabled={isGenerating}
+              />
+            )}
+
             {/* Input area */}
             <input
+              ref={textInputRef}
               type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
@@ -531,14 +709,34 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
               )}
             </div>
 
-            {/* Micro voice simulated input */}
+            {/* Dettatura vocale (Web Speech API, italiano) */}
             <button
               type="button"
-              onClick={() => setInputText("Analizza bando Piccoli Passi")}
-              className="p-2 text-slate-400 hover:text-white rounded-lg transition-colors mr-1 cursor-pointer"
-              title="Simula comando vocale"
+              onClick={handleToggleDictation}
+              disabled={isGenerating || isTranscribing || !isSpeechSupported}
+              className={`p-2 rounded-lg transition-colors mr-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                isListening
+                  ? "bg-red-950/60 text-red-400 border border-red-800 animate-pulse"
+                  : isTranscribing
+                    ? "bg-neutral-900 border border-brand-gold/50"
+                    : "text-slate-400 hover:text-white hover:bg-neutral-900"
+              }`}
+              title={
+                !isSpeechSupported
+                  ? "Registrazione vocale non supportata"
+                  : isTranscribing
+                    ? "Trascrizione in corso…"
+                    : isListening
+                      ? "Ferma e trascrivi con Gemini"
+                      : "Registra messaggio vocale (Gemini)"
+              }
+              id="chat-voice-dictation-btn"
             >
-              <Mic className="w-4 h-4 text-brand-gold" />
+              <Mic
+                className={`w-4 h-4 ${
+                  isListening ? "text-red-400" : isTranscribing ? "text-brand-gold animate-pulse" : "text-brand-gold"
+                }`}
+              />
             </button>
 
             {/* Submit btn */}
@@ -551,6 +749,49 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
               <Send className="w-3.5 h-3.5 text-black" />
             </button>
 
+          </div>
+
+          {(isListening || isTranscribing || speechError) && (
+            <p
+              className={`px-3 pb-1 text-[10px] font-sans ${
+                speechError ? "text-red-400" : "text-brand-gold"
+              }`}
+            >
+              {speechError ??
+                (isTranscribing
+                  ? "Trascrizione in corso con Gemini…"
+                  : isListening
+                    ? "Registrazione attiva… clicca di nuovo il microfono quando hai finito di parlare."
+                    : "")}
+            </p>
+          )}
+
+          <div className="px-2 pt-2 pb-1 border-t border-neutral-800/80">
+            <div className="flex items-center gap-1.5 mb-2">
+              <Sparkles className="w-3 h-3 text-brand-gold" />
+              <span className="text-[10px] uppercase font-sans font-bold tracking-wider text-slate-500">
+                {chatMode === "general"
+                  ? "Suggerimenti rapidi"
+                  : isOfferPrep
+                    ? "Passi guidati offerta"
+                    : `Suggerimenti per CIG ${selectedTender.cig}`}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {suggestedPrompts.map((suggestion, idx) => (
+                <button
+                  key={`${selectedTender.id}-suggestion-${idx}`}
+                  type="button"
+                  onClick={() => handleSuggestedPromptClick(suggestion.text)}
+                  disabled={isGenerating}
+                  className="cursor-pointer rounded-full border border-neutral-800 bg-neutral-900 px-3 py-1.5 text-[11px] text-slate-300 transition hover:border-brand-gold hover:text-white disabled:opacity-45 disabled:cursor-not-allowed"
+                  title={suggestion.text}
+                  id={`chat-suggested-prompt-${idx}`}
+                >
+                  {suggestion.label}
+                </button>
+              ))}
+            </div>
           </div>
         </form>
 
@@ -639,6 +880,14 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
           </div>
         )}
 
-      </div>
+    </div>
+
+    {isOfferPrep && offerPreparation && onToggleOfferChecklistItem && (
+      <GuidedOfferPanel
+        state={offerPreparation}
+        onToggleChecklistItem={onToggleOfferChecklistItem}
+      />
+    )}
+    </div>
   );
 };

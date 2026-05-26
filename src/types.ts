@@ -36,6 +36,13 @@ export interface ChatAttachment {
   dataUrl?: string;
 }
 
+export interface ExplainabilityData {
+  perche: string;
+  datiUsati: string;
+  verifica: string;
+  confidenza: string;
+}
+
 export interface Message {
   id: string;
   sender: "user" | "assistant" | "system" | "mcp-call";
@@ -177,6 +184,7 @@ export interface BidPricingResult {
   winRatePrudente: number;
   winRateMotivazione: string;
   generatedAt: string;
+  explainability?: ExplainabilityData;
 }
 
 // ─── RED FLAG & CLAUSE RISK ENGINE ──────────────────────────────────────────
@@ -202,6 +210,7 @@ export interface RedFlagAnalysisResult {
   conteggioLow: number;
   sintesiRischio: string;
   generatedAt: string;
+  explainability?: ExplainabilityData;
 }
 
 // ─── CAPACITY & SATURATION ENGINE ───────────────────────────────────────────
@@ -222,6 +231,7 @@ export interface CapacityAnalysisResult {
   rischioAlert: string | null;
   suggerimentoOperativo: string;
   generatedAt: string;
+  explainability?: ExplainabilityData;
 }
 
 // ─── PROFITABILITY GATE ──────────────────────────────────────────────────────
@@ -252,6 +262,7 @@ export interface ProfitabilityGateResult {
   scenarioPessimistico: number;
   puntiAttenzione: string[];
   generatedAt: string;
+  explainability?: ExplainabilityData;
 }
 
 // ─── BID/NO-BID ENGINE ──────────────────────────────────────────────────────
@@ -271,4 +282,51 @@ export interface BidNoBidResult {
   areaGeograficaOk: boolean;
   importoInTarget: boolean;
   generatedAt: string;
+  explainability?: ExplainabilityData;
+}
+
+// ─── RTI & AVVALIMENTO CONFIGURATOR ─────────────────────────────────────────
+
+export type RtiAvvalimentoRaccomandazione =
+  | "RTI"
+  | "AVVALIMENTO"
+  | "LASCIARE_PERDERE"
+  | "PARTECIPARE_DIRETTA";
+
+export interface RtiAvvalimentoPercorso {
+  consigliato: boolean;
+  motivazione: string;
+  documenti: string[];
+}
+
+export interface RtiAvvalimentoRtiDetail extends RtiAvvalimentoPercorso {
+  struttura: string;
+  capogruppo: string;
+  quotePartecipazione: string;
+  partnerSuggeriti: string[];
+}
+
+export interface RtiAvvalimentoAvvalimentoDetail extends RtiAvvalimentoPercorso {
+  riferimentoNormativo: string;
+  requisitiDaAvvalere: string[];
+  impreseAusiliarie: string[];
+  limiti: string;
+}
+
+export interface RtiAvvalimentoLasciareDetail extends RtiAvvalimentoPercorso {
+  rischiPrincipali: string[];
+}
+
+export interface RtiAvvalimentoResult {
+  raccomandazioneFinale: RtiAvvalimentoRaccomandazione;
+  sintesi: string;
+  gapSoa: string[];
+  rti: RtiAvvalimentoRtiDetail;
+  avvalimento: RtiAvvalimentoAvvalimentoDetail;
+  lasciarePerdere: RtiAvvalimentoLasciareDetail;
+  perche: string;
+  datiUsati: string;
+  verifica: string;
+  confidenza: string;
+  generatedAt?: string;
 }

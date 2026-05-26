@@ -4,8 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --port=3000 --host=0.0.0.0",
+    "predev": "lsof -ti :3000 | xargs kill -9 2>/dev/null || true; lsof -ti :3002 | xargs kill -9 2>/dev/null || true; lsof -ti :24678 | xargs kill -9 2>/dev/null || true",
+    "dev": "tsx watch server/index.ts",
     "build": "vite build",
+    "start": "NODE_ENV=production tsx server/index.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
@@ -15,6 +17,7 @@
   "dependencies": {
     "@google/genai": "^2.4.0",
     "@google/generative-ai": "^0.24.1",
+    "@supabase/supabase-js": "^2.106.1",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
     "dotenv": "^17.2.3",

@@ -4,6 +4,7 @@ import {
 } from "lucide-react";
 import type { TenderDocument, CompanyProfile, ProfitabilityGateResult, ProfitabilityVerdict } from "../types";
 import { runProfitabilityGate } from "../lib/gemini";
+import { ExplainabilityLayer } from "./ExplainabilityLayer";
 
 interface ProfitabilityGateProps {
   tender: TenderDocument;
@@ -261,6 +262,8 @@ export function ProfitabilityGate({ tender, isOpen, onClose }: ProfitabilityGate
                   ))}
                 </ul>
               </div>
+
+              {result.explainability && <ExplainabilityLayer data={result.explainability} />}
 
               {/* Footer */}
               <div className="pt-2 border-t border-neutral-900 space-y-3">
