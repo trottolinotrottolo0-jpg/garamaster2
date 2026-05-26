@@ -6,6 +6,11 @@ import {defineConfig} from 'vite';
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
+    test: {
+      environment: "happy-dom",
+      globals: true,
+      setupFiles: ["./src/__tests__/setup.ts"],
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

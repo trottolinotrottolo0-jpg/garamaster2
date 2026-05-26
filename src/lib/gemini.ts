@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import type { TenderDocument, CompanyProfile, BidNoBidResult, BidPricingResult, PricingScenario, RedFlagAnalysisResult, CapacityAnalysisResult } from "../types";
+import type { TenderDocument, CompanyProfile, BidNoBidResult, BidPricingResult, PricingScenario, RedFlagAnalysisResult, CapacityAnalysisResult, ProfitabilityGateResult } from "../types";
 
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY as string);
 
@@ -319,4 +319,90 @@ DATI GARA:
   }
 
   return { ...parsedCap, generatedAt: new Date().toISOString() };
+}
+
+export async function runProfitabilityGate(
+  tender: TenderDocument,
+  profile: CompanyProfile
+): Promise<ProfitabilityGateResult> {
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+  const prompt = `Sei un esperto di analisi economica per imprese edili italiane.
+Analizza la profittabilità di questa gara d'appalto per l'impresa specifica.
+Rispondi SOLO con un oggetto JSON valido, senza markdown, senza backtick.
+
+Struttura JSON:
+{
+  "verdict": "PROFITTEVOLE" | "BORDERLINE" | "PERICOLOSA",
+  "scoreProfittabilita": number (0-100),
+  "margineAttesoPercent": number (% margine sul ribasso storico medio dell'impresa),
+  "margineAttesoEuro": number (€ assoluto),
+  "breakdownCosti": [
+    {
+      "categoria": string,
+      "importoStimato": number,
+      "percentualeImporto": number,
+      "note": string
+    }
+  ],
+  "costoTotaleStimato": number,
+  "rischioEconomico": "basso" | "medio" | "alto",
+  "motivazione": string (3-4 frasi analisi economica precisa),
+  "alertMargineInsufficiente": boolean (true se margine atteso < minMargineAccettabile),
+  "alertMargineNegativo": boolean (true se margine atteso < 0),
+  "alertText": string | null,
+  "scenarioOttimistico": number (% margine scenario favorevole),
+  "scenarioRealistico": number (% margine scenario base),
+  "scenarioPessimistico": number (% margine scenario avverso),
+  "puntiAttenzione": string[] (3-5 elementi che possono erodere il margine)
+}
+
+Logica verdict:
+- PROFITTEVOLE: margineAttesoPercent >= minMargineAccettabile + 5%, score >= 65
+- BORDERLINE: margineAttesoPercent tra minMargineAccettabile e minMargineAccettabile + 5%, score 35-64
+- PERICOLOSA: margineAttesoPercent < minMargineAccettabile o negativo, score < 35
+
+Logica breakdown costi (6 voci obbligatorie, somma deve avvicinarsi all'importo offerto):
+1. Manodopera: stima basata su costoOraOperaio, costoOraCaposquadra, complessità gara
+2. Materiali: stima basata su categoria lavori e importo
+3. Noli/Mezzi: stima basata su tipo lavori
+4. Spese generali: profile.incidenzaSpeseGenerali% dell'importo
+5. Accantonamento rischio: profile.incidenzaRischioMedio% dell'importo
+6. Utile atteso: differenza tra importo offerto e somma costi precedenti
+
+Calcola importo offerto = importoGara * (1 - profile.avgRibassoPercent/100)
+Scenari:
+- Ottimistico: produttività alta, nessun imprevisto, materiali stabili
+- Realistico: condizioni standard con profilo impresa
+- Pessimistico: ritardi 10%, caro materiali 5%, imprevisti operativi
+
+PROFILO IMPRESA:
+${JSON.stringify(profile, null, 2)}
+
+DATI GARA:
+- Titolo: ${tender.title}
+- Importo base: ${tender.value}
+- Categoria: ${tender.category}
+- Regione: ${tender.region}
+- Penali: ${tender.penalties.join(", ") || "nessuna"}
+- Anomalie: ${tender.anomalies.join(", ") || "nessuna"}
+- Requisiti: ${JSON.stringify(tender.requirements)}`;
+
+  const result = await model.generateContent({
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: {
+      thinkingConfig: { thinkingBudget: 8000 },
+      maxOutputTokens: 8000,
+    },
+  } as Parameters<typeof model.generateContent>[0]);
+
+  const text = result.response.text().trim();
+  let parsed: Omit<ProfitabilityGateResult, "generatedAt">;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error("Risposta Gemini non valida — riprova");
+  }
+
+  return { ...parsed, generatedAt: new Date().toISOString() };
 }

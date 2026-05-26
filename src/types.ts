@@ -224,6 +224,36 @@ export interface CapacityAnalysisResult {
   generatedAt: string;
 }
 
+// ─── PROFITABILITY GATE ──────────────────────────────────────────────────────
+
+export type ProfitabilityVerdict = "PROFITTEVOLE" | "BORDERLINE" | "PERICOLOSA";
+
+export interface CostBreakdownItem {
+  categoria: string;
+  importoStimato: number;
+  percentualeImporto: number;
+  note: string;
+}
+
+export interface ProfitabilityGateResult {
+  verdict: ProfitabilityVerdict;
+  scoreProfittabilita: number;
+  margineAttesoPercent: number;
+  margineAttesoEuro: number;
+  breakdownCosti: CostBreakdownItem[];
+  costoTotaleStimato: number;
+  rischioEconomico: "basso" | "medio" | "alto";
+  motivazione: string;
+  alertMargineInsufficiente: boolean;
+  alertMargineNegativo: boolean;
+  alertText: string | null;
+  scenarioOttimistico: number;
+  scenarioRealistico: number;
+  scenarioPessimistico: number;
+  puntiAttenzione: string[];
+  generatedAt: string;
+}
+
 // ─── BID/NO-BID ENGINE ──────────────────────────────────────────────────────
 
 export type BidDecision = "GO" | "CAUTELA" | "NO-GO";
