@@ -137,11 +137,121 @@ export interface CompanyProfile {
   lastYearRevenue: number;
   avgMarginPercent: number;
 
+  // Storico ribassi e pricing
+  avgRibassoPercent: number;
+  avgWinRatePercent: number;
+  minMargineAccettabile: number;
+
+  // Costi interni
+  costoOraOperaio: number;
+  costoOraCaposquadra: number;
+  incidenzaSpeseGenerali: number;
+  incidenzaRischioMedio: number;
+
   // Storico libero
   historicalNotes: string;
 
   // Metadata
   lastUpdated: string; // ISO date string
+}
+
+// ─── BID PRICING ENGINE ─────────────────────────────────────────────────────
+
+export interface PricingScenario {
+  ribasso: number;
+  importoOfferto: number;
+  margineStimato: number;
+  margineEuro: number;
+  label: "Aggressivo" | "Bilanciato" | "Conservativo" | "Personalizzato";
+  rischioAlert: boolean;
+}
+
+export interface BidPricingResult {
+  rangeMinRibasso: number;
+  rangeMaxRibasso: number;
+  ribassoOttimale: number;
+  scenari: PricingScenario[];
+  motivazioneRange: string;
+  alertMargine: boolean;
+  alertText: string;
+  winRatePrudente: number;
+  winRateMotivazione: string;
+  generatedAt: string;
+}
+
+// ─── RED FLAG & CLAUSE RISK ENGINE ──────────────────────────────────────────
+
+export type RiskLevel = "high" | "medium" | "low";
+
+export interface RedFlag {
+  title: string;
+  type: string;
+  clause: string;
+  articleRef: string;
+  severity: RiskLevel;
+  simpleExplanation: string;
+  remedy: string;
+  clarificationText: string;
+}
+
+export interface RedFlagAnalysisResult {
+  redFlags: RedFlag[];
+  rischioComplessivo: RiskLevel;
+  conteggioHigh: number;
+  conteggioMedium: number;
+  conteggioLow: number;
+  sintesiRischio: string;
+  generatedAt: string;
+}
+
+// ─── CAPACITY & SATURATION ENGINE ───────────────────────────────────────────
+
+export type CapacityVerdict = "SOSTENIBILE" | "CRITICA" | "NON_SOSTENIBILE";
+
+export interface CapacityAnalysisResult {
+  verdict: CapacityVerdict;
+  scoreCapacita: number;
+  rischioSaturazione: "basso" | "medio" | "alto";
+  motivazioneSintetica: string;
+  squadreDisponibili: number;
+  caricoAttualePercent: number;
+  caricoDopoGaraPercent: number;
+  puntiForza: string[];
+  criticitaOperative: string[];
+  analisiCompatibilita: string;
+  rischioAlert: string | null;
+  suggerimentoOperativo: string;
+  generatedAt: string;
+}
+
+// ─── PROFITABILITY GATE ──────────────────────────────────────────────────────
+
+export type ProfitabilityVerdict = "PROFITTEVOLE" | "BORDERLINE" | "PERICOLOSA";
+
+export interface CostBreakdownItem {
+  categoria: string;
+  importoStimato: number;
+  percentualeImporto: number;
+  note: string;
+}
+
+export interface ProfitabilityGateResult {
+  verdict: ProfitabilityVerdict;
+  scoreProfittabilita: number;
+  margineAttesoPercent: number;
+  margineAttesoEuro: number;
+  breakdownCosti: CostBreakdownItem[];
+  costoTotaleStimato: number;
+  rischioEconomico: "basso" | "medio" | "alto";
+  motivazione: string;
+  alertMargineInsufficiente: boolean;
+  alertMargineNegativo: boolean;
+  alertText: string | null;
+  scenarioOttimistico: number;
+  scenarioRealistico: number;
+  scenarioPessimistico: number;
+  puntiAttenzione: string[];
+  generatedAt: string;
 }
 
 // ─── BID/NO-BID ENGINE ──────────────────────────────────────────────────────
