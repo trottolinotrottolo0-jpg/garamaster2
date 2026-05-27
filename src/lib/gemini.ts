@@ -86,6 +86,18 @@ Il JSON deve rispettare esattamente questa struttura:
     "azioneConsigliata": string (azione concreta: avvalimento, RTI, nessuna, non partecipare)
   },
   "capacitaSufficiente": boolean,
+  "capacitaDetail": {
+    "squadreDisponibili": number (stima squadre libere = activeSquads - activeJobsites*1.2, mai sotto 0),
+    "cantierInCorso": number (activeJobsites dal profilo),
+    "dipendentiLiberi": number (employeesCount - activeJobsites*3, mai sotto 0),
+    "caricoAttualePercent": number (% carico attuale 0-100),
+    "caricoDopoGaraPercent": number (% carico se si prende la gara 0-100),
+    "fabbisognoSquadreGara": number (squadre necessarie stimate per questa gara basandoti su importo e durata),
+    "rischioSaturazione": "basso" | "medio" | "alto",
+    "esito": "CAPACITA_PIENA" | "CAPACITA_SUFFICIENTE" | "CAPACITA_LIMITATA" | "CAPACITA_INSUFFICIENTE",
+    "motivazione": string (2-3 frasi leggibili sulla capacità operativa),
+    "azioneConsigliata": string (es. "Chiudi un cantiere prima di partecipare" o "Capacità sufficiente, procedi")
+  },
   "areaGeograficaOk": boolean,
   "importoInTarget": boolean,
   ${EXPLAINABILITY_JSON_INLINE}
@@ -116,6 +128,15 @@ Logica SOADecisionDetail:
   - COPERTURA_PARZIALE: categorie presenti ma classifica al limite (incremento quinto necessario)
   - GAP_COLMABILE: categorie mancanti ma recuperabili con avvalimento o RTI
   - GAP_CRITICO: gap SOA strutturale non colmabile o impresa priva di qualsiasi categoria richiesta
+
+Logica CapacityDecisionDetail:
+- fabbisognoSquadreGara: ogni €500k importo ≈ 1 squadra dedicata per tutta la durata
+- esito:
+  - CAPACITA_PIENA: squadreDisponibili >= fabbisognoSquadreGara*1.5 e carico dopo gara < 70%
+  - CAPACITA_SUFFICIENTE: squadreDisponibili >= fabbisognoSquadreGara e carico dopo gara < 85%
+  - CAPACITA_LIMITATA: squadreDisponibili < fabbisognoSquadreGara ma dipendentiLiberi >= 4 (squadra formabile)
+  - CAPACITA_INSUFFICIENTE: squadreDisponibili = 0 e dipendentiLiberi < 4, o carico dopo gara > 100%
+- rischioSaturazione: basso se carico < 70%, medio se 70-85%, alto se > 85%
 
 PROFILO IMPRESA:
 ${JSON.stringify(profile, null, 2)}

@@ -417,6 +417,19 @@ export interface SOADecisionDetail {
   azioneConsigliata: string;
 }
 
+export interface CapacityDecisionDetail {
+  squadreDisponibili: number;
+  cantierInCorso: number;
+  dipendentiLiberi: number;
+  caricoAttualePercent: number;
+  caricoDopoGaraPercent: number;
+  fabbisognoSquadreGara: number;
+  rischioSaturazione: "basso" | "medio" | "alto";
+  esito: "CAPACITA_PIENA" | "CAPACITA_SUFFICIENTE" | "CAPACITA_LIMITATA" | "CAPACITA_INSUFFICIENTE";
+  motivazione: string;
+  azioneConsigliata: string;
+}
+
 export interface BidNoBidResult {
   decision: BidDecision;
   scoreComplessivo: number;
@@ -428,6 +441,7 @@ export interface BidNoBidResult {
   soaCompatibile: boolean;
   soaDetail: SOADecisionDetail;
   capacitaSufficiente: boolean;
+  capacitaDetail: CapacityDecisionDetail;
   areaGeograficaOk: boolean;
   importoInTarget: boolean;
   generatedAt: string;

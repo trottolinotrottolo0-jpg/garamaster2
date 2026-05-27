@@ -317,6 +317,82 @@ export function BidNoBidEngine({ tender, isOpen, onClose }: BidNoBidEngineProps)
                 </div>
               )}
 
+              {/* Capacity Detail */}
+              {result.capacitaDetail && (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-[9px] font-extrabold uppercase tracking-widest text-slate-500">
+                      Analisi capacità operativa
+                    </h3>
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded border font-mono ${
+                      result.capacitaDetail.esito === "CAPACITA_PIENA"
+                        ? "bg-emerald-950/40 border-emerald-800 text-emerald-400"
+                        : result.capacitaDetail.esito === "CAPACITA_SUFFICIENTE"
+                        ? "bg-blue-950/40 border-blue-800 text-blue-400"
+                        : result.capacitaDetail.esito === "CAPACITA_LIMITATA"
+                        ? "bg-amber-950/40 border-amber-800 text-amber-400"
+                        : "bg-red-950/40 border-red-800 text-red-400"
+                    }`}>
+                      {result.capacitaDetail.esito.replace(/_/g, " ")}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-2">
+                      <span className="text-xl font-extrabold text-brand-gold font-mono">
+                        {result.capacitaDetail.squadreDisponibili}
+                      </span>
+                      <p className="text-[9px] text-slate-500 mt-0.5">squadre libere</p>
+                    </div>
+                    <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-2">
+                      <span className="text-xl font-extrabold text-white font-mono">
+                        {result.capacitaDetail.fabbisognoSquadreGara}
+                      </span>
+                      <p className="text-[9px] text-slate-500 mt-0.5">squadre necessarie</p>
+                    </div>
+                    <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-2">
+                      <span className={`text-xl font-extrabold font-mono ${
+                        result.capacitaDetail.rischioSaturazione === "basso" ? "text-emerald-400"
+                        : result.capacitaDetail.rischioSaturazione === "medio" ? "text-amber-400"
+                        : "text-red-400"
+                      }`}>
+                        {result.capacitaDetail.rischioSaturazione}
+                      </span>
+                      <p className="text-[9px] text-slate-500 mt-0.5">rischio saturazione</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    {[
+                      { label: "Carico attuale", pct: result.capacitaDetail.caricoAttualePercent },
+                      { label: "Carico + questa gara", pct: result.capacitaDetail.caricoDopoGaraPercent },
+                    ].map(({ label, pct }) => (
+                      <div key={label} className="space-y-1">
+                        <div className="flex justify-between text-[10px]">
+                          <span className="text-slate-500">{label}</span>
+                          <span className={`font-mono font-bold ${pct < 70 ? "text-emerald-400" : pct < 85 ? "text-amber-400" : "text-red-400"}`}>
+                            {pct.toFixed(0)}%
+                          </span>
+                        </div>
+                        <div className="h-2 bg-neutral-800 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-700 ${pct < 70 ? "bg-emerald-600" : pct < 85 ? "bg-amber-500" : "bg-red-600"}`}
+                            style={{ width: `${Math.min(pct, 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <p className="text-xs text-slate-400 leading-relaxed">{result.capacitaDetail.motivazione}</p>
+
+                  <div className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2">
+                    <span className="text-[9px] font-bold text-brand-gold uppercase block mb-0.5">Azione consigliata</span>
+                    <p className="text-xs text-slate-300">{result.capacitaDetail.azioneConsigliata}</p>
+                  </div>
+                </div>
+              )}
+
               {/* Rigenera */}
               {profile && (
                 <button
