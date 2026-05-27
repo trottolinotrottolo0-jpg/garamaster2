@@ -18,3 +18,19 @@ export function resolveSupabaseAnonKey(): string | undefined {
   if (normalized.startsWith("Ysb_publishable_")) normalized = normalized.slice(1);
   return normalized;
 }
+
+const PLACEHOLDER_SERVICE_KEYS = new Set([
+  "YOUR_SUPABASE_SERVICE_ROLE_KEY",
+  "your_supabase_service_role_key",
+]);
+
+/** Chiave service role — solo server (sync ANAC, job admin). Non esporre al client. */
+export function resolveSupabaseServiceRoleKey(): string | undefined {
+  const raw =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ??
+    process.env.SUPABASE_SERVICE_KEY;
+  if (!raw?.trim()) return undefined;
+  let key = raw.trim().replace(/^["']|["']$/g, "");
+  if (PLACEHOLDER_SERVICE_KEYS.has(key)) return undefined;
+  return key;
+}

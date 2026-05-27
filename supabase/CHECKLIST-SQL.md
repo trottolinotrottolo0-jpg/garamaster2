@@ -17,6 +17,8 @@
 | Salva conversazione | **Sì** — tabella `conversazioni_ai` |
 | Historical Knowledge Layer + Post-Gara Forensics | **Sì** — tabella `storico_gare_ai` |
 | Alert & Daily Feed (scadenze, fit ANAC, urgenti) | **Sì** — colonne + `gare_anac_viste` |
+| **Scouting Gare (Fase 1)** | **Sì** — `gare_scouting_utente` + `gare_documenti` + colonne URL su `gare_anac` |
+| **Sync ANAC (Fase 2)** | **Sì** — `solo-anac-sync-fase2.sql` + `SUPABASE_SERVICE_ROLE_KEY` server |
 | Profilo / login / lista gare demo | **Sì** — `schema.sql` (prima volta) |
 
 ---
@@ -74,6 +76,7 @@ In **Authentication → Policies** (o RLS sulla tabella): policy attive su ogni 
 | Salva conversazione | `conversazioni_ai` |
 | Historical Knowledge Layer | `storico_gare_ai` (esito, ribasso, pattern, note AI) |
 | Alert & Daily Feed | `gare.scadenza_offerta`, `gare.stato_pratica`, `gare_anac.fit_score`, `gare_anac_viste` |
+| Scouting Gare | `gare_scouting_utente`, `gare_documenti`, `gare_anac.url_portale` |
 
 ### File SQL nel repo
 
@@ -83,6 +86,10 @@ In **Authentication → Policies** (o RLS sulla tabella): policy attive su ogni 
 | `solo-aggiornamenti-completi.sql` | Già hai Supabase, mancano chat + daily feed |
 | `solo-conversazioni_ai.sql` | Solo salvataggio chat |
 | `solo-daily-feed.sql` | Solo dashboard Alert & Daily Feed |
+| `fix-scadenza-offerta.sql` | Errore `column "scadenza_offerta" does not exist` |
+| `solo-scouting-gare.sql` | App Scouting Gare (filtri, salva/scarta, documenti) |
+| `solo-anac-sync-fase2.sql` | Import/sync bandi ANAC (CIG univoco, log sync; dedup automatico) |
+| `fix-duplicate-cig.sql` | Solo se errore `gare_anac_cig_unique_idx` / CIG duplicato (es. DEMO0000001) |
 | `solo-storico-gare-ai.sql` | Solo Historical Knowledge Layer |
 
 ---
@@ -106,5 +113,8 @@ In **Authentication → Policies** (o RLS sulla tabella): policy attive su ogni 
 | Salvataggio fallito / RLS | Riesegui le policy in `solo-conversazioni_ai.sql` |
 | Lista gare vuota | Riesegui la parte demo in fondo a `schema.sql` (insert `gare_anac`) |
 | Nessun profilo | Registrati di nuovo o inserisci riga in `profili_impresa` con il tuo `user_id` |
+| `column "scadenza_offerta" does not exist` | Esegui `fix-scadenza-offerta.sql` (NON rieseguire tutto `schema.sql` se `gare` esiste già) |
+| Scouting: tabella `gare_scouting_utente` mancante | Esegui `solo-scouting-gare.sql` |
+| `could not create unique index "gare_anac_cig_unique_idx"` (CIG duplicato) | Esegui `fix-duplicate-cig.sql` oppure riesegui `solo-anac-sync-fase2.sql` |
 
 Per trovare il tuo `user_id`: **Authentication → Users** → copia UUID utente.

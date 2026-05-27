@@ -256,6 +256,23 @@ export async function fetchDailyFeed(userId: string): Promise<DailyFeedData> {
     anacRows = (fallback.data ?? []) as GaraAnacRow[];
   }
 
+  // Scouting "ANAC fit" si basa su colonne/valori che vengono setup tramite SQL:
+  //   supabase/solo-daily-feed.sql
+  // Se mancano (tipicamente durante il primo setup), la feed risulta "vuota" senza spiegazioni.
+  const DEMO_CIGS = new Set(["DEMO0000001", "DEMO0000002"]);
+  const demoAnacRows = anacRows.filter((a) => a.cig && DEMO_CIGS.has(String(a.cig)));
+  if (
+    demoAnacRows.length > 0 &&
+    !demoAnacRows.some((a) => {
+      const n = Number(a.fit_score);
+      return !Number.isNaN(n) && n > 0;
+    })
+  ) {
+    throw new Error(
+      "Scouting gare non attivo: manca `fit_score`/scadenze demo in Supabase. Esegui `supabase/solo-daily-feed.sql` (SQL Alert & Daily Feed) nel tuo progetto."
+    );
+  }
+
   const cigs = anacRows.map((a) => a.cig).filter(Boolean) as string[];
   const scoutingMap = new Map<string, GaraScoutingRow>();
   if (cigs.length) {

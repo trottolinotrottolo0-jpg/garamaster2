@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, type ReactNode } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, type ReactNode } from "react";
 import { motion } from "motion/react";
 import { Message, McpServer, PacketLog, TenderDocument, ChatAttachment } from "./types";
 import { initialMcpServers, mockTenders } from "./mockData";
@@ -35,6 +35,7 @@ import { BidPricingEngine } from "./components/BidPricingEngine";
 import { CapacitySaturationEngine } from "./components/CapacitySaturationEngine";
 import { ProfitabilityGate } from "./components/ProfitabilityGate";
 import { AlertDailyFeed } from "./components/AlertDailyFeed";
+import { ScoutingGareApp } from "./components/ScoutingGareApp";
 import { GaraRoiCalculator } from "./components/GaraRoiCalculator";
 import { HomeDashboard, buildEngineShortcuts } from "./components/HomeDashboard";
 import { HistoricalKnowledgePanel } from "./components/HistoricalKnowledgePanel";
@@ -47,7 +48,7 @@ import {
   Cpu, Layers, Network, BookOpen, MessageSquare, ShieldCheck, Info, Plus, Search, Sliders, LogOut, Settings, 
   Sparkles, HelpCircle, Briefcase, User, Database, ShieldAlert, Key, Download, Bell,
   Menu, ChevronDown, ChevronLeft, ChevronRight, PanelLeftOpen, PanelRightOpen,
-  FileText, Calculator, Scale, TrendingUp, Activity, BarChart3, Users, Home
+  FileText, Calculator, Scale, TrendingUp, Activity, BarChart3, Users, Home, Target
 } from "lucide-react";
 
 type SidebarDropdownSectionProps = {
@@ -101,6 +102,9 @@ export default function App() {
     refreshDailyFeed,
     refreshData,
   } = useGaraMaster();
+  const handleAfterAnacSync = useCallback(async () => {
+    await Promise.all([refreshData(), refreshDailyFeed()]);
+  }, [refreshData, refreshDailyFeed]);
   const [localTenders, setLocalTenders] = useState<TenderDocument[]>([]);
   const allTenders = [...gare, ...localTenders];
 
@@ -740,6 +744,37 @@ export default function App() {
           </button>
           <button
             type="button"
+            onClick={() => navigateTo("scouting")}
+            className={`cursor-pointer w-10 h-10 rounded-lg p-1.5 flex items-center justify-center transition-colors ${
+              activeTab === "scouting"
+                ? "bg-emerald-500 text-black"
+                : "bg-neutral-900 border border-neutral-800 text-emerald-400 hover:border-emerald-500"
+            }`}
+            title="Scouting Gare"
+            id="nav-scouting-btn"
+          >
+            <Target className="w-5 h-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => navigateTo("feed")}
+            className={`cursor-pointer w-10 h-10 rounded-lg p-1.5 flex items-center justify-center transition-colors relative ${
+              activeTab === "feed"
+                ? "bg-amber-500 text-black"
+                : "bg-neutral-900 border border-neutral-800 text-amber-400 hover:border-amber-500"
+            }`}
+            title="Alert & Daily Feed"
+            id="nav-feed-btn"
+          >
+            <Bell className="w-5 h-5" />
+            {dailyFeed && dailyFeed.totalAlerts > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-0.5 rounded-full bg-red-500 text-[8px] font-bold text-white flex items-center justify-center">
+                {dailyFeed.totalAlerts > 9 ? "9+" : dailyFeed.totalAlerts}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
             onClick={() => setIsNavMenuOpen((open) => !open)}
             className="cursor-pointer w-full flex flex-col items-center gap-0.5 py-2 px-1 rounded-xl border border-neutral-800 bg-neutral-900 hover:border-brand-gold transition-all"
             aria-expanded={isNavMenuOpen}
@@ -868,6 +903,18 @@ export default function App() {
                     >
                       <Home className="w-3 h-3 text-brand-gold shrink-0" />
                       Home / Dashboard
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => navigateTo("scouting")}
+                      className={`cursor-pointer hover:text-brand-gold transition-colors flex items-center gap-1.5 ${
+                        activeTab === "scouting" ? "text-white font-bold" : "text-slate-300"
+                      }`}
+                    >
+                      <Target className="w-3 h-3 text-brand-gold shrink-0" />
+                      Scouting Gare
                     </button>
                   </li>
                   <li>
@@ -1249,6 +1296,18 @@ export default function App() {
                 onRefreshAll={() => void handleRefreshDashboard()}
                 isRefreshing={dashboardRefreshing || dailyFeedLoading}
                 engineShortcuts={engineShortcuts}
+              />
+            </div>
+          )}
+
+          {activeTab === "scouting" && (
+            <div className="h-full overflow-hidden rounded-2xl border border-neutral-800 bg-black">
+              <ScoutingGareApp
+                userId={user?.id}
+                profilo={profilo}
+                onOpenInChat={(gareAnacId, cig) => void handleFeedSelectAnac(gareAnacId, cig)}
+                onOpenAnalyzer={() => setActiveTab("analyzer")}
+                onAfterSync={handleAfterAnacSync}
               />
             </div>
           )}

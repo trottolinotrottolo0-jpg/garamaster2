@@ -191,6 +191,14 @@ export function HomeDashboard({
 
   const alertAndOtherShortcuts: HomeShortcut[] = [
     {
+      id: "scouting",
+      label: "Scouting Gare",
+      description: "Filtra ANAC per zona, SOA e importo",
+      icon: Target,
+      onClick: () => onNavigate("scouting"),
+      accentClass: "hover:border-emerald-600/50",
+    },
+    {
       id: "feed",
       label: "Alert & Daily Feed",
       description: "Scadenze, gare ANAC, azioni urgenti",
@@ -264,6 +272,32 @@ export function HomeDashboard({
             {dataError}
           </div>
         )}
+
+        <button
+          type="button"
+          onClick={() => onNavigate("scouting")}
+          className="cursor-pointer w-full text-left rounded-2xl border border-emerald-600/40 bg-gradient-to-r from-emerald-950/80 to-neutral-950 p-4 hover:border-emerald-500 transition-colors group"
+          id="home-scouting-cta"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <p className="text-[9px] font-extrabold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                <Target className="w-3.5 h-3.5" />
+                Scouting Gare
+              </p>
+              <p className="text-sm font-bold text-white mt-1 group-hover:text-emerald-50">
+                Cerca bandi ANAC per zona, categoria, importo e fit azienda
+              </p>
+              <p className="text-[10px] text-slate-500 mt-1">
+                Filtri, salva/scarta, sync ANAC — icona verde nella barra a sinistra
+              </p>
+            </div>
+            <span className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-emerald-500 text-black text-[11px] font-extrabold px-3 py-2">
+              Apri scouting
+              <ChevronRight className="w-4 h-4" />
+            </span>
+          </div>
+        </button>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard

@@ -62,6 +62,17 @@ create table if not exists public.gare (
 create index if not exists gare_user_id_idx on public.gare (user_id);
 create index if not exists gare_cig_idx on public.gare (cig);
 
+-- Migrazione: se `gare` esisteva già (schema vecchio), aggiungi colonne mancanti
+alter table public.gare
+  add column if not exists scadenza_presentazione timestamptz,
+  add column if not exists scadenza_offerta timestamptz,
+  add column if not exists data_scadenza timestamptz,
+  add column if not exists stato_pratica text default 'Nuova',
+  add column if not exists criterio_aggiudicazione text,
+  add column if not exists requisiti jsonb default '[]'::jsonb,
+  add column if not exists penali jsonb default '[]'::jsonb,
+  add column if not exists anomalie jsonb default '[]'::jsonb;
+
 -- ---------------------------------------------------------------------------
 -- gare_anac (catalogo condiviso / import ANAC)
 -- ---------------------------------------------------------------------------
@@ -84,6 +95,10 @@ create table if not exists public.gare_anac (
   fit_score numeric,
   created_at timestamptz not null default now()
 );
+
+-- Migrazione: colonne daily feed / scouting su catalogo ANAC
+alter table public.gare_anac
+  add column if not exists fit_score numeric;
 
 create index if not exists gare_anac_cig_idx on public.gare_anac (cig);
 create index if not exists gare_anac_scadenza_idx on public.gare_anac (data_scadenza);
@@ -117,6 +132,38 @@ create table if not exists public.gare_scouting (
 );
 
 create index if not exists gare_scouting_cig_idx on public.gare_scouting (cig);
+
+-- gare_scouting_utente (salvata / scartata / vista per utente)
+create table if not exists public.gare_scouting_utente (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  gare_anac_id uuid not null references public.gare_anac (id) on delete cascade,
+  stato text not null default 'vista' check (stato in ('vista', 'salvata', 'scartata')),
+  note text,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, gare_anac_id)
+);
+
+create index if not exists gare_scouting_utente_user_idx on public.gare_scouting_utente (user_id);
+
+-- gare_documenti (disciplinari e allegati — Fase 3 sync)
+create table if not exists public.gare_documenti (
+  id uuid primary key default gen_random_uuid(),
+  gare_anac_id uuid references public.gare_anac (id) on delete cascade,
+  gara_id uuid references public.gare (id) on delete cascade,
+  tipo text not null default 'disciplinare',
+  titolo text,
+  url_esterna text,
+  storage_path text,
+  parsed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists gare_documenti_anac_idx on public.gare_documenti (gare_anac_id);
+
+-- Migrazione link portale ANAC
+alter table public.gare_anac
+  add column if not exists url_portale text,
+  add column if not exists url_disciplinare text;
 
 -- ---------------------------------------------------------------------------
 -- conversazioni_ai (storico chat Gemini per utente e gara)
@@ -209,6 +256,8 @@ alter table public.profili_impresa enable row level security;
 alter table public.gare enable row level security;
 alter table public.gare_anac enable row level security;
 alter table public.gare_scouting enable row level security;
+alter table public.gare_scouting_utente enable row level security;
+alter table public.gare_documenti enable row level security;
 alter table public.conversazioni_ai enable row level security;
 alter table public.gare_anac_viste enable row level security;
 alter table public.storico_gare_ai enable row level security;
@@ -261,6 +310,32 @@ create policy "gare_anac_select_auth"
 drop policy if exists "gare_scouting_select_auth" on public.gare_scouting;
 create policy "gare_scouting_select_auth"
   on public.gare_scouting for select
+  to authenticated
+  using (true);
+
+drop policy if exists "gare_scouting_utente_select_own" on public.gare_scouting_utente;
+create policy "gare_scouting_utente_select_own"
+  on public.gare_scouting_utente for select
+  using (auth.uid() = user_id);
+
+drop policy if exists "gare_scouting_utente_insert_own" on public.gare_scouting_utente;
+create policy "gare_scouting_utente_insert_own"
+  on public.gare_scouting_utente for insert
+  with check (auth.uid() = user_id);
+
+drop policy if exists "gare_scouting_utente_update_own" on public.gare_scouting_utente;
+create policy "gare_scouting_utente_update_own"
+  on public.gare_scouting_utente for update
+  using (auth.uid() = user_id);
+
+drop policy if exists "gare_scouting_utente_delete_own" on public.gare_scouting_utente;
+create policy "gare_scouting_utente_delete_own"
+  on public.gare_scouting_utente for delete
+  using (auth.uid() = user_id);
+
+drop policy if exists "gare_documenti_select_auth" on public.gare_documenti;
+create policy "gare_documenti_select_auth"
+  on public.gare_documenti for select
   to authenticated
   using (true);
 

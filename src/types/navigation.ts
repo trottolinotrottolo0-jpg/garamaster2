@@ -1,1 +1,1 @@
-export type AppTab = "home" | "feed" | "chat" | "analyzer" | "mcp" | "guide" | "profile";
+export type AppTab = "home" | "feed" | "scouting" | "chat" | "analyzer" | "mcp" | "guide" | "profile";

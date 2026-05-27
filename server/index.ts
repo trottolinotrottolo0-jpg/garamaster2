@@ -19,12 +19,16 @@ import type { SoaGapForecastRequestBody } from "./soaGapForecastTypes";
 import type { PostGaraForensicsRequestBody } from "./postGaraForensicsTypes";
 import { resolveSupabaseAnonKey, resolveSupabaseUrl } from "./resolveSupabaseUrl";
 import { deepseekChatCompletion } from "./deepseekChat";
+import { runAnacSync } from "./anacSync/runAnacSync";
+import { fetchLastAnacSyncLog } from "./anacSync/syncToSupabase";
+import { scheduleAnacSync } from "./anacSync/scheduleAnacSync";
+import { resolveSupabaseServiceRoleKey } from "./resolveSupabaseUrl";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
 
-dotenv.config({ path: path.join(root, ".env.local") });
 dotenv.config({ path: path.join(root, ".env") });
+dotenv.config({ path: path.join(root, ".env.local"), override: true });
 
 const PORT = Number(process.env.PORT) || 3000;
 const isProd = process.env.NODE_ENV === "production";
@@ -237,6 +241,47 @@ async function createApp() {
     }
   });
 
+  app.get("/api/scouting/sync-status", async (_req, res) => {
+    try {
+      const last = resolveSupabaseServiceRoleKey()
+        ? await fetchLastAnacSyncLog().catch(() => null)
+        : null;
+      res.json({
+        configured: Boolean(resolveSupabaseServiceRoleKey()),
+        demoExpand: process.env.ANAC_SYNC_USE_DEMO_EXPAND === "true",
+        hasJsonUrl: Boolean(process.env.ANAC_SYNC_JSON_URL?.trim()),
+        hasCkanPackage: Boolean(process.env.ANAC_CKAN_PACKAGE_ID?.trim()),
+        intervalMinutes: Number(process.env.ANAC_SYNC_INTERVAL_MINUTES) || 0,
+        last,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Errore status sync";
+      res.status(503).json({ error: message });
+    }
+  });
+
+  app.post("/api/scouting/sync", async (req, res) => {
+    try {
+      const secret = process.env.ANAC_SYNC_SECRET?.trim();
+      const headerSecret = req.headers["x-anac-sync-secret"];
+      if (secret && headerSecret !== secret) {
+        res.status(401).json({ error: "Secret sync non valido." });
+        return;
+      }
+
+      const body = (req.body ?? {}) as { limit?: number; demoExpand?: boolean };
+      const result = await runAnacSync({
+        limit: body.limit,
+        preferDemoExpand: body.demoExpand,
+      });
+      res.json(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Errore sync ANAC";
+      console.error("[/api/scouting/sync]", message);
+      res.status(503).json({ error: message });
+    }
+  });
+
   app.post("/api/chat", async (req, res) => {
     try {
       const body = req.body as ChatRequestBody;
@@ -312,7 +357,15 @@ createApp()
       if (!anonKey || anonKey === "YOUR_SUPABASE_ANON_KEY") {
         console.warn("⚠ Supabase non configurato: aggiungi VITE_SUPABASE_* in .env.local");
       } else {
-        console.log("✓ Supabase configurato in .env.local");
+        console.log("✓ Supabase anon/publishable configurato (.env / .env.local)");
+      }
+      if (resolveSupabaseServiceRoleKey()) {
+        console.log("✓ Supabase service role configurata (sync ANAC)");
+        scheduleAnacSync();
+      } else {
+        console.warn(
+          "⚠ SUPABASE_SERVICE_ROLE_KEY assente: sync ANAC disabilitato fino a configurazione."
+        );
       }
     });
   })
