@@ -1,13 +1,25 @@
 <!doctype html>
-<html lang="en">
+<html lang="it">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>My Google AI Studio App</title>
+    <title>GaraMaster AI</title>
   </head>
   <body>
+    <script>
+      (function () {
+        var port = window.location.port;
+        if (port === "3002" || port === "5173") {
+          window.location.replace(
+            "http://localhost:3000" +
+              window.location.pathname +
+              window.location.search +
+              window.location.hash
+          );
+        }
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
-</html> 
-
+</html>

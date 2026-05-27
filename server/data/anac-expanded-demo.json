@@ -1,0 +1,126 @@
+{
+  "gare": [
+    {
+      "cig": "DEMO0000003",
+      "titolo": "Manutenzione edifici scolastici provincia di Milano",
+      "oggetto": "Lavori di manutenzione ordinaria e straordinaria",
+      "importo": 980000,
+      "regione": "Lombardia",
+      "provincia": "MI",
+      "categoria": "OG1",
+      "cpv": "45000000",
+      "data_scadenza": "2026-08-15T12:00:00Z",
+      "ente_appaltante": "Provincia di Milano",
+      "url_portale": "https://www.anticorruzione.it/"
+    },
+    {
+      "cig": "DEMO0000004",
+      "titolo": "Rifacimento rete idrica comunale",
+      "oggetto": "Progettazione esecutiva e direzione lavori",
+      "importo": 2100000,
+      "regione": "Veneto",
+      "provincia": "VE",
+      "categoria": "OG3",
+      "cpv": "45231300",
+      "data_scadenza": "2026-07-20T12:00:00Z",
+      "ente_appaltante": "Comune di Venezia",
+      "url_portale": "https://www.anticorruzione.it/"
+    },
+    {
+      "cig": "DEMO0000005",
+      "titolo": "Efficientamento energetico ospedale territoriale",
+      "oggetto": "Interventi su impianti HVAC e involucro",
+      "importo": 1750000,
+      "regione": "Lazio",
+      "provincia": "RM",
+      "categoria": "OG1",
+      "data_scadenza": "2026-09-01T12:00:00Z",
+      "ente_appaltante": "ASL Roma 1",
+      "url_portale": "https://www.anticorruzione.it/"
+    },
+    {
+      "cig": "DEMO0000006",
+      "titolo": "Costruzione parcheggio interrato centro storico",
+      "oggetto": "Appalto integrato progettazione e costruzione",
+      "importo": 4200000,
+      "regione": "Toscana",
+      "provincia": "FI",
+      "categoria": "OG2",
+      "data_scadenza": "2026-06-30T12:00:00Z",
+      "ente_appaltante": "Comune di Firenze",
+      "url_portale": "https://www.anticorruzione.it/"
+    },
+    {
+      "cig": "DEMO0000007",
+      "titolo": "Potenziamento rete fognaria",
+      "oggetto": "Lavori di scavo e posa condotte",
+      "importo": 890000,
+      "regione": "Emilia-Romagna",
+      "provincia": "BO",
+      "categoria": "OG3",
+      "data_scadenza": "2026-08-28T12:00:00Z",
+      "ente_appaltante": "Comune di Bologna",
+      "url_portale": "https://www.anticorruzione.it/"
+    },
+    {
+      "cig": "DEMO0000008",
+      "titolo": "Adeguamento sismico edificio comunale",
+      "oggetto": "Consolidamento strutturale e finiture",
+      "importo": 1320000,
+      "regione": "Campania",
+      "provincia": "NA",
+      "categoria": "OG2",
+      "data_scadenza": "2026-07-10T12:00:00Z",
+      "ente_appaltante": "Comune di Napoli",
+      "url_portale": "https://www.anticorruzione.it/"
+    },
+    {
+      "cig": "DEMO0000009",
+      "titolo": "Manutenzione strade provinciali lotto 2",
+      "oggetto": "Ripristino manti stradali e segnaletica",
+      "importo": 1560000,
+      "regione": "Piemonte",
+      "provincia": "TO",
+      "categoria": "OG3",
+      "data_scadenza": "2026-08-05T12:00:00Z",
+      "ente_appaltante": "Città Metropolitana di Torino",
+      "url_portale": "https://www.anticorruzione.it/"
+    },
+    {
+      "cig": "DEMO0000010",
+      "titolo": "Realizzazione pista ciclabile costiera",
+      "oggetto": "Opere civili e pavimentazioni",
+      "importo": 740000,
+      "regione": "Liguria",
+      "provincia": "GE",
+      "categoria": "OG3",
+      "data_scadenza": "2026-09-12T12:00:00Z",
+      "ente_appaltante": "Comune di Genova",
+      "url_portale": "https://www.anticorruzione.it/"
+    },
+    {
+      "cig": "DEMO0000011",
+      "titolo": "Impianto fotovoltaico su edifici pubblici",
+      "oggetto": "Fornitura e posa moduli FV",
+      "importo": 620000,
+      "regione": "Sicilia",
+      "provincia": "PA",
+      "categoria": "OG9",
+      "data_scadenza": "2026-07-25T12:00:00Z",
+      "ente_appaltante": "Comune di Palermo",
+      "url_portale": "https://www.anticorruzione.it/"
+    },
+    {
+      "cig": "DEMO0000012",
+      "titolo": "Restauro conservativo centro storico",
+      "oggetto": "Interventi su facciate e coperture",
+      "importo": 1180000,
+      "regione": "Puglia",
+      "provincia": "BA",
+      "categoria": "OG1",
+      "data_scadenza": "2026-08-18T12:00:00Z",
+      "ente_appaltante": "Comune di Bari",
+      "url_portale": "https://www.anticorruzione.it/"
+    }
+  ]
+}

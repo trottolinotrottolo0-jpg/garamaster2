@@ -2,6 +2,7 @@ import { useState, useEffect, Fragment } from "react";
 import { X, TrendingUp, AlertTriangle, RefreshCw, Loader2, XCircle } from "lucide-react";
 import type { TenderDocument, CompanyProfile, BidPricingResult, PricingScenario } from "../types";
 import { runBidPricing } from "../lib/gemini";
+import { ExplainabilityLayer } from "./ExplainabilityLayer";
 
 interface BidPricingEngineProps {
   tender: TenderDocument;
@@ -341,6 +342,8 @@ export function BidPricingEngine({ tender, isOpen, onClose }: BidPricingEnginePr
                   Rigenera con stesso ribasso
                 </button>
               )}
+
+              {result.explainability && <ExplainabilityLayer data={result.explainability} />}
 
               {/* Footer */}
               <p className="text-[10px] text-slate-600 pt-2 border-t border-neutral-900">

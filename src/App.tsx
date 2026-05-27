@@ -1,22 +1,54 @@
-import { useState, useEffect, useRef, type ReactNode } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, type ReactNode } from "react";
 import { motion } from "motion/react";
 import { Message, McpServer, PacketLog, TenderDocument, ChatAttachment } from "./types";
 import { initialMcpServers, mockTenders } from "./mockData";
+import { useGaraMaster } from "./context/GaraMasterContext";
+import { requestGaraMasterReply } from "./lib/chatApi";
+import { GENERAL_CHAT_TENDER } from "./lib/generalChatContext";
+import type { InternalConnectorAction } from "./lib/internalConnectors";
+import {
+  createChatSession,
+  createOfferPreparationSession,
+  deriveTitleFromMessage,
+  loadSessionsForUser,
+  persistSession,
+  saveLocalSessions,
+} from "./lib/chatSessions";
+import {
+  mergeOfferPreparationState,
+  parseOfferStateFromAssistantText,
+  createInitialOfferState,
+  type OfferBusta,
+} from "./lib/guidedOfferPreparation";
 import { McpHub } from "./components/McpHub";
 import { ChatWorkspace } from "./components/ChatWorkspace";
+import { ChatSessionsSidebar } from "./components/ChatSessionsSidebar";
+import type { ChatSession } from "./types/chat";
 import { DocumentAnalyzer } from "./components/DocumentAnalyzer";
 import { DeveloperGuide } from "./components/DeveloperGuide";
 import { CompanyProfile } from "./components/CompanyProfile";
+import { TenderPortfolioScore } from "./components/TenderPortfolioScore";
 import { VessatorieModal } from "./components/VessatorieModal";
 import { BidNoBidEngine } from "./components/BidNoBidEngine";
+import { RtiAvvalimentoConfigurator } from "./components/RtiAvvalimentoConfigurator";
 import { BidPricingEngine } from "./components/BidPricingEngine";
 import { CapacitySaturationEngine } from "./components/CapacitySaturationEngine";
 import { ProfitabilityGate } from "./components/ProfitabilityGate";
+import { AlertDailyFeed } from "./components/AlertDailyFeed";
+import { ScoutingGareApp } from "./components/ScoutingGareApp";
+import { GaraRoiCalculator } from "./components/GaraRoiCalculator";
+import { HomeDashboard, buildEngineShortcuts } from "./components/HomeDashboard";
+import { HistoricalKnowledgePanel } from "./components/HistoricalKnowledgePanel";
+import { SoaGapForecastPanel } from "./components/SoaGapForecastPanel";
+import type { AppTab } from "./types/navigation";
+import { extractRibassoPercent } from "./lib/storicoGare";
+import { fetchStoricoForPrompt, saveStoricoAnalisi } from "./services/storicoGareService";
+import { markAnacGaraAsSeen } from "./services/dailyFeedService";
 import { 
   Cpu, Layers, Network, BookOpen, MessageSquare, ShieldCheck, Info, Plus, Search, Sliders, LogOut, Settings, 
-  Sparkles, HelpCircle, Briefcase, User, Database, ShieldAlert, Key, Download,
+  Sparkles, HelpCircle, Briefcase, User, Database, ShieldAlert, Key, Download, Bell,
   Menu, ChevronDown, ChevronLeft, ChevronRight, PanelLeftOpen, PanelRightOpen,
-  FileText, Calculator, Scale, TrendingUp, Activity, BarChart3
+  FileText, Calculator, Scale, TrendingUp, Activity, BarChart3, Users, Home, Target
 } from "lucide-react";
 
 type SidebarDropdownSectionProps = {
@@ -57,7 +89,27 @@ function SidebarDropdownSection({
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<"chat" | "analyzer" | "mcp" | "guide" | "profile">("chat");
+  const {
+    gare,
+    profilo,
+    signOut,
+    supabaseConfigured,
+    dataError,
+    user,
+    dailyFeed,
+    dailyFeedLoading,
+    dailyFeedError,
+    refreshDailyFeed,
+    refreshData,
+  } = useGaraMaster();
+  const handleAfterAnacSync = useCallback(async () => {
+    await Promise.all([refreshData(), refreshDailyFeed()]);
+  }, [refreshData, refreshDailyFeed]);
+  const [localTenders, setLocalTenders] = useState<TenderDocument[]>([]);
+  const allTenders = [...gare, ...localTenders];
+
+  const [activeTab, setActiveTab] = useState<AppTab>("home");
+  const [dashboardRefreshing, setDashboardRefreshing] = useState(false);
   const [servers, setServers] = useState<McpServer[]>(initialMcpServers);
   const [selectedTender, setSelectedTender] = useState<TenderDocument>(mockTenders[0]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -68,12 +120,15 @@ export default function App() {
   const [isBidPricingOpen, setIsBidPricingOpen] = useState(false);
   const [isCapacityOpen, setIsCapacityOpen] = useState(false);
   const [isProfitabilityOpen, setIsProfitabilityOpen] = useState(false);
+  const [isRtiAvvalimentoOpen, setIsRtiAvvalimentoOpen] = useState(false);
   
   // Custom states for settings
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSysInfoOpen, setIsSysInfoOpen] = useState(false);
   const [llmModel, setLlmModel] = useState<string>("Gemini 3.5 Flash");
-  const [supabaseStatus, setSupabaseStatus] = useState<string>("Connesso (Classe III/IV logic)");
+  const [supabaseStatus, setSupabaseStatus] = useState<string>(
+    supabaseConfigured ? "Configurato — in attesa dati" : "Demo (mock data)"
+  );
   const [customKey, setCustomKey] = useState<string>("•••••••••••••••••••••");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [isNavMenuOpen, setIsNavMenuOpen] = useState(false);
@@ -93,6 +148,27 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (dataError) {
+      setSupabaseStatus(`Errore: ${dataError}`);
+      return;
+    }
+    if (profilo) {
+      setSupabaseStatus(`Connesso · ${profilo.ragioneSociale}`);
+      return;
+    }
+    if (supabaseConfigured) {
+      setSupabaseStatus("Connesso · profilo non trovato");
+    }
+  }, [profilo, dataError, supabaseConfigured]);
+
+  useEffect(() => {
+    if (allTenders.length === 0) return;
+    if (!allTenders.some((t) => t.id === selectedTender.id)) {
+      setSelectedTender(allTenders[0]);
+    }
+  }, [allTenders, selectedTender.id]);
+
+  useEffect(() => {
     if (!isNavMenuOpen) return;
     const handleClickOutside = (e: MouseEvent) => {
       if (navMenuRef.current && !navMenuRef.current.contains(e.target as Node)) {
@@ -103,15 +179,152 @@ export default function App() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isNavMenuOpen]);
 
-  // Initial welcome message
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "welcome",
-      sender: "assistant",
-      text: "Salve! Sono l'assistente AI di Gara Master. \n\nPosso aiutarti a navigare i disciplinari, estrarre requisiti SOA, rilevare clausole di penali complesse, verificare la compatibilità della tua impresa (tramite i dati archiviati su Supabase) ed abbozzare proposte tecniche vincitrici.\n\nScegli uno dei comandi rapidi qui sotto oppure parlami direttamente come se fossi Claude o ChatGPT!",
-      timestamp: new Date(),
-    },
-  ]);
+  const initialSession = createChatSession("general", null);
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([initialSession]);
+  const [activeSessionId, setActiveSessionId] = useState(initialSession.id);
+  const [enabledConnectors, setEnabledConnectors] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem("gm_enabled_connectors");
+      return raw ? (JSON.parse(raw) as string[]) : ["bid-no-bid", "vessatorie"];
+    } catch {
+      return ["bid-no-bid", "vessatorie"];
+    }
+  });
+  const [conversazioneSaveStatus, setConversazioneSaveStatus] = useState<
+    "idle" | "saving" | "saved" | "error" | "skipped"
+  >("idle");
+  const [conversazioneSaveError, setConversazioneSaveError] = useState<string | null>(null);
+
+  const activeSession =
+    chatSessions.find((s) => s.id === activeSessionId) ?? chatSessions[0];
+  const messages = activeSession?.messages ?? [];
+
+  const patchActiveSession = (patch: Partial<ChatSession> | ((s: ChatSession) => ChatSession)) => {
+    setChatSessions((prev) =>
+      prev.map((s) => {
+        if (s.id !== activeSessionId) return s;
+        return typeof patch === "function" ? patch(s) : { ...s, ...patch };
+      })
+    );
+  };
+
+  const setMessages = (updater: Message[] | ((prev: Message[]) => Message[])) => {
+    patchActiveSession((s) => {
+      const next = typeof updater === "function" ? updater(s.messages) : updater;
+      return { ...s, messages: next, updatedAt: new Date().toISOString() };
+    });
+  };
+
+  const resolveTenderForSession = (session: ChatSession): TenderDocument => {
+    if (session.mode === "general") return GENERAL_CHAT_TENDER;
+    if (session.tenderId) {
+      return allTenders.find((t) => t.id === session.tenderId) ?? selectedTender;
+    }
+    return selectedTender;
+  };
+
+  const resolveTenderByIdOrCig = (garaId: string, cig?: string): TenderDocument | undefined => {
+    return (
+      allTenders.find(
+        (t) =>
+          t.id === garaId ||
+          t.id === `gare-${garaId}` ||
+          t.id === `gare_anac-${garaId}` ||
+          (cig && t.cig === cig)
+      ) ?? undefined
+    );
+  };
+
+  const handleFeedSelectGara = (garaId: string, cig: string) => {
+    const tender = resolveTenderByIdOrCig(garaId, cig);
+    if (tender) {
+      setSelectedTender(tender);
+      setActiveTab("chat");
+      addSession(createChatSession("tender", tender));
+    }
+  };
+
+  const handleFeedSelectAnac = async (gareAnacId: string, cig: string) => {
+    if (user?.id) {
+      await markAnacGaraAsSeen(user.id, gareAnacId);
+      await refreshDailyFeed();
+    }
+    const tender =
+      resolveTenderByIdOrCig(gareAnacId, cig) ??
+      allTenders.find((t) => t.id === `gare_anac-${gareAnacId}` || t.cig === cig);
+    if (tender) {
+      setSelectedTender(tender);
+      setActiveTab("chat");
+      addSession(createChatSession("tender", tender));
+    }
+  };
+
+  const handleFeedOpenOfferPrep = (garaId: string) => {
+    const tender = resolveTenderByIdOrCig(garaId);
+    if (tender) handleStartOfferPreparation(tender);
+  };
+
+  const handleStartOfferPreparation = (tender: TenderDocument) => {
+    setSelectedTender(tender);
+    addSession(createOfferPreparationSession(tender));
+    setIsNavMenuOpen(false);
+  };
+
+  const handleToggleOfferChecklistItem = (busta: OfferBusta, itemId: string) => {
+    patchActiveSession((s) => {
+      if (!s.offerPreparation) return s;
+      const list = s.offerPreparation.checklist[busta] ?? [];
+      return {
+        ...s,
+        offerPreparation: {
+          ...s.offerPreparation,
+          checklist: {
+            ...s.offerPreparation.checklist,
+            [busta]: list.map((item) =>
+              item.id === itemId ? { ...item, done: !item.done } : item
+            ),
+          },
+          lastUpdatedAt: new Date().toISOString(),
+        },
+      };
+    });
+  };
+
+  const activeTender = resolveTenderForSession(activeSession);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        void refreshDailyFeed();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [user?.id, refreshDailyFeed]);
+
+  useEffect(() => {
+    if ((activeTab === "feed" || activeTab === "home") && user?.id) {
+      void refreshDailyFeed();
+    }
+  }, [activeTab, user?.id, refreshDailyFeed]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      saveLocalSessions(chatSessions);
+      return;
+    }
+    const fallback = createChatSession("general", null);
+    loadSessionsForUser(user.id, allTenders, fallback).then((loaded) => {
+      setChatSessions(loaded);
+      setActiveSessionId(loaded[0]?.id ?? fallback.id);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  useEffect(() => {
+    localStorage.setItem("gm_enabled_connectors", JSON.stringify(enabledConnectors));
+  }, [enabledConnectors]);
 
   const handleToggleServer = (id: string) => {
     setServers((prev) =>
@@ -147,7 +360,7 @@ export default function App() {
   };
 
   const handleAddCustomTender = (newTender: TenderDocument) => {
-    mockTenders.push(newTender);
+    setLocalTenders((prev) => [...prev, newTender]);
   };
 
   const handleExportReport = () => {
@@ -196,20 +409,78 @@ export default function App() {
     document.body.removeChild(link);
   };
 
-  // Resets the chat messages to welcome state
-  const handleNewChat = () => {
-    setMessages([
-      {
-        id: "welcome",
-        sender: "assistant",
-        text: `Nuova sessione avviata per la gara: ${selectedTender.title}.\n\nChiedimi di estrarre e sintetizzare i requisiti di qualificazione SOA, analizzare le penali o generare l'offerta tecnica basandoti sui CAM.`,
-        timestamp: new Date(),
-      }
-    ]);
+  const addSession = (session: ChatSession) => {
+    setChatSessions((prev) => [session, ...prev]);
+    setActiveSessionId(session.id);
+    setConversazioneSaveStatus("idle");
+    setConversazioneSaveError(null);
     setActiveTab("chat");
   };
 
-  const handleSendMessage = (
+  const handleNewGeneralChat = () => {
+    addSession(createChatSession("general", null));
+  };
+
+  const handleNewTenderChat = () => {
+    addSession(createChatSession("tender", selectedTender));
+  };
+
+  const handleNewChat = () => handleNewGeneralChat();
+
+  const handleSelectSession = (id: string) => {
+    setActiveSessionId(id);
+    setConversazioneSaveStatus("idle");
+    const session = chatSessions.find((s) => s.id === id);
+    if (
+      (session?.mode === "tender" || session?.mode === "offer_preparation") &&
+      session.tenderId
+    ) {
+      const t = allTenders.find((x) => x.id === session.tenderId);
+      if (t) setSelectedTender(t);
+    }
+  };
+
+  const handleDeleteSession = (id: string) => {
+    setChatSessions((prev) => {
+      const next = prev.filter((s) => s.id !== id);
+      if (next.length === 0) {
+        const fresh = createChatSession("general", null);
+        setActiveSessionId(fresh.id);
+        return [fresh];
+      }
+      if (activeSessionId === id) {
+        setActiveSessionId(next[0].id);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleConnector = (id: string) => {
+    setEnabledConnectors((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleRunConnector = (action: InternalConnectorAction) => {
+    const map: Record<InternalConnectorAction, () => void> = {
+      bidNoBid: () => setIsBidNoBidOpen(true),
+      bidPricing: () => setIsBidPricingOpen(true),
+      capacity: () => setIsCapacityOpen(true),
+      profitability: () => setIsProfitabilityOpen(true),
+      vessatorie: () => setIsVessatorieOpen(true),
+      analyzer: () => setActiveTab("analyzer"),
+      portfolioScore: () => setActiveTab("chat"),
+      profile: () => setActiveTab("profile"),
+      rtiAvvalimento: () => setIsRtiAvvalimentoOpen(true),
+      garaRoi: () => {
+        setActiveTab("chat");
+        setIsRightSidebarOpen(true);
+      },
+    };
+    map[action]?.();
+  };
+
+  const handleSendMessage = async (
     text: string,
     overrideTargetTender?: string,
     attachments?: ChatAttachment[]
@@ -228,162 +499,224 @@ export default function App() {
       timestamp: new Date(),
       attachments: hasAttachments ? attachments : undefined,
     };
+
+    const session = activeSession;
+    let tenderForRequest = resolveTenderForSession(session);
+    if (overrideTargetTender) {
+      const match = allTenders.find((t) => t.id === overrideTargetTender);
+      if (match) {
+        tenderForRequest = match;
+        setSelectedTender(match);
+      }
+    }
+
+    const isFirstUserTurn = session.messages.filter((m) => m.sender === "user").length === 0;
+    if (isFirstUserTurn && displayText.trim()) {
+      patchActiveSession({ title: deriveTitleFromMessage(displayText) });
+    }
+
     setMessages((prev) => [...prev, userMsg]);
     setIsGenerating(true);
-
-    if (overrideTargetTender) {
-      const match = mockTenders.find((t) => t.id === overrideTargetTender);
-      if (match) setSelectedTender(match);
-    }
 
     if (hasAttachments && attachments!.some((a) => a.name.toLowerCase().endsWith(".pdf"))) {
       setActiveTab("analyzer");
     }
 
-    setTimeout(() => {
-      let replyText = "";
-      let toolName = "";
-      let toolParams: any = {};
-      let toolResult: any = null;
+    const requestLog: PacketLog = {
+      id: `llm-req-${Date.now()}`,
+      timestamp: new Date().toLocaleTimeString(),
+      direction: "host-to-llm",
+      service: "Gemini Model reasoning",
+      payload: {
+        model: llmModel,
+        prompt: displayText,
+        tender_cig: tenderForRequest.cig,
+        profilo: profilo?.ragioneSociale,
+        attachments: attachments?.map((a) => a.name),
+      },
+    };
+    setPackets((prev) => [...prev, requestLog]);
 
-      const lowerText = displayText.toLowerCase();
+    try {
+      const catalogSummary =
+        session.mode === "general"
+          ? allTenders.slice(0, 40).map((t) => ({
+              cig: t.cig,
+              titolo: t.title,
+              regione: t.region,
+              importo: t.value,
+              categoria: t.category,
+            }))
+          : undefined;
 
-      if (hasAttachments) {
-        const names = attachments!.map((a) => a.name).join(", ");
-        const hasPdf = attachments!.some((a) => a.name.toLowerCase().endsWith(".pdf"));
-        replyText = `Ho ricevuto ${attachments!.length} allegato/i dal tuo PC: **${names}**.\n\n`;
-        if (hasPdf) {
-          replyText +=
-            "Sto instradando il PDF all'**Analizzatore Disciplinare** per l'estrazione OCR dei requisiti SOA, penali e criteri di aggiudicazione (simulazione locale).\n\n";
-          toolName = "analizza_disciplinare_pdf";
-          toolParams = { files: attachments!.map((a) => ({ name: a.name, size: a.size })) };
-          toolResult =
-            "Estrazione completata: 4 requisiti qualificazione, 2 penali, 1 anomalia cronoprogramma rilevata.";
-        } else {
-          replyText +=
-            "I file sono associati alla sessione corrente. Posso incrociarli con i dati Supabase o usarli per la redazione dell'offerta tecnica.";
-        }
-      } else if (lowerText.includes("scuola") || lowerText.includes("piccoli passi")) {
-        toolName = "dettagli_bando_cig";
-        toolParams = { cig: "9874563A2B" };
-        toolResult = "Report: Ente Appaltante: Città Metropolitana. Valore: €1.250.000,00. SOA Prevalente: OG1 Class II. Criterio OEPV (70 punti Tecnica, 30 Economica).";
+      const storicoGare =
+        user?.id && session.mode !== "general"
+          ? await fetchStoricoForPrompt(user.id)
+          : undefined;
 
-        // Log Packet
-        const p1: PacketLog = {
-          id: `p-${Date.now()}-1`,
-          timestamp: new Date().toLocaleTimeString(),
-          direction: "host-to-server",
-          service: "ANAC & TED Connector",
-          payload: { jsonrpc: "2.0", method: "tools/call", params: { name: "dettagli_bando_cig", arguments: toolParams }, id: "req-scuola" }
-        };
-        const p2: PacketLog = {
-          id: `p-${Date.now()}-2`,
-          timestamp: new Date().toLocaleTimeString(),
-          direction: "server-to-host",
-          service: "ANAC & TED Connector",
-          payload: { jsonrpc: "2.0", result: { content: [{ type: "text", text: toolResult }] }, id: "req-scuola" }
-        };
-        setPackets((prev) => [...prev, p1, p2]);
+      const result = await requestGaraMasterReply({
+        message: displayText,
+        model: llmModel,
+        chatMode: session.mode,
+        tender: session.mode === "general" ? null : tenderForRequest,
+        profilo,
+        history: messages,
+        attachments,
+        enabledConnectorIds: enabledConnectors,
+        catalogSummary,
+        storicoGare,
+      });
 
-        replyText = `### Analisi Gara Scuola Roma 'Piccoli Passi' (CIG: 9874563A2B)\n\nIn base al disciplinare estratto e alle regole del **D.Lgs. 36/2023 (Nuovo Codice dei Contratti)**, ecco il quadro emerso:\n\n* **Requisito d'Accesso SOA (OG1 II):** L'impresa ha la categoria **OG1 Class III** su Supabase, quindi è pienamente abilitata ad accedere alla gara.\n* **Fatturato Triennale Minimo (€2.000.000,00):** Vi è un **BLOCCANTE**. Lo storico finanziario registrato su Supabase indica che l'impresa ha un fatturato nel triennio di €1.650.000,00 (mancano €350k).\n  * **Soluzione Legale:** È necessario ricorrere all'**Avvalimento** per il requisito carente di fatturato, oppure partecipare mediante **RTI (Raggruppamento Temporaneo d'Imprese)** con un partner idoneo.\n\n* **Criticità / Red Flags Individuate:**\n  1. Il requisito del fatturato specifico richiesto (€2M) appare palesemente **sproporzionato** per un appalto da €1.25M (Art. 10 del Codice sulla massimizzazione della concorrenza).\n  2. Il capitolato speciale prevede l'installazione degli infissi in sole 3 settimane ad agosto. Si raccomanda di sollevare un quesito ufficiale (chiarimenti).\n\n*Clicca sul pulsante in basso per aprire la scheda bando dettagliata ed analizzare le penali.*`;
-      } 
-      else if (lowerText.includes("sicurezza") || lowerText.includes("cam") || lowerText.includes("roma")) {
-        toolName = "bozza_criterio_offerta";
-        toolParams = {
-          titolo_criterio: "Riduzione Impatto Ambientale / CAM",
-          punti_massimi: 15,
-          capitolato_richieste: "Materiali provvisti di etichetta ecologica Tipo I, riduzione CO2 dei trasporti"
-        };
-        toolResult = "### Proposta Tecnica Criterio C: Sostenibilità...\n- Materiali accreditati CAM.";
-
-        const p1: PacketLog = {
-          id: `p-${Date.now()}-3`,
-          timestamp: new Date().toLocaleTimeString(),
-          direction: "host-to-server",
-          service: "technical-proposal-generator",
-          payload: { jsonrpc: "2.0", method: "tools/call", params: { name: "bozza_criterio_offerta", arguments: toolParams }, id: "req-proposal" }
-        };
-        const p2: PacketLog = {
-          id: `p-${Date.now()}-4`,
-          timestamp: new Date().toLocaleTimeString(),
-          direction: "server-to-host",
-          service: "technical-proposal-generator",
-          payload: { jsonrpc: "2.0", result: { content: [{ type: "text", text: toolResult }] }, id: "req-proposal" }
-        };
-        setPackets((prev) => [...prev, p1, p2]);
-
-        replyText = `### Bozza per Criterio C: Riduzione Impatto Ambientale (Punteggio Max: 15 Punti)\nGenerata incrociando i requisiti del capitolato con le soluzioni tecniche sostenibili approvate:\n\n#### C.1 Impiego di Materiali provvisti di Certificazione Ecologica (CAM)\nLa scrivente impresa si impegna formalmente a garantire l'approvvigionamento del **100% dei materiali isolanti termoacustici** conformi al paragrafo 2.4.2.9 dei Criteri Ambientali Minimi (CAM). In particolare:\n- **Poliuretano espanso e lane minerali:** provvisti di dichiarazione EPD (Environmental Product Declaration) di Tipo III rilasciata da ente indipendente.\n- **Legname strutturale:** certificato FSC o PEFC tracciabile lungo tutta la filiera.\n\n#### C.2 Ottimizzazione dei Trasporti e Logistica a Km Zero\nAl fine di ridurre l'impronta di carbonio (carbon footprint) derivante dai cicli di trasporto, l'impresa stabilirà la centrale di conferimento macerie ed il fornitore di calcestruzzo primario in un raggio inferiore a **15 km dal cantiere di Roma**.\n- Sarò predisposta una piattaforma software per il calcolo e monitoraggio mensile delle emissioni equivalenti di CO2 dovute ai trasporti.`;
-      } 
-      else if (lowerText.includes("soa") || lowerText.includes("bologna") || lowerText.includes("og3")) {
-        toolName = "verifica_requisiti_impresa";
-        toolParams = { cig_gara: "A045B899C5" };
-        toolResult = "Report SP12: SOA OG3 Classifica IV richiesta. Posseduto: OG3 Classifica III -> CARENTE DI CLASSIFICA.";
-
-        const p1: PacketLog = {
-          id: `p-${Date.now()}-5`,
-          timestamp: new Date().toLocaleTimeString(),
-          direction: "host-to-server",
-          service: "Supabase Gara Historian",
-          payload: { jsonrpc: "2.0", method: "tools/call", params: { name: "verifica_requisiti_impresa", arguments: toolParams }, id: "req-requisiti-sp12" }
-        };
-        const p2: PacketLog = {
-          id: `p-${Date.now()}-6`,
-          timestamp: new Date().toLocaleTimeString(),
-          direction: "server-to-host",
-          service: "Supabase Gara Historian",
-          payload: { jsonrpc: "2.0", result: { content: [{ type: "text", text: toolResult }] }, id: "req-requisiti-sp12" }
-        };
-        setPackets((prev) => [...prev, p1, p2]);
-
-        replyText = `### Verifica Requisiti: Gara SP12 Bologna (Ampliamento Viario - Valore: €3.8M)\nIl nostro database Supabase indica che la tua impresa ha **OG3 Classifica III** (fino a €1.033.000). Il bando richiede **OG3 Classifica IV** (fino a €2.582.000). Abbiamo una carenza di classifica.\n\n#### Strategia D'Appalto Consigliata in base al D.Lgs. 36/2023:\n\n1. **AVVALIMENTO TECNICO-OPERATIVO (Art. 104):** Puoi stipulare un contratto di avvalimento con un'impresa ausiliaria che possiede l'attestazione OG3 Classifica IV o superiore. L'ausiliaria 'presterà' il proprio requisito a fronte di un corrispettivo ed un visualizzazione cantiere.\n2. **RTI ORIZZONTALE (Costituzione Associazione Temporanea):** Puoi aggregarti con un'altra impresa stradale in grado di coprire la percentuale mancante. L'impresa principale (capogruppo) deve possedere almeno il 40% dei requisiti cumulati, e la mandante almeno il 10%.\n3. **SUBAPPALTO QUALIFICANTE (Art. 119):** Questa opzione è praticabile solo nel caso in cui la tua qualifica copra la quota residua, potendo subappaltare l'eccedenza di esecuzione a un operatore partner prescelto.`;
-      } 
-      else {
-        // General text reply
-        toolName = "recupera_esperienze_simili";
-        toolParams = { categoria_soa: "OG1" };
-        toolResult = "Nessun bando specifico specificato. Estrazione relazioni generiche OG1 dal database.";
-
-        replyText = `Ho compreso la tua richiesta! \n\nPer un'applicazione d'appalto avanzata come "Gara Master", l'integrazione di un LLM con **MCP (Model Context Protocol)** ti permette di richiamare in tempo reale i connettori legali. \n\nCosa vorresti simulare ora?\n\n1. Digita **"Analizza bando Piccoli Passi"** per simulare l'estrazione semantica di un disciplinare.\n2. Digita **"requisiti Bologna"** per vedere come l'agente rileva la mancanza della SOA OG3 e propone la soluzione legale.\n3. Digita **"Crea bozza per Criterio Sicurezza"** per redigere l'offerta tecnica basandoti sui CAM.\n\n*Puoi anche esplorare la scheda **"Connettori MCP"** nel menu a sinistra per lanciare singolarmente i tool e ispezionare i record JSON, oppure leggere la scheda **"Guida Sviluppatore"** con gli schemi SQL per Supabase.*`;
-      }
+      const { displayText: assistantDisplayText, statePatch } =
+        session.mode === "offer_preparation"
+          ? parseOfferStateFromAssistantText(result.text)
+          : { displayText: result.text, statePatch: null };
 
       const assistantMsg: Message = {
         id: `msg-agent-${Date.now()}`,
         sender: "assistant",
-        text: replyText,
+        text: assistantDisplayText,
         timestamp: new Date(),
-        toolUsage: toolName ? {
-          toolName,
-          params: toolParams,
-          result: toolResult,
-        } : undefined,
       };
 
-      setMessages((prev) => [...prev, assistantMsg]);
-      setIsGenerating(false);
+      const updatedMessages = [...messages, userMsg, assistantMsg];
+      setMessages(updatedMessages);
 
-      // Add a system log matching LLM reasoning output
-      const llmLog: PacketLog = {
-        id: `llm-${Date.now()}`,
-        timestamp: new Date().toLocaleTimeString(),
-        direction: "host-to-llm",
-        service: "Gemini Model reasoning",
-        payload: {
-          prompt: text,
-          reasoning_steps: [
-            "Analisi token di input in lingua italiana",
-            toolName ? `Intercettazione keyword: Generazione chiamata MCP a '${toolName}'` : "Nessun trigger tool, esecuzione risposta di default generica",
-            "Sintesi risposta combinata con riferimenti a Codice Contratti Pubblici D.Lgs. 36/2023"
-          ],
+      const offerPreparation =
+        session.mode === "offer_preparation" && statePatch
+          ? mergeOfferPreparationState(
+              session.offerPreparation ?? createInitialOfferState(),
+              statePatch
+            )
+          : session.offerPreparation;
+
+      const sessionAfter = {
+        ...session,
+        messages: updatedMessages,
+        title: isFirstUserTurn && displayText.trim() ? deriveTitleFromMessage(displayText) : session.title,
+        offerPreparation,
+      };
+
+      if (offerPreparation && session.mode === "offer_preparation") {
+        patchActiveSession({ offerPreparation });
+      }
+
+      if (supabaseConfigured && user?.id) {
+        setConversazioneSaveStatus("saving");
+        setConversazioneSaveError(null);
+        persistSession(sessionAfter, user.id, tenderForRequest)
+          .then((id) => {
+            if (id) patchActiveSession({ supabaseId: id });
+            setConversazioneSaveStatus("saved");
+          })
+          .catch((saveError) => {
+            const message =
+              saveError instanceof Error ? saveError.message : "Salvataggio non riuscito";
+            console.error("[GaraMaster] Salvataggio conversazione fallito:", message);
+            setConversazioneSaveStatus("error");
+            setConversazioneSaveError(message);
+          });
+      } else {
+        setConversazioneSaveStatus("skipped");
+        saveLocalSessions(
+          chatSessions.map((s) =>
+            s.id === activeSessionId ? { ...sessionAfter, updatedAt: new Date().toISOString() } : s
+          )
+        );
+      }
+
+      setPackets((prev) => [
+        ...prev,
+        {
+          id: `llm-res-${Date.now()}`,
+          timestamp: new Date().toLocaleTimeString(),
+          direction: "llm-to-host",
+          service: "Gemini Model reasoning",
+          payload: { model: result.model, chars: result.text.length },
         },
-      };
-      setPackets((prev) => [...prev, llmLog]);
-    }, 1200);
+      ]);
+
+      if (user?.id && supabaseConfigured && session.mode !== "general") {
+        const ribasso =
+          extractRibassoPercent(displayText) ??
+          extractRibassoPercent(assistantDisplayText);
+        void saveStoricoAnalisi({
+          userId: user.id,
+          tenderId: tenderForRequest.id,
+          cig: tenderForRequest.cig,
+          titoloGara: tenderForRequest.title,
+          tipoAnalisi:
+            session.mode === "offer_preparation" ? "preparazione_offerta" : "chat",
+          ribassoOfferto: ribasso,
+          noteAi: assistantDisplayText.slice(0, 4000),
+        });
+      }
+    } catch (error) {
+      const errText =
+        error instanceof Error ? error.message : "Errore sconosciuto dal server LLM.";
+      const isTemporaryOverload =
+        /sovraccarico|503|429|high demand|UNAVAILABLE|troppe richieste|rate.?limit|temporarily rate-limited|saturi/i.test(
+          errText
+        );
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `msg-error-${Date.now()}`,
+          sender: "assistant",
+          text: isTemporaryOverload
+            ? `### Servizio LLM momentaneamente occupato\n\n${errText}\n\n**L'app funziona:** login, gare e Supabase non sono coinvolti. Attendi 1–2 minuti e **reinvia il messaggio**.`
+            : `### Impossibile contattare l'LLM\n\n${errText}\n\nVerifica \`npm run dev\` su http://localhost:3000 e \`OPENROUTER_API_KEY\` in \`.env.local\`.`,
+          timestamp: new Date(),
+        },
+      ]);
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
-  const filteredTenders = mockTenders.filter(t => 
+  const filteredTenders = allTenders.filter((t) =>
     t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     t.cig.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const engineShortcuts = useMemo(
+    () =>
+      buildEngineShortcuts({
+        onNewChat: () => {
+          handleNewGeneralChat();
+          setActiveTab("chat");
+        },
+        onNewTenderChat: () => {
+          handleNewTenderChat();
+          setActiveTab("chat");
+        },
+        onOfferPrep: () => handleStartOfferPreparation(selectedTender),
+        onBidNoBid: () => setIsBidNoBidOpen(true),
+        onBidPricing: () => setIsBidPricingOpen(true),
+        onRtiAvvalimento: () => setIsRtiAvvalimentoOpen(true),
+        onVessatorie: () => setIsVessatorieOpen(true),
+        onCapacity: () => setIsCapacityOpen(true),
+        onProfitability: () => setIsProfitabilityOpen(true),
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedTender.id, chatSessions.length]
+  );
+
+  const handleRefreshDashboard = async () => {
+    setDashboardRefreshing(true);
+    try {
+      await Promise.all([refreshData(), refreshDailyFeed()]);
+    } finally {
+      setDashboardRefreshing(false);
+    }
+  };
+
+  const navigateTo = (tab: AppTab) => {
+    setActiveTab(tab);
+    setIsNavMenuOpen(false);
+    if (tab === "feed") void refreshDailyFeed();
+  };
 
   return (
     <div className="min-h-screen bg-black flex text-white font-sans selection:bg-brand-gold selection:text-black" id="main-gpt-layout">
@@ -396,9 +729,50 @@ export default function App() {
         id="gpt-left-sidebar"
       >
         <div className="flex flex-col items-center gap-2 p-3 h-screen sticky top-0 w-[72px]">
-          <div className="w-10 h-10 rounded-lg bg-brand-gold p-1.5 flex items-center justify-center font-bold text-black shadow-md text-sm">
-            GM
-          </div>
+          <button
+            type="button"
+            onClick={() => navigateTo("home")}
+            className={`cursor-pointer w-10 h-10 rounded-lg p-1.5 flex items-center justify-center font-bold shadow-md text-sm transition-colors ${
+              activeTab === "home"
+                ? "bg-brand-gold text-black"
+                : "bg-neutral-900 border border-neutral-800 text-brand-gold hover:border-brand-gold"
+            }`}
+            title="Home"
+            id="nav-home-btn"
+          >
+            <Home className="w-5 h-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => navigateTo("scouting")}
+            className={`cursor-pointer w-10 h-10 rounded-lg p-1.5 flex items-center justify-center transition-colors ${
+              activeTab === "scouting"
+                ? "bg-emerald-500 text-black"
+                : "bg-neutral-900 border border-neutral-800 text-emerald-400 hover:border-emerald-500"
+            }`}
+            title="Scouting Gare"
+            id="nav-scouting-btn"
+          >
+            <Target className="w-5 h-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => navigateTo("feed")}
+            className={`cursor-pointer w-10 h-10 rounded-lg p-1.5 flex items-center justify-center transition-colors relative ${
+              activeTab === "feed"
+                ? "bg-amber-500 text-black"
+                : "bg-neutral-900 border border-neutral-800 text-amber-400 hover:border-amber-500"
+            }`}
+            title="Alert & Daily Feed"
+            id="nav-feed-btn"
+          >
+            <Bell className="w-5 h-5" />
+            {dailyFeed && dailyFeed.totalAlerts > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-0.5 rounded-full bg-red-500 text-[8px] font-bold text-white flex items-center justify-center">
+                {dailyFeed.totalAlerts > 9 ? "9+" : dailyFeed.totalAlerts}
+              </span>
+            )}
+          </button>
           <button
             type="button"
             onClick={() => setIsNavMenuOpen((open) => !open)}
@@ -443,6 +817,17 @@ export default function App() {
                 D.LGS 36/2023 EDITION
               </span>
             </div>
+
+            {user?.id && (
+              <div className="px-3 pt-3">
+                <TenderPortfolioScore
+                  userId={user.id}
+                  profilo={profilo}
+                  tenders={allTenders}
+                  compact
+                />
+              </div>
+            )}
 
             <div className="p-3 space-y-4">
               <section>
@@ -511,10 +896,48 @@ export default function App() {
                   <li>
                     <button
                       type="button"
-                      onClick={() => {
-                        setActiveTab("chat");
-                        setIsNavMenuOpen(false);
-                      }}
+                      onClick={() => navigateTo("home")}
+                      className={`cursor-pointer hover:text-brand-gold transition-colors flex items-center gap-1.5 ${
+                        activeTab === "home" ? "text-white font-bold" : "text-slate-300"
+                      }`}
+                    >
+                      <Home className="w-3 h-3 text-brand-gold shrink-0" />
+                      Home / Dashboard
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => navigateTo("scouting")}
+                      className={`cursor-pointer hover:text-brand-gold transition-colors flex items-center gap-1.5 ${
+                        activeTab === "scouting" ? "text-white font-bold" : "text-slate-300"
+                      }`}
+                    >
+                      <Target className="w-3 h-3 text-brand-gold shrink-0" />
+                      Scouting Gare
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => navigateTo("feed")}
+                      className={`cursor-pointer hover:text-brand-gold transition-colors flex items-center gap-1.5 ${
+                        activeTab === "feed" ? "text-white font-bold" : "text-slate-300"
+                      }`}
+                    >
+                      <Bell className="w-3 h-3 text-brand-gold shrink-0" />
+                      Alert &amp; Daily Feed
+                      {dailyFeed && dailyFeed.totalAlerts > 0 && (
+                        <span className="text-[9px] font-bold bg-brand-gold text-black px-1.5 rounded-full">
+                          {dailyFeed.totalAlerts}
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => navigateTo("chat")}
                       className={`cursor-pointer hover:text-brand-gold transition-colors ${
                         activeTab === "chat" ? "text-white font-bold" : "text-slate-300"
                       }`}
@@ -525,10 +948,7 @@ export default function App() {
                   <li>
                     <button
                       type="button"
-                      onClick={() => {
-                        setActiveTab("analyzer");
-                        setIsNavMenuOpen(false);
-                      }}
+                      onClick={() => navigateTo("analyzer")}
                       className={`cursor-pointer hover:text-brand-gold transition-colors ${
                         activeTab === "analyzer" ? "text-white font-bold" : "text-slate-300"
                       }`}
@@ -539,10 +959,7 @@ export default function App() {
                   <li>
                     <button
                       type="button"
-                      onClick={() => {
-                        setActiveTab("profile");
-                        setIsNavMenuOpen(false);
-                      }}
+                      onClick={() => navigateTo("profile")}
                       className={`cursor-pointer hover:text-brand-gold transition-colors ${
                         activeTab === "profile" ? "text-white font-bold" : "text-slate-300"
                       }`}
@@ -555,10 +972,7 @@ export default function App() {
                       <li>
                         <button
                           type="button"
-                          onClick={() => {
-                            setActiveTab("mcp");
-                            setIsNavMenuOpen(false);
-                          }}
+                          onClick={() => navigateTo("mcp")}
                           className={`cursor-pointer hover:text-brand-gold transition-colors ${
                             activeTab === "mcp" ? "text-white font-bold" : "text-slate-300"
                           }`}
@@ -569,10 +983,7 @@ export default function App() {
                       <li>
                         <button
                           type="button"
-                          onClick={() => {
-                            setActiveTab("guide");
-                            setIsNavMenuOpen(false);
-                          }}
+                          onClick={() => navigateTo("guide")}
                           className={`cursor-pointer hover:text-brand-gold transition-colors ${
                             activeTab === "guide" ? "text-white font-bold" : "text-slate-300"
                           }`}
@@ -756,12 +1167,12 @@ export default function App() {
                 </h2>
                 <ul className="list-disc list-inside space-y-1.5 text-[11px] marker:text-brand-gold">
                   {filteredTenders.map((tender) => (
-                    <li key={tender.id}>
+                    <li key={tender.id} className="space-y-0.5">
                       <button
                         type="button"
                         onClick={() => {
                           setSelectedTender(tender);
-                          handleNewChat();
+                          addSession(createChatSession("tender", tender));
                           setIsNavMenuOpen(false);
                         }}
                         className={`cursor-pointer text-left hover:text-brand-gold transition-colors truncate max-w-[220px] ${
@@ -775,6 +1186,14 @@ export default function App() {
                         {tender.title
                           .replace("Riqualificazione Energetica dell'", "")
                           .replace("Ampliamento Asse Viario e Sottoservizi - ", "")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleStartOfferPreparation(tender)}
+                        className="cursor-pointer block text-[10px] text-emerald-400/90 hover:text-emerald-300 font-semibold pl-4"
+                        id={`tender-prepare-offer-${tender.id}`}
+                      >
+                        Prepara offerta →
                       </button>
                     </li>
                   ))}
@@ -800,11 +1219,25 @@ export default function App() {
                     </button>
                   </li>
                   <li>
-                    <span className="text-white font-semibold">Tony Gallitto</span>
+                    <span className="text-white font-semibold">
+                      {profilo?.ragioneSociale ?? "Utente GaraMaster"}
+                    </span>
                     <span className="block text-[10px] text-slate-500 font-mono truncate">
-                      tonygallitto@nomediagency.it
+                      {user?.email ?? "—"}
                     </span>
                   </li>
+                  {supabaseConfigured && (
+                    <li>
+                      <button
+                        type="button"
+                        onClick={() => signOut()}
+                        className="cursor-pointer hover:text-red-400 transition-colors flex items-center gap-1"
+                      >
+                        <LogOut className="w-3 h-3" />
+                        Esci
+                      </button>
+                    </li>
+                  )}
                   <li>
                     <button
                       type="button"
@@ -846,20 +1279,100 @@ export default function App() {
         
         {/* Dynamic Inner Tab Switcher Display Area */}
         <div className="flex-1 overflow-hidden p-4 sm:p-5 flex flex-col">
+          {activeTab === "home" && (
+            <div className="h-full overflow-hidden rounded-2xl border border-neutral-800 bg-black">
+              <HomeDashboard
+                profilo={profilo}
+                userEmail={user?.email}
+                userId={user?.id}
+                tenders={allTenders}
+                selectedTender={selectedTender}
+                chatSessionsCount={chatSessions.length}
+                dailyFeed={dailyFeed}
+                dailyFeedLoading={dailyFeedLoading}
+                supabaseConfigured={supabaseConfigured}
+                dataError={dataError}
+                onNavigate={navigateTo}
+                onRefreshAll={() => void handleRefreshDashboard()}
+                isRefreshing={dashboardRefreshing || dailyFeedLoading}
+                engineShortcuts={engineShortcuts}
+              />
+            </div>
+          )}
+
+          {activeTab === "scouting" && (
+            <div className="h-full overflow-hidden rounded-2xl border border-neutral-800 bg-black">
+              <ScoutingGareApp
+                userId={user?.id}
+                profilo={profilo}
+                onOpenInChat={(gareAnacId, cig) => void handleFeedSelectAnac(gareAnacId, cig)}
+                onAfterSync={handleAfterAnacSync}
+              />
+            </div>
+          )}
+
+          {activeTab === "feed" && (
+            <div className="h-full overflow-hidden rounded-2xl border border-neutral-800 bg-black">
+              <AlertDailyFeed
+                feed={dailyFeed}
+                loading={dailyFeedLoading}
+                error={dailyFeedError}
+                onRefresh={() => {
+                  if (user?.id) void refreshDailyFeed();
+                  else void refreshData();
+                }}
+                onSelectGara={handleFeedSelectGara}
+                onSelectAnac={handleFeedSelectAnac}
+                onOpenOfferPrep={handleFeedOpenOfferPrep}
+              />
+            </div>
+          )}
+
           {activeTab === "chat" && (
-            <div className="flex h-full overflow-hidden gap-4 relative">
-              
-              <div className="flex-1 min-w-0 h-full flex flex-col overflow-hidden">
+            <div className="flex h-full overflow-hidden gap-3 relative">
+              <ChatSessionsSidebar
+                sessions={chatSessions}
+                activeSessionId={activeSessionId}
+                onSelect={handleSelectSession}
+                onNewGeneral={handleNewGeneralChat}
+                onNewTender={handleNewTenderChat}
+                onDelete={handleDeleteSession}
+              />
+
+              <div className="flex-1 min-w-0 h-full flex flex-col overflow-hidden gap-3">
+                {user?.id && (
+                  <TenderPortfolioScore
+                    userId={user.id}
+                    profilo={profilo}
+                    tenders={allTenders}
+                    compact
+                  />
+                )}
+                {activeTender.id !== GENERAL_CHAT_TENDER.id && (
+                  <div className="lg:hidden shrink-0">
+                    <GaraRoiCalculator tender={activeTender} profilo={profilo} />
+                  </div>
+                )}
                 <ChatWorkspace
                   messages={messages}
                   onSendMessage={handleSendMessage}
                   isGenerating={isGenerating}
                   onSelectTender={setSelectedTender}
-                  selectedTender={selectedTender}
+                  selectedTender={activeTender}
+                  chatMode={activeSession.mode}
                   setActiveTab={setActiveTab}
                   onAddPacket={handleAddPacket}
                   isRibassoOpen={isRibassoOpen}
                   setIsRibassoOpen={setIsRibassoOpen}
+                  conversazioneSaveStatus={conversazioneSaveStatus}
+                  conversazioneSaveError={conversazioneSaveError}
+                  enabledConnectorIds={enabledConnectors}
+                  onToggleConnector={handleToggleConnector}
+                  onRunConnector={handleRunConnector}
+                  offerPreparation={activeSession.offerPreparation}
+                  onToggleOfferChecklistItem={handleToggleOfferChecklistItem}
+                  profilo={profilo}
+                  onOpenRtiAvvalimento={() => setIsRtiAvvalimentoOpen(true)}
                 />
               </div>
 
@@ -912,7 +1425,9 @@ export default function App() {
                   </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-4 scrollbar-thin space-y-1">
+                <div className="flex-1 overflow-y-auto p-4 scrollbar-thin space-y-3">
+                  <GaraRoiCalculator tender={activeTender} profilo={profilo} sidebar />
+
                   <SidebarDropdownSection
                     title="Requisiti analizzati"
                     badge={
@@ -989,6 +1504,28 @@ export default function App() {
                     onToggle={() => toggleRightSection("azioni")}
                   >
                     <ul className="list-disc list-inside space-y-2 text-[11px] marker:text-brand-gold">
+                      <li>
+                        <button
+                          type="button"
+                          onClick={() => handleStartOfferPreparation(selectedTender)}
+                          className="cursor-pointer text-emerald-400 hover:text-emerald-300 font-bold transition-colors text-left flex items-center gap-1.5"
+                          id="prepare-offer-sidebar-btn"
+                        >
+                          <FileText className="w-3 h-3 shrink-0" />
+                          Prepara offerta (guidata)
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          onClick={() => setIsRtiAvvalimentoOpen(true)}
+                          className="cursor-pointer text-slate-300 hover:text-brand-gold transition-colors text-left flex items-center gap-1.5"
+                          id="rti-avvalimento-sidebar-btn"
+                        >
+                          <Users className="w-3 h-3 text-brand-gold shrink-0" />
+                          RTI &amp; Avvalimento Configurator
+                        </button>
+                      </li>
                       <li>
                         <button
                           type="button"
@@ -1088,6 +1625,14 @@ export default function App() {
                 selectedTender={selectedTender}
                 onSelectTender={setSelectedTender}
                 onAddCustomTender={handleAddCustomTender}
+                userId={user?.id}
+                profilo={profilo}
+                supabaseConfigured={supabaseConfigured}
+                catalogTenders={allTenders}
+                onGaraSaved={async (tender) => {
+                  setSelectedTender(tender);
+                  await refreshData();
+                }}
               />
             </div>
           )}
@@ -1144,6 +1689,16 @@ export default function App() {
 
           {activeTab === "profile" && (
             <div className="h-full overflow-y-auto p-2">
+              {user?.id && (
+                <div className="mb-4">
+                  <TenderPortfolioScore
+                    userId={user.id}
+                    profilo={profilo}
+                    tenders={allTenders}
+                  />
+                </div>
+              )}
+
               <div className="mb-4 bg-black border border-neutral-800 p-4 rounded-xl flex items-center justify-between">
                 <div>
                   <h2 className="text-sm font-bold text-white uppercase flex items-center gap-1.5">
@@ -1159,6 +1714,17 @@ export default function App() {
                   Torna alla Chat
                 </button>
               </div>
+
+              {user?.id && (
+                <div className="mb-4 space-y-4">
+                  <SoaGapForecastPanel
+                    userId={user.id}
+                    profilo={profilo}
+                    tenders={allTenders}
+                  />
+                  <HistoricalKnowledgePanel userId={user.id} profilo={profilo} />
+                </div>
+              )}
 
               <CompanyProfile />
             </div>
@@ -1301,6 +1867,13 @@ export default function App() {
           </div>
         </div>
       )}
+
+      <RtiAvvalimentoConfigurator
+        tender={activeTender}
+        profilo={profilo}
+        isOpen={isRtiAvvalimentoOpen}
+        onClose={() => setIsRtiAvvalimentoOpen(false)}
+      />
 
       <BidNoBidEngine
         tender={selectedTender}

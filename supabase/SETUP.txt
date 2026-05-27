@@ -1,0 +1,35 @@
+GaraMaster AI — setup nuovo progetto Supabase
+=============================================
+
+1) Crea progetto su https://supabase.com/dashboard
+   - Nome: es. garamaster-ai
+   - Regione: West EU (Frankfurt) o più vicina all'Italia
+   - Salva la password del database
+
+2) SQL Editor → incolla e RUN il file: supabase/schema.sql
+   (se il DB esiste già: vedi supabase/CHECKLIST-SQL.md)
+   Solo chat mancante: supabase/solo-conversazioni_ai.sql
+
+3) Authentication → Providers
+   - Email: ON (già attivo)
+   - Google: ON + Client ID/Secret da Google Cloud
+
+4) Authentication → URL Configuration
+   - Site URL: http://localhost:3000
+   - Redirect URLs: http://localhost:3000/**
+
+5) Settings → General → copia "Reference ID"
+   Settings → API Keys → copia "Publishable key" (sb_publishable_...)
+
+6) .env.local (nella root del progetto):
+
+   VITE_SUPABASE_PROJECT_REF=il_tuo_reference_id
+   VITE_SUPABASE_ANON_KEY=sb_publishable_...
+
+   (oppure VITE_SUPABASE_URL=https://REF.supabase.co)
+
+7) Terminale:
+   npm run dev
+   → http://localhost:3000
+
+8) Registrati nell'app → viene creato profili_impresa automaticamente

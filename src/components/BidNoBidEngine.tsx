@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { X, RefreshCw, CheckCircle, XCircle, AlertTriangle, Loader2 } from "lucide-react";
 import type { TenderDocument, CompanyProfile, BidNoBidResult } from "../types";
 import { runBidNoBid } from "../lib/gemini";
+import { ExplainabilityLayer } from "./ExplainabilityLayer";
 
 interface BidNoBidEngineProps {
   tender: TenderDocument;
@@ -249,6 +250,8 @@ export function BidNoBidEngine({ tender, isOpen, onClose }: BidNoBidEngineProps)
                   Rigenera analisi
                 </button>
               )}
+
+              {result.explainability && <ExplainabilityLayer data={result.explainability} />}
 
               {/* Footer */}
               <p className="text-[10px] text-slate-600 pt-2 border-t border-neutral-900">
