@@ -242,6 +242,7 @@ export interface CompanyProfile {
   oreGiornaliereSquadra: number;
   rendimentoSquadrePercent: number;
   giorniLavorativiSettimana: number;
+  durataMediaCantieriMesi: number;
 
   // Mezzi e risorse operative
   availableResources?: CompanyAvailableResource[];
@@ -356,6 +357,11 @@ export interface CapacityAnalysisResult {
   oreDisponibiliStimate: number;
   oreRichiesteStimate: number;
   produttivitaSufficiente: boolean;
+  tempiAnalisi: string;
+  durataGaraStimataSettimane: number;
+  meseLiberazioneRisorse: number;
+  compatibilitaTemporale: "ottima" | "accettabile" | "critica" | "incompatibile";
+  sovrapposizioneRischio: boolean;
   rischioAlert: string | null;
   suggerimentoOperativo: string;
   generatedAt: string;
@@ -397,6 +403,20 @@ export interface ProfitabilityGateResult {
 
 export type BidDecision = "GO" | "CAUTELA" | "NO-GO";
 
+export interface SOADecisionDetail {
+  categorieRichieste: string[];
+  categorieImpresa: string[];
+  categorieCompatibili: string[];
+  categorieGap: string[];
+  classificaAdeguata: boolean;
+  classificaRichiesta: string;
+  classificaPosseduta: string;
+  incrementoQuintoApplicabile: boolean;
+  esito: "PIENA_COPERTURA" | "COPERTURA_PARZIALE" | "GAP_COLMABILE" | "GAP_CRITICO";
+  motivazione: string;
+  azioneConsigliata: string;
+}
+
 export interface BidNoBidResult {
   decision: BidDecision;
   scoreComplessivo: number;
@@ -406,6 +426,7 @@ export interface BidNoBidResult {
   criticitaPrincipale: string;
   suggerimento: string;
   soaCompatibile: boolean;
+  soaDetail: SOADecisionDetail;
   capacitaSufficiente: boolean;
   areaGeograficaOk: boolean;
   importoInTarget: boolean;

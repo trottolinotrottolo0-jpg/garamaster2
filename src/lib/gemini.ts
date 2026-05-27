@@ -72,6 +72,19 @@ Il JSON deve rispettare esattamente questa struttura:
   "criticitaPrincipale": string,
   "suggerimento": string,
   "soaCompatibile": boolean,
+  "soaDetail": {
+    "categorieRichieste": string[] (categorie SOA che la gara richiede, estrai dai requisiti),
+    "categorieImpresa": string[] (categorie SOA del profilo impresa, lista codici),
+    "categorieCompatibili": string[] (intersezione: categorie richieste che l'impresa ha),
+    "categorieGap": string[] (categorie richieste che mancano all'impresa),
+    "classificaAdeguata": boolean (la classifica copre l'importo gara?),
+    "classificaRichiesta": string (es. "III-bis" basata sull'importo gara),
+    "classificaPosseduta": string (classifica più alta posseduta per la categoria prevalente),
+    "incrementoQuintoApplicabile": boolean (il +20% ex art. 104 D.Lgs. 36/2023 copre il gap di classifica?),
+    "esito": "PIENA_COPERTURA" | "COPERTURA_PARZIALE" | "GAP_COLMABILE" | "GAP_CRITICO",
+    "motivazione": string (2-3 frasi leggibili sull'analisi SOA),
+    "azioneConsigliata": string (azione concreta: avvalimento, RTI, nessuna, non partecipare)
+  },
   "capacitaSufficiente": boolean,
   "areaGeograficaOk": boolean,
   "importoInTarget": boolean,
@@ -89,6 +102,20 @@ Considera questi fattori nell'ordine:
 3. Importo gara vs range target impresa — peso 20%
 4. Capacità operativa (cantieri aperti, squadre disponibili) — peso 15%
 5. Anomalie e penali rilevate nel disciplinare — peso 10%
+
+Logica SOADecisionDetail:
+- Estrai categorieRichieste dai requisiti gara (campo category SOA nei requirements)
+- Estrai categorieImpresa dalle soaCategories del profilo (lista dei code)
+- classificaRichiesta: basati sull'importo gara usando la tabella classifiche SOA italiana:
+  I: fino a €258k, II: fino a €516k, III: fino a €1.033M, III-bis: fino a €1.5M,
+  IV: fino a €2.582M, IV-bis: fino a €3.5M, V: fino a €5.165M, VI: fino a €10.329M,
+  VII: fino a €15.494M, VIII: oltre €15.494M
+- incrementoQuintoApplicabile: true se classificaPosseduta + 20% copre l'importo (art. 104 D.Lgs. 36/2023)
+- esito:
+  - PIENA_COPERTURA: tutte le categorie richieste presenti e classifica adeguata
+  - COPERTURA_PARZIALE: categorie presenti ma classifica al limite (incremento quinto necessario)
+  - GAP_COLMABILE: categorie mancanti ma recuperabili con avvalimento o RTI
+  - GAP_CRITICO: gap SOA strutturale non colmabile o impresa priva di qualsiasi categoria richiesta
 
 PROFILO IMPRESA:
 ${JSON.stringify(profile, null, 2)}
@@ -287,6 +314,11 @@ Struttura JSON:
   "oreDisponibiliStimate": number (ore totali che le squadre libere possono dedicare entro la durata stimata della gara),
   "oreRichiesteStimate": number (ore stimate per completare i lavori basandosi su importo e categoria),
   "produttivitaSufficiente": boolean,
+  "tempiAnalisi": string (2-3 frasi sulla compatibilità temporale tra gara e cantieri in corso),
+  "durataGaraStimataSettimane": number (stima durata gara in settimane basata su importo e categoria),
+  "meseLiberazioneRisorse": number (mesi prima che i cantieri attuali si liberino in media),
+  "compatibilitaTemporale": "ottima" | "accettabile" | "critica" | "incompatibile",
+  "sovrapposizioneRischio": boolean,
   "rischioAlert": string | null,
   "suggerimentoOperativo": string (azione concreta, es. "Assumi 2 operai prima di partecipare" o "Chiudi cantiere X prima di aprire questo"),
   ${EXPLAINABILITY_JSON_INLINE}
@@ -316,12 +348,24 @@ Logica produttività:
 - Se profile.rendimentoSquadrePercent = 0, usa default 100
 - produttivitaSufficiente = oreDisponibiliStimate >= oreRichiesteStimate
 
+Logica tempi:
+- durataGaraStimataSettimane: ogni €100k importo ≈ 4 settimane (OG standard), arrotonda al multiplo di 2
+- meseLiberazioneRisorse = durataMediaCantieriMesi del profilo (se 0 usa 3 come default)
+- durataGaraStimataSettimane in mesi = durataGaraStimataSettimane / 4.3
+- compatibilitaTemporale:
+  - "ottima": cantieri si liberano prima dell'inizio stimato gara (meseLib < 1)
+  - "accettabile": sovrapposizione < 50% della durata gara
+  - "critica": sovrapposizione >= 50% della durata gara
+  - "incompatibile": cantieri durano più della gara intera (meseLib >= durataGaraMesi)
+- sovrapposizioneRischio = compatibilitaTemporale è "critica" o "incompatibile"
+
 PROFILO IMPRESA:
 ${JSON.stringify(profile, null, 2)}
 
 - Ore/giorno per squadra: ${profile.oreGiornaliereSquadra || 8}
 - Rendimento squadre: ${profile.rendimentoSquadrePercent || 100}%
 - Giorni lavorativi/settimana: ${profile.giorniLavorativiSettimana || 5}
+- Durata media cantieri in corso: ${profile.durataMediaCantieriMesi || 6} mesi
 
 DATI GARA:
 - Titolo: ${tender.title}

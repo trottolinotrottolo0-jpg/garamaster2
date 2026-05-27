@@ -239,6 +239,84 @@ export function BidNoBidEngine({ tender, isOpen, onClose }: BidNoBidEngineProps)
                 <CheckPill label="Capacità operativa" ok={result.capacitaSufficiente} />
               </div>
 
+              {/* SOA Detail */}
+              {result.soaDetail && (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-[9px] font-extrabold uppercase tracking-widest text-slate-500">
+                      Analisi SOA dettagliata
+                    </h3>
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded border font-mono ${
+                      result.soaDetail.esito === "PIENA_COPERTURA"
+                        ? "bg-emerald-950/40 border-emerald-800 text-emerald-400"
+                        : result.soaDetail.esito === "COPERTURA_PARZIALE"
+                        ? "bg-blue-950/40 border-blue-800 text-blue-400"
+                        : result.soaDetail.esito === "GAP_COLMABILE"
+                        ? "bg-amber-950/40 border-amber-800 text-amber-400"
+                        : "bg-red-950/40 border-red-800 text-red-400"
+                    }`}>
+                      {result.soaDetail.esito.replace(/_/g, " ")}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 text-[10px]">
+                    <div>
+                      <span className="text-slate-500 uppercase font-bold block mb-1">Richieste dalla gara</span>
+                      {result.soaDetail.categorieRichieste.length > 0
+                        ? result.soaDetail.categorieRichieste.map((c, i) => (
+                            <span key={i} className="inline-block bg-neutral-900 border border-neutral-700 text-white font-mono px-1.5 py-0.5 rounded mr-1 mb-1">{c}</span>
+                          ))
+                        : <span className="text-slate-500 italic">Non specificate</span>
+                      }
+                    </div>
+                    <div>
+                      <span className="text-slate-500 uppercase font-bold block mb-1">Possedute dall'impresa</span>
+                      {result.soaDetail.categorieImpresa.map((c, i) => (
+                        <span key={i} className={`inline-block border font-mono px-1.5 py-0.5 rounded mr-1 mb-1 text-[10px] ${
+                          result.soaDetail.categorieCompatibili.includes(c)
+                            ? "bg-emerald-950/40 border-emerald-800 text-emerald-400"
+                            : "bg-neutral-900 border-neutral-700 text-slate-400"
+                        }`}>{c}</span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {result.soaDetail.categorieGap.length > 0 && (
+                    <div className="bg-amber-950/20 border border-amber-900/50 rounded-lg px-3 py-2">
+                      <span className="text-[9px] font-bold text-amber-500 uppercase block mb-1">Gap SOA</span>
+                      <div className="flex flex-wrap gap-1">
+                        {result.soaDetail.categorieGap.map((c, i) => (
+                          <span key={i} className="bg-amber-950/40 border border-amber-800 text-amber-400 font-mono text-[10px] px-1.5 py-0.5 rounded">{c}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3 text-[10px]">
+                    <div>
+                      <span className="text-slate-500 block mb-0.5">Classifica richiesta</span>
+                      <span className="text-white font-mono font-bold">{result.soaDetail.classificaRichiesta}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block mb-0.5">Classifica posseduta</span>
+                      <span className={`font-mono font-bold ${result.soaDetail.classificaAdeguata ? "text-emerald-400" : "text-amber-400"}`}>
+                        {result.soaDetail.classificaPosseduta}
+                        {result.soaDetail.incrementoQuintoApplicabile && (
+                          <span className="ml-1 text-blue-400 text-[9px]">(+quinto)</span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-400 leading-relaxed">{result.soaDetail.motivazione}</p>
+
+                  <div className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2">
+                    <span className="text-[9px] font-bold text-brand-gold uppercase block mb-0.5">Azione consigliata</span>
+                    <p className="text-xs text-slate-300">{result.soaDetail.azioneConsigliata}</p>
+                  </div>
+                </div>
+              )}
+
               {/* Rigenera */}
               {profile && (
                 <button

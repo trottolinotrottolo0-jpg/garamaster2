@@ -169,6 +169,7 @@ const emptyProfile: CompanyProfileType = {
   targetImportMin: 0, targetImportMax: 0,
   employeesCount: 0, activeSquads: 0, activeJobsites: 0,
   oreGiornaliereSquadra: 8, rendimentoSquadrePercent: 100, giorniLavorativiSettimana: 5,
+  durataMediaCantieriMesi: 6,
   availableResources: [],
   tenderHistory: [],
   similarWorks: [],
@@ -944,6 +945,23 @@ export function CompanyProfile() {
               max="7"
             />
           </div>
+        </div>
+        <div>
+          <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+            Durata media cantieri in corso (mesi)
+          </label>
+          <input
+            type="number"
+            className={inputCls("max-w-xs")}
+            value={profile.durataMediaCantieriMesi}
+            onChange={(e) =>
+              set("durataMediaCantieriMesi", e.target.value === "" ? 6 : parseInt(e.target.value, 10))
+            }
+            step="1"
+          />
+          <p className="text-[9px] text-slate-600 mt-1">
+            stima media durata residua dei cantieri aperti
+          </p>
         </div>
       </div>
 
