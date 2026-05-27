@@ -8,8 +8,13 @@ import type {
   CompanyActiveProject,
   CompanyActiveProjectStatus,
   CompanyOperationalPreferences,
+  CompanyHistoricalMargin,
+  CompanyProductivityData,
   CompanySimilarWork,
+  ExecutionSpeed,
+  MarginDataReliability,
   OperationalRiskTolerance,
+  OrganizationalEfficiency,
   PreferredProjectDuration,
   PreferredTenderSize,
   PreferredWorkType,
@@ -70,6 +75,16 @@ function newActiveProjectId(): string {
   return `cantiere-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+function newHistoricalMarginId(): string {
+  return `margine-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+const MARGIN_RELIABILITY_OPTIONS: { value: MarginDataReliability; label: string }[] = [
+  { value: "basso", label: "Basso" },
+  { value: "medio", label: "Medio" },
+  { value: "alto", label: "Alto" },
+];
+
 const ACTIVE_PROJECT_STATUSES: { value: CompanyActiveProjectStatus; label: string }[] = [
   { value: "avvio", label: "Avvio" },
   { value: "operativo", label: "Operativo" },
@@ -127,6 +142,26 @@ function normalizeOperationalPreferences(
   };
 }
 
+const EXECUTION_SPEED_OPTIONS: { value: ExecutionSpeed; label: string }[] = [
+  { value: "lenta", label: "Lenta" },
+  { value: "standard", label: "Standard" },
+  { value: "veloce", label: "Veloce" },
+];
+
+const ORGANIZATIONAL_EFFICIENCY_OPTIONS: { value: OrganizationalEfficiency; label: string }[] = [
+  { value: "bassa", label: "Bassa" },
+  { value: "media", label: "Media" },
+  { value: "alta", label: "Alta" },
+];
+
+const emptyProductivityData: CompanyProductivityData = {};
+
+function normalizeProductivityData(
+  raw?: Partial<CompanyProductivityData>
+): CompanyProductivityData {
+  return { ...emptyProductivityData, ...raw };
+}
+
 const emptyProfile: CompanyProfileType = {
   companyName: "", vatNumber: "", legalForm: "", foundedYear: new Date().getFullYear(),
   soaCategories: [], soaAttestatoreName: "",
@@ -138,6 +173,8 @@ const emptyProfile: CompanyProfileType = {
   similarWorks: [],
   activeProjects: [],
   operationalPreferences: emptyOperationalPreferences,
+  productivityData: emptyProductivityData,
+  historicalMargins: [],
   lastYearRevenue: 0, avgMarginPercent: 0,
   avgRibassoPercent: 0, avgWinRatePercent: 0, minMargineAccettabile: 0,
   costoOraOperaio: 0, costoOraCaposquadra: 0, incidenzaSpeseGenerali: 0, incidenzaRischioMedio: 0,
@@ -153,6 +190,8 @@ function normalizeProfile(raw: Partial<CompanyProfileType>): CompanyProfileType 
     similarWorks: Array.isArray(raw.similarWorks) ? raw.similarWorks : [],
     activeProjects: Array.isArray(raw.activeProjects) ? raw.activeProjects : [],
     operationalPreferences: normalizeOperationalPreferences(raw.operationalPreferences),
+    productivityData: normalizeProductivityData(raw.productivityData),
+    historicalMargins: Array.isArray(raw.historicalMargins) ? raw.historicalMargins : [],
   };
 }
 
@@ -177,6 +216,7 @@ export function CompanyProfile() {
   const tenderHistory = profile.tenderHistory ?? [];
   const similarWorks = profile.similarWorks ?? [];
   const activeProjects = profile.activeProjects ?? [];
+  const historicalMargins = profile.historicalMargins ?? [];
   const prefs = profile.operationalPreferences ?? emptyOperationalPreferences;
   const preferredCategories = prefs.preferredCategories ?? [];
   const [saved, setSaved] = useState(false);
@@ -192,6 +232,18 @@ export function CompanyProfile() {
         : [...preferredCategories, code],
     });
   };
+
+  const productivity = profile.productivityData ?? emptyProductivityData;
+
+  const setProductivity = (patch: Partial<CompanyProductivityData>) => {
+    set("productivityData", { ...productivity, ...patch });
+  };
+
+  const parseNullableNumber = (value: string): number | null =>
+    value === "" ? null : parseFloat(value);
+
+  const parseNullableInt = (value: string): number | null =>
+    value === "" ? null : parseInt(value, 10);
 
   const set = <K extends keyof CompanyProfileType>(key: K, value: CompanyProfileType[K]) => {
     setProfile((prev) => ({ ...prev, [key]: value }));
@@ -311,6 +363,31 @@ export function CompanyProfile() {
     set(
       "similarWorks",
       similarWorks.map((w) => (w.id === id ? { ...w, ...patch } : w))
+    );
+  };
+
+  const addHistoricalMargin = () => {
+    const item: CompanyHistoricalMargin = {
+      id: newHistoricalMarginId(),
+      category: "",
+      averageMarginPercentage: null,
+      analyzedProjectsCount: null,
+      reliability: "medio",
+    };
+    set("historicalMargins", [...historicalMargins, item]);
+  };
+
+  const removeHistoricalMargin = (id: string) => {
+    set(
+      "historicalMargins",
+      historicalMargins.filter((m) => m.id !== id)
+    );
+  };
+
+  const updateHistoricalMargin = (id: string, patch: Partial<CompanyHistoricalMargin>) => {
+    set(
+      "historicalMargins",
+      historicalMargins.map((m) => (m.id === id ? { ...m, ...patch } : m))
     );
   };
 
@@ -822,6 +899,144 @@ export function CompanyProfile() {
         </div>
       </div>
 
+      {/* Dati di produttività interna */}
+      <div className="bg-black border border-neutral-800 rounded-xl p-5 space-y-4">
+        <SectionTitle>Dati di produttività interna</SectionTitle>
+        <p className="text-xs text-slate-500 -mt-1">
+          Metriche operative per Capacity, Profitability e Pricing (configurazione non definitiva).
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Produttività media squadre
+            </label>
+            <input
+              type="number"
+              className={inputCls()}
+              value={
+                productivity.averageTeamProductivity == null
+                  ? ""
+                  : productivity.averageTeamProductivity
+              }
+              onChange={(e) =>
+                setProductivity({ averageTeamProductivity: parseNullableNumber(e.target.value) })
+              }
+              step="0.1"
+              placeholder="Es. 85 (% o indice interno)"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Cantieri gestibili contemporaneamente
+            </label>
+            <input
+              type="number"
+              className={inputCls()}
+              value={
+                productivity.concurrentProjectsCapacity == null
+                  ? ""
+                  : productivity.concurrentProjectsCapacity
+              }
+              onChange={(e) =>
+                setProductivity({ concurrentProjectsCapacity: parseNullableInt(e.target.value) })
+              }
+              placeholder="Es. 4"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Ore operative medie settimanali
+            </label>
+            <input
+              type="number"
+              className={inputCls()}
+              value={
+                productivity.averageWeeklyOperationalHours == null
+                  ? ""
+                  : productivity.averageWeeklyOperationalHours
+              }
+              onChange={(e) =>
+                setProductivity({
+                  averageWeeklyOperationalHours: parseNullableNumber(e.target.value),
+                })
+              }
+              placeholder="Es. 42"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Capacità gestione gare contemporanee
+            </label>
+            <input
+              type="number"
+              className={inputCls()}
+              value={
+                productivity.concurrentTenderManagementCapacity == null
+                  ? ""
+                  : productivity.concurrentTenderManagementCapacity
+              }
+              onChange={(e) =>
+                setProductivity({
+                  concurrentTenderManagementCapacity: parseNullableInt(e.target.value),
+                })
+              }
+              placeholder="Es. 3"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Velocità esecuzione stimata
+            </label>
+            <select
+              className={inputCls()}
+              value={productivity.executionSpeed ?? ""}
+              onChange={(e) =>
+                setProductivity({
+                  executionSpeed: (e.target.value || undefined) as ExecutionSpeed | undefined,
+                })
+              }
+            >
+              <option value="">— Non specificata —</option>
+              {EXECUTION_SPEED_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Efficienza organizzativa
+            </label>
+            <select
+              className={inputCls()}
+              value={productivity.organizationalEfficiency ?? ""}
+              onChange={(e) =>
+                setProductivity({
+                  organizationalEfficiency: (e.target.value || undefined) as
+                    | OrganizationalEfficiency
+                    | undefined,
+                })
+              }
+            >
+              <option value="">— Non specificata —</option>
+              {ORGANIZATIONAL_EFFICIENCY_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+            Note operative
+          </label>
+          <textarea
+            className="bg-neutral-950 border border-neutral-800 rounded-lg text-xs text-white focus:border-brand-gold focus:outline-none px-3 py-2 w-full resize-none h-24"
+            value={productivity.operationalNotes ?? ""}
+            onChange={(e) => setProductivity({ operationalNotes: e.target.value || undefined })}
+            placeholder="Es. picchi stagionali Q2, vincoli su squadre specializzate…"
+          />
+        </div>
+      </div>
+
       {/* Lavori in corso */}
       <div className="bg-black border border-neutral-800 rounded-xl p-5 space-y-4">
         <SectionTitle>Lavori in corso</SectionTitle>
@@ -1159,6 +1374,112 @@ export function CompanyProfile() {
             />
           </div>
         </div>
+      </div>
+
+      {/* Margini storici per categoria */}
+      <div className="bg-black border border-neutral-800 rounded-xl p-5 space-y-4">
+        <SectionTitle>Margini storici per categoria</SectionTitle>
+        {historicalMargins.length === 0 ? (
+          <p className="text-xs text-slate-500 italic">
+            Nessun margine storico per categoria. Aggiungi i dati per alimentare Profitability, Pricing e ROI.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {historicalMargins.map((margin) => (
+              <div
+                key={margin.id}
+                className="flex items-end gap-2 flex-wrap bg-neutral-950 border border-neutral-800 rounded-lg p-3"
+              >
+                <div className="flex flex-col gap-1 min-w-[100px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Categoria</label>
+                  <select
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={margin.category}
+                    onChange={(e) => updateHistoricalMargin(margin.id, { category: e.target.value })}
+                  >
+                    <option value="">—</option>
+                    {SOA_CODES.map((code) => (
+                      <option key={code} value={code}>{code}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1 min-w-[90px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Margine medio (%)</label>
+                  <input
+                    type="number"
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={margin.averageMarginPercentage === null ? "" : margin.averageMarginPercentage}
+                    onChange={(e) =>
+                      updateHistoricalMargin(margin.id, {
+                        averageMarginPercentage: parseNullableNumber(e.target.value),
+                      })
+                    }
+                    step="0.1"
+                    placeholder="14"
+                  />
+                </div>
+                <div className="flex flex-col gap-1 min-w-[80px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">N. lavori</label>
+                  <input
+                    type="number"
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={margin.analyzedProjectsCount == null ? "" : margin.analyzedProjectsCount}
+                    onChange={(e) =>
+                      updateHistoricalMargin(margin.id, {
+                        analyzedProjectsCount: parseNullableInt(e.target.value),
+                      })
+                    }
+                    placeholder="12"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Affidabilità</label>
+                  <select
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={margin.reliability ?? ""}
+                    onChange={(e) =>
+                      updateHistoricalMargin(margin.id, {
+                        reliability: (e.target.value || undefined) as MarginDataReliability | undefined,
+                      })
+                    }
+                  >
+                    <option value="">—</option>
+                    {MARGIN_RELIABILITY_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1 flex-1 min-w-[120px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Note</label>
+                  <input
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={margin.notes ?? ""}
+                    onChange={(e) =>
+                      updateHistoricalMargin(margin.id, { notes: e.target.value || undefined })
+                    }
+                    placeholder="Opzionale"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeHistoricalMargin(margin.id)}
+                  className="cursor-pointer p-1.5 rounded-lg border border-neutral-700 hover:border-red-700 text-slate-500 hover:text-red-400 transition-colors"
+                  title="Rimuovi margine"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={addHistoricalMargin}
+          className="cursor-pointer flex items-center gap-2 text-xs text-brand-gold border border-brand-gold/40 hover:border-brand-gold rounded-lg px-3 py-2 transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Aggiungi margine per categoria
+        </button>
       </div>
 
       {/* Storico gare */}

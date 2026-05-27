@@ -194,6 +194,30 @@ export interface CompanyOperationalPreferences {
   strategicNotes?: string;
 }
 
+export type ExecutionSpeed = "lenta" | "standard" | "veloce";
+export type OrganizationalEfficiency = "bassa" | "media" | "alta";
+
+export interface CompanyProductivityData {
+  averageTeamProductivity?: number | null;
+  concurrentProjectsCapacity?: number | null;
+  averageWeeklyOperationalHours?: number | null;
+  executionSpeed?: ExecutionSpeed;
+  organizationalEfficiency?: OrganizationalEfficiency;
+  concurrentTenderManagementCapacity?: number | null;
+  operationalNotes?: string;
+}
+
+export type MarginDataReliability = "basso" | "medio" | "alto";
+
+export interface CompanyHistoricalMargin {
+  id: string;
+  category: string;
+  averageMarginPercentage: number | null;
+  analyzedProjectsCount?: number | null;
+  reliability?: MarginDataReliability;
+  notes?: string;
+}
+
 export interface CompanyProfile {
   // Anagrafica
   companyName: string;
@@ -230,6 +254,12 @@ export interface CompanyProfile {
 
   // Preferenze operative strategiche
   operationalPreferences?: CompanyOperationalPreferences;
+
+  // Produttività interna
+  productivityData?: CompanyProductivityData;
+
+  // Margini storici per categoria
+  historicalMargins?: CompanyHistoricalMargin[];
 
   // Economici
   lastYearRevenue: number;
