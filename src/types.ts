@@ -135,6 +135,89 @@ export interface CompanyAvailableResource {
   notes?: string;
 }
 
+export type CompanyTenderOutcome = "vinta" | "persa" | "partecipata";
+
+export interface CompanyTenderHistoryItem {
+  id: string;
+  title: string;
+  ente: string;
+  category: string;
+  amount: number | null;
+  year: number | null;
+  outcome: CompanyTenderOutcome;
+  notes?: string;
+}
+
+export interface CompanySimilarWork {
+  id: string;
+  title: string;
+  category: string;
+  amount: number | null;
+  location: string;
+  year: number | null;
+  description?: string;
+}
+
+export type CompanyActiveProjectStatus =
+  | "avvio"
+  | "operativo"
+  | "quasi_completato"
+  | "sospeso";
+
+export interface CompanyActiveProject {
+  id: string;
+  title: string;
+  category: string;
+  amount: number | null;
+  location: string;
+  status: CompanyActiveProjectStatus;
+  startDate?: string;
+  expectedEndDate?: string;
+  notes?: string;
+}
+
+export type PreferredTenderSize = "piccole" | "medie" | "grandi";
+export type PreferredWorkType = "pubblici" | "privati" | "misti";
+export type OperationalRiskTolerance = "basso" | "medio" | "alto";
+export type SaturationPreference = "conservativa" | "bilanciata" | "aggressiva";
+export type PreferredProjectDuration = "breve" | "media" | "lunga";
+
+export interface CompanyOperationalPreferences {
+  preferredTenderSize?: PreferredTenderSize;
+  preferredWorkType?: PreferredWorkType;
+  operationalRiskTolerance?: OperationalRiskTolerance;
+  saturationPreference?: SaturationPreference;
+  preferredProjectDuration?: PreferredProjectDuration;
+  prefersLocalProjects?: boolean;
+  availableForTransfers?: boolean;
+  preferredCategories?: string[];
+  strategicNotes?: string;
+}
+
+export type ExecutionSpeed = "lenta" | "standard" | "veloce";
+export type OrganizationalEfficiency = "bassa" | "media" | "alta";
+
+export interface CompanyProductivityData {
+  averageTeamProductivity?: number | null;
+  concurrentProjectsCapacity?: number | null;
+  averageWeeklyOperationalHours?: number | null;
+  executionSpeed?: ExecutionSpeed;
+  organizationalEfficiency?: OrganizationalEfficiency;
+  concurrentTenderManagementCapacity?: number | null;
+  operationalNotes?: string;
+}
+
+export type MarginDataReliability = "basso" | "medio" | "alto";
+
+export interface CompanyHistoricalMargin {
+  id: string;
+  category: string;
+  averageMarginPercentage: number | null;
+  analyzedProjectsCount?: number | null;
+  reliability?: MarginDataReliability;
+  notes?: string;
+}
+
 export interface CompanyProfile {
   // Anagrafica
   companyName: string;
@@ -159,6 +242,24 @@ export interface CompanyProfile {
 
   // Mezzi e risorse operative
   availableResources?: CompanyAvailableResource[];
+
+  // Storico gare strutturato
+  tenderHistory?: CompanyTenderHistoryItem[];
+
+  // Storico lavori simili
+  similarWorks?: CompanySimilarWork[];
+
+  // Lavori / cantieri in corso
+  activeProjects?: CompanyActiveProject[];
+
+  // Preferenze operative strategiche
+  operationalPreferences?: CompanyOperationalPreferences;
+
+  // Produttività interna
+  productivityData?: CompanyProductivityData;
+
+  // Margini storici per categoria
+  historicalMargins?: CompanyHistoricalMargin[];
 
   // Economici
   lastYearRevenue: number;

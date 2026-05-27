@@ -5,6 +5,22 @@ import type {
   CompanyProfile as CompanyProfileType,
   CompanyResourceAvailability,
   CompanyResourceType,
+  CompanyActiveProject,
+  CompanyActiveProjectStatus,
+  CompanyOperationalPreferences,
+  CompanyHistoricalMargin,
+  CompanyProductivityData,
+  CompanySimilarWork,
+  ExecutionSpeed,
+  MarginDataReliability,
+  OperationalRiskTolerance,
+  OrganizationalEfficiency,
+  PreferredProjectDuration,
+  PreferredTenderSize,
+  PreferredWorkType,
+  SaturationPreference,
+  CompanyTenderHistoryItem,
+  CompanyTenderOutcome,
   SOACategory,
   SOACategoryCode,
   SOAClassifica,
@@ -47,6 +63,105 @@ function newResourceId(): string {
   return `res-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+function newTenderHistoryId(): string {
+  return `gara-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function newSimilarWorkId(): string {
+  return `lavoro-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function newActiveProjectId(): string {
+  return `cantiere-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function newHistoricalMarginId(): string {
+  return `margine-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+const MARGIN_RELIABILITY_OPTIONS: { value: MarginDataReliability; label: string }[] = [
+  { value: "basso", label: "Basso" },
+  { value: "medio", label: "Medio" },
+  { value: "alto", label: "Alto" },
+];
+
+const ACTIVE_PROJECT_STATUSES: { value: CompanyActiveProjectStatus; label: string }[] = [
+  { value: "avvio", label: "Avvio" },
+  { value: "operativo", label: "Operativo" },
+  { value: "quasi_completato", label: "Quasi completato" },
+  { value: "sospeso", label: "Sospeso" },
+];
+
+const TENDER_OUTCOMES: { value: CompanyTenderOutcome; label: string }[] = [
+  { value: "vinta", label: "Vinta" },
+  { value: "persa", label: "Persa" },
+  { value: "partecipata", label: "Partecipata" },
+];
+
+const TENDER_SIZE_OPTIONS: { value: PreferredTenderSize; label: string }[] = [
+  { value: "piccole", label: "Piccole" },
+  { value: "medie", label: "Medie" },
+  { value: "grandi", label: "Grandi" },
+];
+
+const WORK_TYPE_OPTIONS: { value: PreferredWorkType; label: string }[] = [
+  { value: "pubblici", label: "Pubblici" },
+  { value: "privati", label: "Privati" },
+  { value: "misti", label: "Misti" },
+];
+
+const RISK_TOLERANCE_OPTIONS: { value: OperationalRiskTolerance; label: string }[] = [
+  { value: "basso", label: "Basso" },
+  { value: "medio", label: "Medio" },
+  { value: "alto", label: "Alto" },
+];
+
+const SATURATION_OPTIONS: { value: SaturationPreference; label: string }[] = [
+  { value: "conservativa", label: "Conservativa" },
+  { value: "bilanciata", label: "Bilanciata" },
+  { value: "aggressiva", label: "Aggressiva" },
+];
+
+const PROJECT_DURATION_OPTIONS: { value: PreferredProjectDuration; label: string }[] = [
+  { value: "breve", label: "Breve" },
+  { value: "media", label: "Media" },
+  { value: "lunga", label: "Lunga" },
+];
+
+const emptyOperationalPreferences: CompanyOperationalPreferences = {
+  preferredCategories: [],
+};
+
+function normalizeOperationalPreferences(
+  raw?: Partial<CompanyOperationalPreferences>
+): CompanyOperationalPreferences {
+  return {
+    ...emptyOperationalPreferences,
+    ...raw,
+    preferredCategories: Array.isArray(raw?.preferredCategories) ? raw.preferredCategories : [],
+  };
+}
+
+const EXECUTION_SPEED_OPTIONS: { value: ExecutionSpeed; label: string }[] = [
+  { value: "lenta", label: "Lenta" },
+  { value: "standard", label: "Standard" },
+  { value: "veloce", label: "Veloce" },
+];
+
+const ORGANIZATIONAL_EFFICIENCY_OPTIONS: { value: OrganizationalEfficiency; label: string }[] = [
+  { value: "bassa", label: "Bassa" },
+  { value: "media", label: "Media" },
+  { value: "alta", label: "Alta" },
+];
+
+const emptyProductivityData: CompanyProductivityData = {};
+
+function normalizeProductivityData(
+  raw?: Partial<CompanyProductivityData>
+): CompanyProductivityData {
+  return { ...emptyProductivityData, ...raw };
+}
+
 const emptyProfile: CompanyProfileType = {
   companyName: "", vatNumber: "", legalForm: "", foundedYear: new Date().getFullYear(),
   soaCategories: [], soaAttestatoreName: "",
@@ -54,6 +169,12 @@ const emptyProfile: CompanyProfileType = {
   targetImportMin: 0, targetImportMax: 0,
   employeesCount: 0, activeSquads: 0, activeJobsites: 0,
   availableResources: [],
+  tenderHistory: [],
+  similarWorks: [],
+  activeProjects: [],
+  operationalPreferences: emptyOperationalPreferences,
+  productivityData: emptyProductivityData,
+  historicalMargins: [],
   lastYearRevenue: 0, avgMarginPercent: 0,
   avgRibassoPercent: 0, avgWinRatePercent: 0, minMargineAccettabile: 0,
   costoOraOperaio: 0, costoOraCaposquadra: 0, incidenzaSpeseGenerali: 0, incidenzaRischioMedio: 0,
@@ -65,6 +186,12 @@ function normalizeProfile(raw: Partial<CompanyProfileType>): CompanyProfileType 
     ...emptyProfile,
     ...raw,
     availableResources: Array.isArray(raw.availableResources) ? raw.availableResources : [],
+    tenderHistory: Array.isArray(raw.tenderHistory) ? raw.tenderHistory : [],
+    similarWorks: Array.isArray(raw.similarWorks) ? raw.similarWorks : [],
+    activeProjects: Array.isArray(raw.activeProjects) ? raw.activeProjects : [],
+    operationalPreferences: normalizeOperationalPreferences(raw.operationalPreferences),
+    productivityData: normalizeProductivityData(raw.productivityData),
+    historicalMargins: Array.isArray(raw.historicalMargins) ? raw.historicalMargins : [],
   };
 }
 
@@ -86,7 +213,37 @@ export function CompanyProfile() {
   });
 
   const resources = profile.availableResources ?? [];
+  const tenderHistory = profile.tenderHistory ?? [];
+  const similarWorks = profile.similarWorks ?? [];
+  const activeProjects = profile.activeProjects ?? [];
+  const historicalMargins = profile.historicalMargins ?? [];
+  const prefs = profile.operationalPreferences ?? emptyOperationalPreferences;
+  const preferredCategories = prefs.preferredCategories ?? [];
   const [saved, setSaved] = useState(false);
+
+  const setPrefs = (patch: Partial<CompanyOperationalPreferences>) => {
+    set("operationalPreferences", { ...prefs, ...patch });
+  };
+
+  const togglePreferredCategory = (code: string) => {
+    setPrefs({
+      preferredCategories: preferredCategories.includes(code)
+        ? preferredCategories.filter((c) => c !== code)
+        : [...preferredCategories, code],
+    });
+  };
+
+  const productivity = profile.productivityData ?? emptyProductivityData;
+
+  const setProductivity = (patch: Partial<CompanyProductivityData>) => {
+    set("productivityData", { ...productivity, ...patch });
+  };
+
+  const parseNullableNumber = (value: string): number | null =>
+    value === "" ? null : parseFloat(value);
+
+  const parseNullableInt = (value: string): number | null =>
+    value === "" ? null : parseInt(value, 10);
 
   const set = <K extends keyof CompanyProfileType>(key: K, value: CompanyProfileType[K]) => {
     setProfile((prev) => ({ ...prev, [key]: value }));
@@ -156,6 +313,110 @@ export function CompanyProfile() {
     );
   };
 
+  const addTenderHistory = () => {
+    const item: CompanyTenderHistoryItem = {
+      id: newTenderHistoryId(),
+      title: "",
+      ente: "",
+      category: "",
+      amount: null,
+      year: new Date().getFullYear(),
+      outcome: "partecipata",
+    };
+    set("tenderHistory", [...tenderHistory, item]);
+  };
+
+  const removeTenderHistory = (id: string) => {
+    set(
+      "tenderHistory",
+      tenderHistory.filter((t) => t.id !== id)
+    );
+  };
+
+  const updateTenderHistory = (id: string, patch: Partial<CompanyTenderHistoryItem>) => {
+    set(
+      "tenderHistory",
+      tenderHistory.map((t) => (t.id === id ? { ...t, ...patch } : t))
+    );
+  };
+
+  const addSimilarWork = () => {
+    const item: CompanySimilarWork = {
+      id: newSimilarWorkId(),
+      title: "",
+      category: "",
+      amount: null,
+      location: "",
+      year: new Date().getFullYear(),
+    };
+    set("similarWorks", [...similarWorks, item]);
+  };
+
+  const removeSimilarWork = (id: string) => {
+    set(
+      "similarWorks",
+      similarWorks.filter((w) => w.id !== id)
+    );
+  };
+
+  const updateSimilarWork = (id: string, patch: Partial<CompanySimilarWork>) => {
+    set(
+      "similarWorks",
+      similarWorks.map((w) => (w.id === id ? { ...w, ...patch } : w))
+    );
+  };
+
+  const addHistoricalMargin = () => {
+    const item: CompanyHistoricalMargin = {
+      id: newHistoricalMarginId(),
+      category: "",
+      averageMarginPercentage: null,
+      analyzedProjectsCount: null,
+      reliability: "medio",
+    };
+    set("historicalMargins", [...historicalMargins, item]);
+  };
+
+  const removeHistoricalMargin = (id: string) => {
+    set(
+      "historicalMargins",
+      historicalMargins.filter((m) => m.id !== id)
+    );
+  };
+
+  const updateHistoricalMargin = (id: string, patch: Partial<CompanyHistoricalMargin>) => {
+    set(
+      "historicalMargins",
+      historicalMargins.map((m) => (m.id === id ? { ...m, ...patch } : m))
+    );
+  };
+
+  const addActiveProject = () => {
+    const item: CompanyActiveProject = {
+      id: newActiveProjectId(),
+      title: "",
+      category: "",
+      amount: null,
+      location: "",
+      status: "operativo",
+    };
+    set("activeProjects", [...activeProjects, item]);
+  };
+
+  const removeActiveProject = (id: string) => {
+    set(
+      "activeProjects",
+      activeProjects.filter((p) => p.id !== id)
+    );
+  };
+
+  const updateActiveProject = (id: string, patch: Partial<CompanyActiveProject>) => {
+    set(
+      "activeProjects",
+      activeProjects.map((p) => (p.id === id ? { ...p, ...patch } : p))
+    );
+  };
+
   const hasProfile = !!profile.lastUpdated && !!profile.companyName;
 
   return (
@@ -172,6 +433,18 @@ export function CompanyProfile() {
           <span className="text-slate-600">—</span>
           <span className="text-xs text-slate-400">
             Risorse: <span className="text-brand-gold font-bold">{resources.length}</span>
+          </span>
+          <span className="text-slate-600">—</span>
+          <span className="text-xs text-slate-400">
+            Gare: <span className="text-brand-gold font-bold">{tenderHistory.length}</span>
+          </span>
+          <span className="text-slate-600">—</span>
+          <span className="text-xs text-slate-400">
+            Lavori simili: <span className="text-brand-gold font-bold">{similarWorks.length}</span>
+          </span>
+          <span className="text-slate-600">—</span>
+          <span className="text-xs text-slate-400">
+            In corso: <span className="text-brand-gold font-bold">{activeProjects.length}</span>
           </span>
           <span className="text-slate-600">—</span>
           <span className="text-xs text-slate-400">
@@ -389,6 +662,203 @@ export function CompanyProfile() {
         </div>
       </div>
 
+      {/* Preferenze operative */}
+      <div className="bg-black border border-neutral-800 rounded-xl p-5 space-y-4">
+        <SectionTitle>Preferenze operative</SectionTitle>
+        <p className="text-xs text-slate-500 -mt-1">
+          Preferenze strategiche usate per orientare scoring e motori decisionali (configurazione non definitiva).
+        </p>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-2">
+              Preferenza lavori vicini alla sede
+            </label>
+            <div className="flex gap-2">
+              {([true, false] as const).map((val) => (
+                <button
+                  key={String(val)}
+                  type="button"
+                  onClick={() => setPrefs({ prefersLocalProjects: val })}
+                  className={`cursor-pointer text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                    prefs.prefersLocalProjects === val
+                      ? "bg-brand-gold border-brand-gold text-black font-bold"
+                      : "bg-neutral-950 border-neutral-800 text-slate-400 hover:text-white"
+                  }`}
+                >
+                  {val ? "Sì" : "No"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-2">
+              Disponibilità trasferte
+            </label>
+            <div className="flex gap-2">
+              {([true, false] as const).map((val) => (
+                <button
+                  key={String(val)}
+                  type="button"
+                  onClick={() => setPrefs({ availableForTransfers: val })}
+                  className={`cursor-pointer text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                    prefs.availableForTransfers === val
+                      ? "bg-brand-gold border-brand-gold text-black font-bold"
+                      : "bg-neutral-950 border-neutral-800 text-slate-400 hover:text-white"
+                  }`}
+                >
+                  {val ? "Sì" : "No"}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Dimensione gare preferita
+            </label>
+            <select
+              className={inputCls()}
+              value={prefs.preferredTenderSize ?? ""}
+              onChange={(e) =>
+                setPrefs({
+                  preferredTenderSize: (e.target.value || undefined) as PreferredTenderSize | undefined,
+                })
+              }
+            >
+              <option value="">— Nessuna preferenza —</option>
+              {TENDER_SIZE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Tipologia lavori
+            </label>
+            <select
+              className={inputCls()}
+              value={prefs.preferredWorkType ?? ""}
+              onChange={(e) =>
+                setPrefs({
+                  preferredWorkType: (e.target.value || undefined) as PreferredWorkType | undefined,
+                })
+              }
+            >
+              <option value="">— Nessuna preferenza —</option>
+              {WORK_TYPE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Tolleranza rischio operativo
+            </label>
+            <select
+              className={inputCls()}
+              value={prefs.operationalRiskTolerance ?? ""}
+              onChange={(e) =>
+                setPrefs({
+                  operationalRiskTolerance: (e.target.value || undefined) as
+                    | OperationalRiskTolerance
+                    | undefined,
+                })
+              }
+            >
+              <option value="">— Nessuna preferenza —</option>
+              {RISK_TOLERANCE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Tolleranza saturazione aziendale
+            </label>
+            <select
+              className={inputCls()}
+              value={prefs.saturationPreference ?? ""}
+              onChange={(e) =>
+                setPrefs({
+                  saturationPreference: (e.target.value || undefined) as SaturationPreference | undefined,
+                })
+              }
+            >
+              <option value="">— Nessuna preferenza —</option>
+              {SATURATION_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="col-span-2">
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Durata lavori preferita
+            </label>
+            <select
+              className={inputCls("max-w-xs")}
+              value={prefs.preferredProjectDuration ?? ""}
+              onChange={(e) =>
+                setPrefs({
+                  preferredProjectDuration: (e.target.value || undefined) as
+                    | PreferredProjectDuration
+                    | undefined,
+                })
+              }
+            >
+              <option value="">— Nessuna preferenza —</option>
+              {PROJECT_DURATION_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-2">
+            Categorie lavori preferite (SOA)
+          </label>
+          <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-2 bg-neutral-950 border border-neutral-800 rounded-lg">
+            {SOA_CODES.map((code) => {
+              const active = preferredCategories.includes(code);
+              return (
+                <button
+                  key={code}
+                  type="button"
+                  onClick={() => togglePreferredCategory(code)}
+                  className={`cursor-pointer text-[10px] px-2 py-1 rounded border transition-colors ${
+                    active
+                      ? "bg-brand-gold border-brand-gold text-black font-bold"
+                      : "bg-neutral-900 border-neutral-800 text-slate-400 hover:text-white"
+                  }`}
+                >
+                  {code}
+                </button>
+              );
+            })}
+          </div>
+          {preferredCategories.length > 0 && (
+            <p className="text-[9px] text-slate-600 mt-1">
+              Selezionate: {preferredCategories.join(", ")}
+            </p>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+            Note strategiche
+          </label>
+          <textarea
+            className="bg-neutral-950 border border-neutral-800 rounded-lg text-xs text-white focus:border-brand-gold focus:outline-none px-3 py-2 w-full resize-none h-24"
+            value={prefs.strategicNotes ?? ""}
+            onChange={(e) => setPrefs({ strategicNotes: e.target.value || undefined })}
+            placeholder="Es. focus su gare regionali, evitare lavori in quota elevata, priorità infrastrutture…"
+          />
+        </div>
+      </div>
+
       {/* Capacità operativa */}
       <div className="bg-black border border-neutral-800 rounded-xl p-5 space-y-4">
         <SectionTitle>Capacità operativa</SectionTitle>
@@ -427,6 +897,266 @@ export function CompanyProfile() {
             />
           </div>
         </div>
+      </div>
+
+      {/* Dati di produttività interna */}
+      <div className="bg-black border border-neutral-800 rounded-xl p-5 space-y-4">
+        <SectionTitle>Dati di produttività interna</SectionTitle>
+        <p className="text-xs text-slate-500 -mt-1">
+          Metriche operative per Capacity, Profitability e Pricing (configurazione non definitiva).
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Produttività media squadre
+            </label>
+            <input
+              type="number"
+              className={inputCls()}
+              value={
+                productivity.averageTeamProductivity == null
+                  ? ""
+                  : productivity.averageTeamProductivity
+              }
+              onChange={(e) =>
+                setProductivity({ averageTeamProductivity: parseNullableNumber(e.target.value) })
+              }
+              step="0.1"
+              placeholder="Es. 85 (% o indice interno)"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Cantieri gestibili contemporaneamente
+            </label>
+            <input
+              type="number"
+              className={inputCls()}
+              value={
+                productivity.concurrentProjectsCapacity == null
+                  ? ""
+                  : productivity.concurrentProjectsCapacity
+              }
+              onChange={(e) =>
+                setProductivity({ concurrentProjectsCapacity: parseNullableInt(e.target.value) })
+              }
+              placeholder="Es. 4"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Ore operative medie settimanali
+            </label>
+            <input
+              type="number"
+              className={inputCls()}
+              value={
+                productivity.averageWeeklyOperationalHours == null
+                  ? ""
+                  : productivity.averageWeeklyOperationalHours
+              }
+              onChange={(e) =>
+                setProductivity({
+                  averageWeeklyOperationalHours: parseNullableNumber(e.target.value),
+                })
+              }
+              placeholder="Es. 42"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Capacità gestione gare contemporanee
+            </label>
+            <input
+              type="number"
+              className={inputCls()}
+              value={
+                productivity.concurrentTenderManagementCapacity == null
+                  ? ""
+                  : productivity.concurrentTenderManagementCapacity
+              }
+              onChange={(e) =>
+                setProductivity({
+                  concurrentTenderManagementCapacity: parseNullableInt(e.target.value),
+                })
+              }
+              placeholder="Es. 3"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Velocità esecuzione stimata
+            </label>
+            <select
+              className={inputCls()}
+              value={productivity.executionSpeed ?? ""}
+              onChange={(e) =>
+                setProductivity({
+                  executionSpeed: (e.target.value || undefined) as ExecutionSpeed | undefined,
+                })
+              }
+            >
+              <option value="">— Non specificata —</option>
+              {EXECUTION_SPEED_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Efficienza organizzativa
+            </label>
+            <select
+              className={inputCls()}
+              value={productivity.organizationalEfficiency ?? ""}
+              onChange={(e) =>
+                setProductivity({
+                  organizationalEfficiency: (e.target.value || undefined) as
+                    | OrganizationalEfficiency
+                    | undefined,
+                })
+              }
+            >
+              <option value="">— Non specificata —</option>
+              {ORGANIZATIONAL_EFFICIENCY_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+            Note operative
+          </label>
+          <textarea
+            className="bg-neutral-950 border border-neutral-800 rounded-lg text-xs text-white focus:border-brand-gold focus:outline-none px-3 py-2 w-full resize-none h-24"
+            value={productivity.operationalNotes ?? ""}
+            onChange={(e) => setProductivity({ operationalNotes: e.target.value || undefined })}
+            placeholder="Es. picchi stagionali Q2, vincoli su squadre specializzate…"
+          />
+        </div>
+      </div>
+
+      {/* Lavori in corso */}
+      <div className="bg-black border border-neutral-800 rounded-xl p-5 space-y-4">
+        <SectionTitle>Lavori in corso</SectionTitle>
+        {activeProjects.length === 0 ? (
+          <p className="text-xs text-slate-500 italic">
+            Nessun cantiere attivo registrato. Aggiungi i lavori in corso per valutare la capacità operativa residua.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {activeProjects.map((project) => (
+              <div
+                key={project.id}
+                className="flex items-end gap-2 flex-wrap bg-neutral-950 border border-neutral-800 rounded-lg p-3"
+              >
+                <div className="flex flex-col gap-1 flex-1 min-w-[160px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Progetto / Cantiere</label>
+                  <input
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={project.title}
+                    onChange={(e) => updateActiveProject(project.id, { title: e.target.value })}
+                    placeholder="Es. Ristrutturazione palestra comunale"
+                  />
+                </div>
+                <div className="flex flex-col gap-1 min-w-[100px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Categoria lavori</label>
+                  <input
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={project.category}
+                    onChange={(e) => updateActiveProject(project.id, { category: e.target.value })}
+                    placeholder="Es. OG1"
+                  />
+                </div>
+                <div className="flex flex-col gap-1 min-w-[110px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Importo (€)</label>
+                  <input
+                    type="number"
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={project.amount === null ? "" : project.amount}
+                    onChange={(e) =>
+                      updateActiveProject(project.id, {
+                        amount: e.target.value === "" ? null : parseFloat(e.target.value),
+                      })
+                    }
+                    placeholder="500000"
+                  />
+                </div>
+                <div className="flex flex-col gap-1 min-w-[120px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Località</label>
+                  <input
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={project.location}
+                    onChange={(e) => updateActiveProject(project.id, { location: e.target.value })}
+                    placeholder="Es. Torino"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Stato avanzamento</label>
+                  <select
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={project.status}
+                    onChange={(e) =>
+                      updateActiveProject(project.id, { status: e.target.value as CompanyActiveProjectStatus })
+                    }
+                  >
+                    {ACTIVE_PROJECT_STATUSES.map((s) => (
+                      <option key={s.value} value={s.value}>{s.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1 min-w-[130px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Data inizio</label>
+                  <input
+                    type="date"
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={project.startDate ?? ""}
+                    onChange={(e) =>
+                      updateActiveProject(project.id, { startDate: e.target.value || undefined })
+                    }
+                  />
+                </div>
+                <div className="flex flex-col gap-1 min-w-[130px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Fine prevista</label>
+                  <input
+                    type="date"
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={project.expectedEndDate ?? ""}
+                    onChange={(e) =>
+                      updateActiveProject(project.id, { expectedEndDate: e.target.value || undefined })
+                    }
+                  />
+                </div>
+                <div className="flex flex-col gap-1 flex-1 min-w-[120px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Note</label>
+                  <input
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={project.notes ?? ""}
+                    onChange={(e) => updateActiveProject(project.id, { notes: e.target.value || undefined })}
+                    placeholder="Opzionale"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeActiveProject(project.id)}
+                  className="cursor-pointer p-1.5 rounded-lg border border-neutral-700 hover:border-red-700 text-slate-500 hover:text-red-400 transition-colors"
+                  title="Rimuovi cantiere"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={addActiveProject}
+          className="cursor-pointer flex items-center gap-2 text-xs text-brand-gold border border-brand-gold/40 hover:border-brand-gold rounded-lg px-3 py-2 transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Aggiungi lavoro in corso
+        </button>
       </div>
 
       {/* Mezzi e risorse disponibili */}
@@ -644,6 +1374,326 @@ export function CompanyProfile() {
             />
           </div>
         </div>
+      </div>
+
+      {/* Margini storici per categoria */}
+      <div className="bg-black border border-neutral-800 rounded-xl p-5 space-y-4">
+        <SectionTitle>Margini storici per categoria</SectionTitle>
+        {historicalMargins.length === 0 ? (
+          <p className="text-xs text-slate-500 italic">
+            Nessun margine storico per categoria. Aggiungi i dati per alimentare Profitability, Pricing e ROI.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {historicalMargins.map((margin) => (
+              <div
+                key={margin.id}
+                className="flex items-end gap-2 flex-wrap bg-neutral-950 border border-neutral-800 rounded-lg p-3"
+              >
+                <div className="flex flex-col gap-1 min-w-[100px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Categoria</label>
+                  <select
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={margin.category}
+                    onChange={(e) => updateHistoricalMargin(margin.id, { category: e.target.value })}
+                  >
+                    <option value="">—</option>
+                    {SOA_CODES.map((code) => (
+                      <option key={code} value={code}>{code}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1 min-w-[90px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Margine medio (%)</label>
+                  <input
+                    type="number"
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={margin.averageMarginPercentage === null ? "" : margin.averageMarginPercentage}
+                    onChange={(e) =>
+                      updateHistoricalMargin(margin.id, {
+                        averageMarginPercentage: parseNullableNumber(e.target.value),
+                      })
+                    }
+                    step="0.1"
+                    placeholder="14"
+                  />
+                </div>
+                <div className="flex flex-col gap-1 min-w-[80px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">N. lavori</label>
+                  <input
+                    type="number"
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={margin.analyzedProjectsCount == null ? "" : margin.analyzedProjectsCount}
+                    onChange={(e) =>
+                      updateHistoricalMargin(margin.id, {
+                        analyzedProjectsCount: parseNullableInt(e.target.value),
+                      })
+                    }
+                    placeholder="12"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Affidabilità</label>
+                  <select
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={margin.reliability ?? ""}
+                    onChange={(e) =>
+                      updateHistoricalMargin(margin.id, {
+                        reliability: (e.target.value || undefined) as MarginDataReliability | undefined,
+                      })
+                    }
+                  >
+                    <option value="">—</option>
+                    {MARGIN_RELIABILITY_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1 flex-1 min-w-[120px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Note</label>
+                  <input
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={margin.notes ?? ""}
+                    onChange={(e) =>
+                      updateHistoricalMargin(margin.id, { notes: e.target.value || undefined })
+                    }
+                    placeholder="Opzionale"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeHistoricalMargin(margin.id)}
+                  className="cursor-pointer p-1.5 rounded-lg border border-neutral-700 hover:border-red-700 text-slate-500 hover:text-red-400 transition-colors"
+                  title="Rimuovi margine"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={addHistoricalMargin}
+          className="cursor-pointer flex items-center gap-2 text-xs text-brand-gold border border-brand-gold/40 hover:border-brand-gold rounded-lg px-3 py-2 transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Aggiungi margine per categoria
+        </button>
+      </div>
+
+      {/* Storico gare */}
+      <div className="bg-black border border-neutral-800 rounded-xl p-5 space-y-4">
+        <SectionTitle>Storico gare</SectionTitle>
+        {tenderHistory.length === 0 ? (
+          <p className="text-xs text-slate-500 italic">
+            Nessuna gara nello storico. Aggiungi le gare passate per arricchire il profilo aziendale.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {tenderHistory.map((item) => (
+              <div
+                key={item.id}
+                className="flex items-end gap-2 flex-wrap bg-neutral-950 border border-neutral-800 rounded-lg p-3"
+              >
+                <div className="flex flex-col gap-1 flex-1 min-w-[160px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Titolo gara</label>
+                  <input
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={item.title}
+                    onChange={(e) => updateTenderHistory(item.id, { title: e.target.value })}
+                    placeholder="Es. Riqualificazione scuola comunale"
+                  />
+                </div>
+                <div className="flex flex-col gap-1 flex-1 min-w-[140px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Ente / Stazione appaltante</label>
+                  <input
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={item.ente}
+                    onChange={(e) => updateTenderHistory(item.id, { ente: e.target.value })}
+                    placeholder="Es. Comune di Milano"
+                  />
+                </div>
+                <div className="flex flex-col gap-1 min-w-[100px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Categoria lavori</label>
+                  <input
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={item.category}
+                    onChange={(e) => updateTenderHistory(item.id, { category: e.target.value })}
+                    placeholder="Es. OG1"
+                  />
+                </div>
+                <div className="flex flex-col gap-1 min-w-[110px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Importo (€)</label>
+                  <input
+                    type="number"
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={item.amount === null ? "" : item.amount}
+                    onChange={(e) =>
+                      updateTenderHistory(item.id, {
+                        amount: e.target.value === "" ? null : parseFloat(e.target.value),
+                      })
+                    }
+                    placeholder="850000"
+                  />
+                </div>
+                <div className="flex flex-col gap-1 min-w-[72px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Anno</label>
+                  <input
+                    type="number"
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={item.year === null ? "" : item.year}
+                    onChange={(e) =>
+                      updateTenderHistory(item.id, {
+                        year: e.target.value === "" ? null : parseInt(e.target.value, 10),
+                      })
+                    }
+                    placeholder="2024"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Esito</label>
+                  <select
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={item.outcome}
+                    onChange={(e) =>
+                      updateTenderHistory(item.id, { outcome: e.target.value as CompanyTenderOutcome })
+                    }
+                  >
+                    {TENDER_OUTCOMES.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1 flex-1 min-w-[120px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Note</label>
+                  <input
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={item.notes ?? ""}
+                    onChange={(e) => updateTenderHistory(item.id, { notes: e.target.value || undefined })}
+                    placeholder="Opzionale"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeTenderHistory(item.id)}
+                  className="cursor-pointer p-1.5 rounded-lg border border-neutral-700 hover:border-red-700 text-slate-500 hover:text-red-400 transition-colors"
+                  title="Rimuovi gara"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={addTenderHistory}
+          className="cursor-pointer flex items-center gap-2 text-xs text-brand-gold border border-brand-gold/40 hover:border-brand-gold rounded-lg px-3 py-2 transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Aggiungi gara
+        </button>
+      </div>
+
+      {/* Storico lavori simili */}
+      <div className="bg-black border border-neutral-800 rounded-xl p-5 space-y-4">
+        <SectionTitle>Storico lavori simili</SectionTitle>
+        {similarWorks.length === 0 ? (
+          <p className="text-xs text-slate-500 italic">
+            Nessun lavoro simile registrato. Aggiungi commesse passate rilevanti per le gare future.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {similarWorks.map((work) => (
+              <div
+                key={work.id}
+                className="flex items-end gap-2 flex-wrap bg-neutral-950 border border-neutral-800 rounded-lg p-3"
+              >
+                <div className="flex flex-col gap-1 flex-1 min-w-[160px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Nome lavoro</label>
+                  <input
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={work.title}
+                    onChange={(e) => updateSimilarWork(work.id, { title: e.target.value })}
+                    placeholder="Es. Riqualificazione edificio scolastico"
+                  />
+                </div>
+                <div className="flex flex-col gap-1 min-w-[100px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Categoria lavori</label>
+                  <input
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={work.category}
+                    onChange={(e) => updateSimilarWork(work.id, { category: e.target.value })}
+                    placeholder="Es. OG1"
+                  />
+                </div>
+                <div className="flex flex-col gap-1 min-w-[110px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Importo (€)</label>
+                  <input
+                    type="number"
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={work.amount === null ? "" : work.amount}
+                    onChange={(e) =>
+                      updateSimilarWork(work.id, {
+                        amount: e.target.value === "" ? null : parseFloat(e.target.value),
+                      })
+                    }
+                    placeholder="1200000"
+                  />
+                </div>
+                <div className="flex flex-col gap-1 min-w-[120px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Località / Regione</label>
+                  <input
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={work.location}
+                    onChange={(e) => updateSimilarWork(work.id, { location: e.target.value })}
+                    placeholder="Es. Lombardia"
+                  />
+                </div>
+                <div className="flex flex-col gap-1 min-w-[72px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Anno</label>
+                  <input
+                    type="number"
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={work.year === null ? "" : work.year}
+                    onChange={(e) =>
+                      updateSimilarWork(work.id, {
+                        year: e.target.value === "" ? null : parseInt(e.target.value, 10),
+                      })
+                    }
+                    placeholder="2023"
+                  />
+                </div>
+                <div className="flex flex-col gap-1 flex-1 min-w-[140px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Descrizione breve</label>
+                  <input
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={work.description ?? ""}
+                    onChange={(e) => updateSimilarWork(work.id, { description: e.target.value || undefined })}
+                    placeholder="Opzionale"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeSimilarWork(work.id)}
+                  className="cursor-pointer p-1.5 rounded-lg border border-neutral-700 hover:border-red-700 text-slate-500 hover:text-red-400 transition-colors"
+                  title="Rimuovi lavoro"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={addSimilarWork}
+          className="cursor-pointer flex items-center gap-2 text-xs text-brand-gold border border-brand-gold/40 hover:border-brand-gold rounded-lg px-3 py-2 transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Aggiungi lavoro simile
+        </button>
       </div>
 
       {/* Note storico */}
