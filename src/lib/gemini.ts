@@ -283,6 +283,10 @@ Struttura JSON:
   "puntiForza": string[] (almeno 2),
   "criticitaOperative": string[] (almeno 1),
   "analisiCompatibilita": string (paragrafo di 3-4 frasi sull'analisi organizzativa),
+  "produttivitaAnalisi": string (2-3 frasi su come la produttività delle squadre impatta la fattibilità),
+  "oreDisponibiliStimate": number (ore totali che le squadre libere possono dedicare entro la durata stimata della gara),
+  "oreRichiesteStimate": number (ore stimate per completare i lavori basandosi su importo e categoria),
+  "produttivitaSufficiente": boolean,
   "rischioAlert": string | null,
   "suggerimentoOperativo": string (azione concreta, es. "Assumi 2 operai prima di partecipare" o "Chiudi cantiere X prima di aprire questo"),
   ${EXPLAINABILITY_JSON_INLINE}
@@ -304,8 +308,20 @@ Logica capacità (NON applicare meccanicamente, ragiona sul contesto):
 - Un'impresa con 8 dipendenti e 2 cantieri aperti ha dipendenti liberi stimati = 8-(2*3) = 2, quindi CRITICA non NON_SOSTENIBILE
 - Importo gara > fatturato annuo è un segnale di sovraccarico finanziario-organizzativo
 
+Logica produttività:
+- Ore disponibili = squadreDisponibili × oreGiornaliereSquadra × giorniLavorativiSettimana × (durata_stimata_settimane) × (rendimentoSquadrePercent/100)
+- Durata stimata settimane: stimala dall'importo (ogni €100k ≈ 4 settimane per lavori OG standard)
+- Ore richieste: stimale dall'importo (ogni €100k ≈ 500 ore uomo per lavori OG standard)
+- Se profile.oreGiornaliereSquadra = 0, usa default 8
+- Se profile.rendimentoSquadrePercent = 0, usa default 100
+- produttivitaSufficiente = oreDisponibiliStimate >= oreRichiesteStimate
+
 PROFILO IMPRESA:
 ${JSON.stringify(profile, null, 2)}
+
+- Ore/giorno per squadra: ${profile.oreGiornaliereSquadra || 8}
+- Rendimento squadre: ${profile.rendimentoSquadrePercent || 100}%
+- Giorni lavorativi/settimana: ${profile.giorniLavorativiSettimana || 5}
 
 DATI GARA:
 - Titolo: ${tender.title}

@@ -168,6 +168,7 @@ const emptyProfile: CompanyProfileType = {
   geographicAreas: [], workSectors: [],
   targetImportMin: 0, targetImportMax: 0,
   employeesCount: 0, activeSquads: 0, activeJobsites: 0,
+  oreGiornaliereSquadra: 8, rendimentoSquadrePercent: 100, giorniLavorativiSettimana: 5,
   availableResources: [],
   tenderHistory: [],
   similarWorks: [],
@@ -894,6 +895,53 @@ export function CompanyProfile() {
               className={inputCls()}
               value={profile.activeJobsites === 0 ? "" : profile.activeJobsites}
               onChange={(e) => set("activeJobsites", e.target.value === "" ? 0 : parseInt(e.target.value))}
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Ore lavorative/giorno per squadra
+            </label>
+            <input
+              type="number"
+              className={inputCls()}
+              value={profile.oreGiornaliereSquadra}
+              onChange={(e) =>
+                set("oreGiornaliereSquadra", e.target.value === "" ? 8 : parseInt(e.target.value, 10))
+              }
+              step="1"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Rendimento medio squadre (%)
+            </label>
+            <input
+              type="number"
+              className={inputCls()}
+              value={profile.rendimentoSquadrePercent}
+              onChange={(e) =>
+                set("rendimentoSquadrePercent", e.target.value === "" ? 100 : parseInt(e.target.value, 10))
+              }
+              step="5"
+            />
+            <p className="text-[9px] text-slate-600 mt-1">100% = piena capacità teorica</p>
+          </div>
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Giorni lavorativi/settimana
+            </label>
+            <input
+              type="number"
+              className={inputCls()}
+              value={profile.giorniLavorativiSettimana}
+              onChange={(e) =>
+                set("giorniLavorativiSettimana", e.target.value === "" ? 5 : parseInt(e.target.value, 10))
+              }
+              step="1"
+              min="1"
+              max="7"
             />
           </div>
         </div>

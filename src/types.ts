@@ -239,6 +239,9 @@ export interface CompanyProfile {
   employeesCount: number;
   activeSquads: number;
   activeJobsites: number;
+  oreGiornaliereSquadra: number;
+  rendimentoSquadrePercent: number;
+  giorniLavorativiSettimana: number;
 
   // Mezzi e risorse operative
   availableResources?: CompanyAvailableResource[];
@@ -349,6 +352,10 @@ export interface CapacityAnalysisResult {
   puntiForza: string[];
   criticitaOperative: string[];
   analisiCompatibilita: string;
+  produttivitaAnalisi: string;
+  oreDisponibiliStimate: number;
+  oreRichiesteStimate: number;
+  produttivitaSufficiente: boolean;
   rischioAlert: string | null;
   suggerimentoOperativo: string;
   generatedAt: string;
