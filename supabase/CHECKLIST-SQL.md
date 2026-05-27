@@ -11,9 +11,9 @@
 
 | Feature | SQL necessario? |
 |---------|-----------------|
-| Chat Gemini, ROI Calculator, RTI, Preparazione offerta | **No** — solo `GEMINI_API_KEY` |
-| Parser Disciplinare (PDF → Gemini → gare) | **No** nuove tabelle — usa `gare` esistente + `GEMINI_API_KEY` |
-| SOA Gap Forecasting | **No** nuove tabelle — `profili_impresa` + `storico_gare_ai` + `gare_anac` + `GEMINI_API_KEY` |
+| Chat LLM, ROI Calculator, RTI, Preparazione offerta | **No** — solo `OPENROUTER_API_KEY` |
+| Parser Disciplinare (PDF → OpenRouter → gare) | **No** nuove tabelle — usa `gare` esistente + `OPENROUTER_API_KEY` |
+| SOA Gap Forecasting | **No** nuove tabelle — `profili_impresa` + `storico_gare_ai` + `gare_anac` + `OPENROUTER_API_KEY` |
 | Salva conversazione | **Sì** — tabella `conversazioni_ai` |
 | Historical Knowledge Layer + Post-Gara Forensics | **Sì** — tabella `storico_gare_ai` |
 | Alert & Daily Feed (scadenze, fit ANAC, urgenti) | **Sì** — colonne + `gare_anac_viste` |

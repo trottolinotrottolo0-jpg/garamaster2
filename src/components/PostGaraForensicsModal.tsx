@@ -35,7 +35,7 @@ export function PostGaraForensicsModal({
   const [motivazione, setMotivazione] = useState("");
   const [noteOperative, setNoteOperative] = useState("");
   const [analisi, setAnalisi] = useState<string | null>(null);
-  const [modelUsed, setModelUsed] = useState("gemini-2.5-flash");
+  const [modelUsed, setModelUsed] = useState("deepseek/deepseek-chat");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

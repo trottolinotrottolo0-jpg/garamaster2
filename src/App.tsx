@@ -651,7 +651,9 @@ export default function App() {
       const errText =
         error instanceof Error ? error.message : "Errore sconosciuto dal server LLM.";
       const isTemporaryOverload =
-        /sovraccarico|503|429|high demand|UNAVAILABLE|troppe richieste/i.test(errText);
+        /sovraccarico|503|429|high demand|UNAVAILABLE|troppe richieste|rate.?limit|temporarily rate-limited|saturi/i.test(
+          errText
+        );
 
       setMessages((prev) => [
         ...prev,
@@ -659,8 +661,8 @@ export default function App() {
           id: `msg-error-${Date.now()}`,
           sender: "assistant",
           text: isTemporaryOverload
-            ? `### Servizio Gemini momentaneamente occupato\n\n${errText}\n\n**L'app funziona:** login, gare e Supabase non sono coinvolti. Attendi 30–60 secondi e **reinvia il messaggio**.`
-            : `### Impossibile contattare l'LLM\n\n${errText}\n\nVerifica \`npm run dev\` su http://localhost:3000 e \`GEMINI_API_KEY\` in \`.env.local\`.`,
+            ? `### Servizio LLM momentaneamente occupato\n\n${errText}\n\n**L'app funziona:** login, gare e Supabase non sono coinvolti. Attendi 1–2 minuti e **reinvia il messaggio**.`
+            : `### Impossibile contattare l'LLM\n\n${errText}\n\nVerifica \`npm run dev\` su http://localhost:3000 e \`OPENROUTER_API_KEY\` in \`.env.local\`.`,
           timestamp: new Date(),
         },
       ]);

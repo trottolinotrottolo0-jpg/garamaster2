@@ -18,6 +18,7 @@ import { generateSoaGapForecast } from "./soaGapForecast";
 import type { SoaGapForecastRequestBody } from "./soaGapForecastTypes";
 import type { PostGaraForensicsRequestBody } from "./postGaraForensicsTypes";
 import { resolveSupabaseAnonKey, resolveSupabaseUrl } from "./resolveSupabaseUrl";
+import { deepseekChatCompletion } from "./deepseekChat";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
@@ -58,7 +59,9 @@ async function createApp() {
       ok: true,
       port: PORT,
       appUrl: process.env.VITE_APP_URL ?? process.env.APP_URL ?? `http://localhost:${PORT}`,
-      llm: Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "MY_GEMINI_API_KEY"),
+      llm: Boolean(
+        process.env.OPENROUTER_API_KEY?.trim() || process.env.DEEPSEEK_API_KEY?.trim()
+      ),
       supabase: supabaseConfigured,
       supabaseReachable,
     });
@@ -77,6 +80,38 @@ async function createApp() {
       const message =
         error instanceof Error ? error.message : "Errore durante la trascrizione.";
       console.error("[/api/transcribe]", message);
+      res.status(503).json({ error: message });
+    }
+  });
+
+  app.post("/api/internal-llm", async (req, res) => {
+    try {
+      const body = req.body as {
+        prompt?: string;
+        systemInstruction?: string;
+        model?: string;
+        temperature?: number;
+        maxTokens?: number;
+      };
+
+      if (!body?.prompt?.trim()) {
+        res.status(400).json({ error: "Prompt mancante." });
+        return;
+      }
+
+      const result = await deepseekChatCompletion({
+        prompt: body.prompt,
+        systemInstruction: body.systemInstruction,
+        model: body.model,
+        temperature: body.temperature,
+        maxTokens: body.maxTokens,
+      });
+
+      res.json(result);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Errore chiamata internal-llm.";
+      console.error("[/api/internal-llm]", message);
       res.status(503).json({ error: message });
     }
   });
@@ -268,8 +303,10 @@ createApp()
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`Gara Master AI → http://localhost:${PORT}`);
       console.log(`Porta ufficiale: ${PORT} (usa solo npm run dev)`);
-      if (!process.env.GEMINI_API_KEY) {
-        console.warn("⚠ GEMINI_API_KEY assente: configura .env.local per attivare l'LLM.");
+      if (!process.env.OPENROUTER_API_KEY?.trim() && !process.env.DEEPSEEK_API_KEY?.trim()) {
+        console.warn(
+          "⚠ OPENROUTER_API_KEY assente: configura OPENROUTER_API_KEY in .env.local per attivare l'LLM."
+        );
       }
       const anonKey = process.env.VITE_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY;
       if (!anonKey || anonKey === "YOUR_SUPABASE_ANON_KEY") {

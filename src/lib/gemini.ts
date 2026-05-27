@@ -1,5 +1,4 @@
 /// <reference types="vite/client" />
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { EXPLAINABILITY_JSON_INLINE, normalizeExplainability } from "./explainability";
 import type {
   TenderDocument,
@@ -25,14 +24,34 @@ function parseGeminiJson<T extends Record<string, unknown>>(
   return { ...(parsed as T), explainability };
 }
 
-const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY as string);
+async function callInternalLlm(prompt: string, opts?: { temperature?: number; maxTokens?: number }) {
+  const response = await fetch("/api/internal-llm", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      prompt,
+      temperature: opts?.temperature ?? 0.35,
+      maxTokens: opts?.maxTokens ?? 8000,
+    }),
+  });
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message = data?.error ?? data?.message ?? "Errore internal-llm";
+    throw new Error(String(message));
+  }
+
+  const text = data?.text;
+  if (!text || typeof text !== "string") {
+    throw new Error("LLM non ha restituito testo.");
+  }
+  return text.trim();
+}
 
 export async function runBidNoBid(
   tender: TenderDocument,
   profile: CompanyProfile
 ): Promise<BidNoBidResult> {
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
   const prompt = `Sei un motore decisionale esperto in gare d'appalto pubbliche italiane (D.Lgs. 36/2023).
 Prima di rispondere, ragiona internamente in modo approfondito su tutti i fattori rilevanti.
 Analizza la compatibilità tra il profilo dell'impresa e la gara con massima precisione.
@@ -84,16 +103,7 @@ DATI GARA:
 - Anomalie rilevate: ${tender.anomalies.join(", ") || "nessuna"}
 - Penali: ${tender.penalties.join(", ") || "nessuna"}`;
 
-  const result = await model.generateContent({
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    generationConfig: {
-      thinkingConfig: {
-        thinkingBudget: 8000,
-      },
-      maxOutputTokens: 8000,
-    },
-  } as Parameters<typeof model.generateContent>[0]);
-  const text = result.response.text().trim();
+  const text = await callInternalLlm(prompt, { temperature: 0.35, maxTokens: 8000 });
 
   try {
     const parsed = parseGeminiJson<Omit<BidNoBidResult, "generatedAt" | "explainability">>(text);
@@ -133,7 +143,6 @@ export async function runBidPricing(
   profile: CompanyProfile,
   ribassoPersonalizzato: number
 ): Promise<BidPricingResult> {
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
   const importoGara = parseTenderValue(tender.value);
 
   const scenari: PricingScenario[] = [
@@ -180,30 +189,20 @@ DATI GARA:
 SCENARI PRE-CALCOLATI (per contesto):
 ${JSON.stringify(scenari, null, 2)}`;
 
-  const result = await model.generateContent({
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    generationConfig: {
-      thinkingConfig: { thinkingBudget: 8000 },
-      maxOutputTokens: 8000,
-    },
-  } as Parameters<typeof model.generateContent>[0]);
-
-  const text = result.response.text().trim();
+  const text = await callInternalLlm(prompt, { temperature: 0.35, maxTokens: 8000 });
   try {
     const parsed = parseGeminiJson<Omit<BidPricingResult, "scenari" | "generatedAt" | "explainability">>(
       text
     );
     return { ...parsed, scenari, generatedAt: new Date().toISOString() };
   } catch {
-    throw new Error("Risposta Gemini non valida — riprova");
+    throw new Error("Risposta LLM non valida — riprova");
   }
 }
 
 export async function runRedFlagAnalysis(
   tender: TenderDocument
 ): Promise<RedFlagAnalysisResult> {
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
   const prompt = `Sei un esperto legale specializzato in gare d'appalto pubbliche italiane (D.Lgs. 36/2023).
 Analizza i dati della gara e individua clausole problematiche, requisiti sproporzionati, anomalie e red flag.
 Rispondi SOLO con un oggetto JSON valido, senza markdown, senza backtick, senza testo aggiuntivo.
@@ -253,23 +252,14 @@ DATI GARA:
 - Anomalie già rilevate: ${tender.anomalies.join(", ") || "nessuna"}
 - Penali già rilevate: ${tender.penalties.join(", ") || "nessuna"}
 - Sezioni disciplinare: ${JSON.stringify(tender.sections?.map((s) => ({ title: s.title, summary: s.summary })), null, 2)}`;
-
-  const result = await model.generateContent({
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    generationConfig: {
-      thinkingConfig: { thinkingBudget: 8000 },
-      maxOutputTokens: 8000,
-    },
-  } as Parameters<typeof model.generateContent>[0]);
-
-  const text = result.response.text().trim();
+  const text = await callInternalLlm(prompt, { temperature: 0.35, maxTokens: 8000 });
   try {
     const parsed = parseGeminiJson<Omit<RedFlagAnalysisResult, "generatedAt" | "explainability">>(
       text
     );
     return { ...parsed, generatedAt: new Date().toISOString() };
   } catch {
-    throw new Error("Risposta Gemini non valida — riprova");
+    throw new Error("Risposta LLM non valida — riprova");
   }
 }
 
@@ -277,8 +267,6 @@ export async function runCapacityAnalysis(
   tender: TenderDocument,
   profile: CompanyProfile
 ): Promise<CapacityAnalysisResult> {
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
   const prompt = `Sei un esperto di organizzazione aziendale per imprese edili italiane.
 Analizza la capacità operativa dell'impresa di sostenere una nuova gara d'appalto senza andare in saturazione.
 Rispondi SOLO con un oggetto JSON valido, senza markdown, senza backtick.
@@ -326,23 +314,14 @@ DATI GARA:
 - Regione: ${tender.region}
 - Durata stimata: da requisiti e sezioni disciplinare
 - Requisiti: ${JSON.stringify(tender.requirements)}`;
-
-  const result = await model.generateContent({
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    generationConfig: {
-      thinkingConfig: { thinkingBudget: 8000 },
-      maxOutputTokens: 8000,
-    },
-  } as Parameters<typeof model.generateContent>[0]);
-
-  const text = result.response.text().trim();
+  const text = await callInternalLlm(prompt, { temperature: 0.35, maxTokens: 8000 });
   try {
     const parsedCap = parseGeminiJson<
       Omit<CapacityAnalysisResult, "generatedAt" | "explainability">
     >(text);
     return { ...parsedCap, generatedAt: new Date().toISOString() };
   } catch {
-    throw new Error("Risposta Gemini non valida — riprova");
+    throw new Error("Risposta LLM non valida — riprova");
   }
 }
 
@@ -350,8 +329,6 @@ export async function runProfitabilityGate(
   tender: TenderDocument,
   profile: CompanyProfile
 ): Promise<ProfitabilityGateResult> {
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
   const prompt = `Sei un esperto di analisi economica per imprese edili italiane.
 Analizza la profittabilità di questa gara d'appalto per l'impresa specifica.
 Rispondi SOLO con un oggetto JSON valido, senza markdown, senza backtick.
@@ -414,21 +391,13 @@ DATI GARA:
 - Anomalie: ${tender.anomalies.join(", ") || "nessuna"}
 - Requisiti: ${JSON.stringify(tender.requirements)}`;
 
-  const result = await model.generateContent({
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    generationConfig: {
-      thinkingConfig: { thinkingBudget: 8000 },
-      maxOutputTokens: 8000,
-    },
-  } as Parameters<typeof model.generateContent>[0]);
-
-  const text = result.response.text().trim();
+  const text = await callInternalLlm(prompt, { temperature: 0.35, maxTokens: 8000 });
   try {
     const parsed = parseGeminiJson<
       Omit<ProfitabilityGateResult, "generatedAt" | "explainability">
     >(text);
     return { ...parsed, generatedAt: new Date().toISOString() };
   } catch {
-    throw new Error("Risposta Gemini non valida — riprova");
+    throw new Error("Risposta LLM non valida — riprova");
   }
 }

@@ -1,5 +1,5 @@
-import { GoogleGenAI } from "@google/genai";
 import { formatGeminiError } from "./geminiChat";
+import { deepseekChatCompletion } from "./deepseekChat";
 import type {
   PortfolioScoreRequestBody,
   PortfolioScoreResponseBody,
@@ -66,31 +66,17 @@ Rispondi SOLO con JSON valido, senza markdown:
 export async function generatePortfolioScore(
   body: PortfolioScoreRequestBody
 ): Promise<PortfolioScoreResponseBody> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
-    throw new Error("GEMINI_API_KEY non configurata.");
-  }
-
   if (!body.tenders?.length) {
     throw new Error("Nessuna gara nel catalogo per calcolare il portfolio score.");
   }
 
-  const ai = new GoogleGenAI({ apiKey });
   const prompt = buildPrompt(body);
-
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    config: {
-      temperature: 0.25,
-      maxOutputTokens: 2048,
-    },
+  const { text } = await deepseekChatCompletion({
+    prompt,
+    model: process.env.OPENROUTER_MODEL,
+    temperature: 0.25,
+    maxTokens: 2048,
   });
-
-  const text = response.text?.trim();
-  if (!text) {
-    throw new Error("Gemini non ha restituito il portfolio score.");
-  }
 
   const cleaned = text.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
   let parsed: Record<string, unknown>;

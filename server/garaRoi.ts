@@ -1,5 +1,5 @@
-import { GoogleGenAI } from "@google/genai";
 import { formatGeminiError } from "./geminiChat";
+import { deepseekChatCompletion } from "./deepseekChat";
 import type { GaraRoiRequestBody, GaraRoiResponseBody } from "./garaRoiTypes";
 
 function buildPrompt(body: GaraRoiRequestBody): string {
@@ -80,26 +80,20 @@ export function buildRoiResponse(
 }
 
 export async function generateGaraRoi(body: GaraRoiRequestBody): Promise<GaraRoiResponseBody> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
-    throw new Error("GEMINI_API_KEY non configurata.");
-  }
-
   if (body.importoGaraEuro <= 0) {
     throw new Error("Importo gara non valido per il calcolo ROI.");
   }
 
-  const ai = new GoogleGenAI({ apiKey });
   const prompt = buildPrompt(body);
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: { temperature: 0.3, maxOutputTokens: 2048 },
+    const { text } = await deepseekChatCompletion({
+      prompt,
+      model: process.env.OPENROUTER_MODEL,
+      temperature: 0.3,
+      maxTokens: 2048,
     });
 
-    const text = response.text?.trim() ?? "";
     const cleaned = text.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
     const parsed = JSON.parse(cleaned) as Record<string, unknown>;
 

@@ -1,7 +1,7 @@
-import { GoogleGenAI } from "@google/genai";
 import type { DisciplinareParseResult } from "../src/types/disciplinareParse";
 import { DISCIPLINARE_PARSE_USER_PROMPT } from "./disciplinareParsePrompt";
-import { formatGeminiError } from "./geminiChat";
+import { deepseekChatCompletion, resolveOpenRouterModel } from "./deepseekChat";
+import { Buffer } from "node:buffer";
 
 function normalizeParse(raw: Record<string, unknown>): DisciplinareParseResult {
   const requisitiSoa = Array.isArray(raw.requisiti_soa)
@@ -79,48 +79,34 @@ export async function parseDisciplinarePdf(params: {
   fileName: string;
   mimeType?: string;
 }): Promise<{ parse: DisciplinareParseResult; model: string }> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
-    throw new Error("GEMINI_API_KEY non configurata.");
-  }
-
   const data = params.pdfBase64.replace(/^data:[^;]+;base64,/, "").trim();
   if (!data) {
     throw new Error("File PDF non valido o vuoto.");
   }
 
-  const ai = new GoogleGenAI({ apiKey });
-  const model = "gemini-2.5-flash";
+  const { default: pdfParse } = await import("pdf-parse");
+  const pdfBuffer = Buffer.from(data, "base64");
+  const parsedPdf = await pdfParse(pdfBuffer);
+  const extractedText = String(parsedPdf?.text ?? "").trim();
 
-  try {
-    const response = await ai.models.generateContent({
-      model,
-      contents: [
-        {
-          role: "user",
-          parts: [
-            {
-              inlineData: {
-                mimeType: params.mimeType ?? "application/pdf",
-                data,
-              },
-            },
-            { text: DISCIPLINARE_PARSE_USER_PROMPT },
-          ],
-        },
-      ],
-      config: {
-        temperature: 0.15,
-        maxOutputTokens: 8192,
-        responseMimeType: "application/json",
-      },
-    });
-
-    const text = response.text?.trim() ?? "";
-    const cleaned = text.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
-    const parsed = JSON.parse(cleaned) as Record<string, unknown>;
-    return { parse: normalizeParse(parsed), model };
-  } catch (error) {
-    throw new Error(formatGeminiError(error));
+  if (!extractedText) {
+    throw new Error(
+      "Testo estratto dal PDF vuoto. Il PDF potrebbe essere solo immagine/scansione."
+    );
   }
+
+  const model = resolveOpenRouterModel();
+  const limitedText = extractedText.slice(0, 120000);
+  const prompt = `${DISCIPLINARE_PARSE_USER_PROMPT}\n\nTESTO DISCIPLINARE:\n${limitedText}`;
+
+  const { text, modelUsed } = await deepseekChatCompletion({
+    model,
+    prompt,
+    temperature: 0.15,
+    maxTokens: 8192,
+  });
+
+  const cleaned = text.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
+  const parsed = JSON.parse(cleaned) as Record<string, unknown>;
+  return { parse: normalizeParse(parsed), model: modelUsed };
 }

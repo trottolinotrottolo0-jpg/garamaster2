@@ -1,5 +1,6 @@
-import { GoogleGenAI } from "@google/genai";
+import { resolveOpenRouterModel } from "./deepseekChat";
 import { formatGeminiError } from "./geminiChat";
+import { deepseekChatCompletion } from "./deepseekChat";
 import type {
   SoaGapForecastRequestBody,
   SoaGapForecastResponseBody,
@@ -165,32 +166,21 @@ function computeLocalSoaGapForecast(
 export async function generateSoaGapForecast(
   body: SoaGapForecastRequestBody
 ): Promise<SoaGapForecastResponseBody> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
-    throw new Error("GEMINI_API_KEY non configurata.");
-  }
-
   if (!body.gareAnacArea.length && !body.garePerseOSaltate.length) {
     throw new Error(
       "Dati insufficienti: servono gare ANAC nel catalogo o storico gare perse/saltate per SOA."
     );
   }
 
-  const ai = new GoogleGenAI({ apiKey });
-  const model = "gemini-2.5-flash";
-
   try {
-    const response = await ai.models.generateContent({
+    const model = resolveOpenRouterModel();
+    const { text } = await deepseekChatCompletion({
+      prompt: buildPrompt(body),
       model,
-      contents: buildPrompt(body),
-      config: {
-        temperature: 0.25,
-        maxOutputTokens: 4096,
-        responseMimeType: "application/json",
-      },
+      temperature: 0.25,
+      maxTokens: 4096,
     });
 
-    const text = response.text?.trim() ?? "";
     const cleaned = text.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
     const parsed = JSON.parse(cleaned) as Record<string, unknown>;
     return normalizeResponse(parsed, body, model);

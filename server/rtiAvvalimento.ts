@@ -1,9 +1,9 @@
-import { GoogleGenAI } from "@google/genai";
 import { formatGeminiError } from "./geminiChat";
 import type {
   RtiAvvalimentoRequestBody,
   RtiAvvalimentoResponseBody,
 } from "./rtiAvvalimentoTypes";
+import { deepseekChatCompletion } from "./deepseekChat";
 
 function buildPrompt(body: RtiAvvalimentoRequestBody): string {
   return `Sei il modulo **RTI & Avvalimento Configurator** di GaraMaster AI per gare pubbliche italiane (D.Lgs. 36/2023).
@@ -79,22 +79,16 @@ Rispondi SOLO con JSON valido, senza markdown:
 export async function generateRtiAvvalimentoAnalysis(
   body: RtiAvvalimentoRequestBody
 ): Promise<RtiAvvalimentoResponseBody> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
-    throw new Error("GEMINI_API_KEY non configurata.");
-  }
-
-  const ai = new GoogleGenAI({ apiKey });
   const prompt = buildPrompt(body);
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: { maxOutputTokens: 8192 },
+    const { text } = await deepseekChatCompletion({
+      prompt,
+      model: process.env.OPENROUTER_MODEL,
+      temperature: 0.3,
+      maxTokens: 8192,
     });
 
-    const text = response.text?.trim() ?? "";
     const cleaned = text.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
     const parsed = JSON.parse(cleaned) as RtiAvvalimentoResponseBody;
     return parsed;

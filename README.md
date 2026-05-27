@@ -15,11 +15,11 @@ View your app in AI Studio: https://ai.studio/apps/563adc28-c542-4d97-b382-77e88
 
 1. Install dependencies:
    `npm install`
-2. Create `.env.local` with your Gemini API key:
+2. Create `.env.local` with your OpenRouter API key:
    ```
-   GEMINI_API_KEY=your_key_here
+   OPENROUTER_API_KEY=your_key_here
    ```
-   Get a key from [Google AI Studio](https://aistudio.google.com/apikey).
+   Get a key from [OpenRouter](https://openrouter.ai/keys). Default model: `deepseek/deepseek-chat` (DeepSeek via OpenRouter).
 3. Run the app (API + frontend on port 3000):
    `npm run dev`
 4. Open [http://localhost:3000](http://localhost:3000)

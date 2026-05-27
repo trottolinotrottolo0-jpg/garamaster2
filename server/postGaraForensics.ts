@@ -1,5 +1,6 @@
-import { GoogleGenAI } from "@google/genai";
+import { resolveOpenRouterModel } from "./deepseekChat";
 import { formatGeminiError } from "./geminiChat";
+import { deepseekChatCompletion } from "./deepseekChat";
 import type {
   PostGaraForensicsRequestBody,
   PostGaraForensicsResponseBody,
@@ -46,26 +47,20 @@ ${JSON.stringify(body.storicoSnippet ?? [], null, 2)}
 export async function generatePostGaraForensics(
   body: PostGaraForensicsRequestBody
 ): Promise<PostGaraForensicsResponseBody> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
-    throw new Error("GEMINI_API_KEY non configurata.");
-  }
-
   if (!body.motivazione?.trim() && !body.noteOperative?.trim()) {
     throw new Error("Inserisci almeno motivazione o note operative.");
   }
-
-  const ai = new GoogleGenAI({ apiKey });
-  const model = "gemini-2.5-flash";
+  const model = resolveOpenRouterModel();
 
   try {
-    const response = await ai.models.generateContent({
+    const { text } = await deepseekChatCompletion({
+      prompt: buildPrompt(body),
       model,
-      contents: buildPrompt(body),
-      config: { temperature: 0.35, maxOutputTokens: 4096 },
+      temperature: 0.35,
+      maxTokens: 4096,
     });
 
-    let analisi = response.text?.trim() ?? "";
+    let analisi = text?.trim() ?? "";
     const opening =
       "Sulla base di questi dati, ecco cosa ha determinato l'esito e cosa migliorare per la prossima gara simile.";
 
