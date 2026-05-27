@@ -38,6 +38,45 @@ function toRow(record: AnacGaraRecord, syncedAt: string) {
   };
 }
 
+/** Upsert per CIG senza dipendere da UNIQUE constraint (PostgREST non usa indici parziali). */
+async function upsertBatchByCig(
+  supabase: ReturnType<typeof getAdminClient>,
+  records: AnacGaraRecord[],
+  syncedAt: string
+): Promise<void> {
+  const cigs = records.map((r) => r.cig).filter(Boolean);
+  const idByCig = new Map<string, string>();
+
+  if (cigs.length) {
+    const { data: existing, error } = await supabase
+      .from("gare_anac")
+      .select("id, cig")
+      .in("cig", cigs);
+    if (error) throw new Error(`Lettura gare_anac fallita: ${error.message}`);
+    for (const row of existing ?? []) {
+      if (row.cig) idByCig.set(String(row.cig), String(row.id));
+    }
+  }
+
+  for (const record of records) {
+    const row = toRow(record, syncedAt);
+    const existingId = idByCig.get(record.cig);
+
+    if (existingId) {
+      const { error } = await supabase.from("gare_anac").update(row).eq("id", existingId);
+      if (error) throw new Error(`Update gare_anac (${record.cig}) fallito: ${error.message}`);
+    } else {
+      const { data: inserted, error } = await supabase
+        .from("gare_anac")
+        .insert(row)
+        .select("id")
+        .single();
+      if (error) throw new Error(`Insert gare_anac (${record.cig}) fallito: ${error.message}`);
+      if (inserted?.id) idByCig.set(record.cig, String(inserted.id));
+    }
+  }
+}
+
 export async function upsertAnacRecordsToSupabase(
   records: AnacGaraRecord[],
   source: string
@@ -58,16 +97,7 @@ export async function upsertAnacRecordsToSupabase(
   const batchSize = 50;
   for (let i = 0; i < records.length; i += batchSize) {
     const batch = records.slice(i, i + batchSize);
-    const rows = batch.map((r) => toRow(r, syncedAt));
-
-    const { error } = await supabase.from("gare_anac").upsert(rows, {
-      onConflict: "cig",
-      ignoreDuplicates: false,
-    });
-
-    if (error) {
-      throw new Error(`Upsert gare_anac fallito: ${error.message}`);
-    }
+    await upsertBatchByCig(supabase, batch, syncedAt);
   }
 
   const imported = records.filter((r) => !existingCigs.has(r.cig)).length;

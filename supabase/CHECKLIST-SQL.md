@@ -118,5 +118,6 @@ In **Authentication → Policies** (o RLS sulla tabella): policy attive su ogni 
 | `column "scadenza_offerta" does not exist` | Esegui `fix-scadenza-offerta.sql` (NON rieseguire tutto `schema.sql` se `gare` esiste già) |
 | Scouting: tabella `gare_scouting_utente` mancante | Esegui `solo-scouting-gare.sql` |
 | `could not create unique index "gare_anac_cig_unique_idx"` (CIG duplicato) | Esegui `fix-duplicate-cig.sql` oppure riesegui `solo-anac-sync-fase2.sql` |
+| `no unique or exclusion constraint matching the ON CONFLICT` (sync ANAC) | Aggiorna il server (upsert manuale) oppure esegui `fix-anac-cig-unique.sql` |
 
 Per trovare il tuo `user_id`: **Authentication → Users** → copia UUID utente.
