@@ -100,6 +100,62 @@ Il JSON deve rispettare esattamente questa struttura:
   },
   "areaGeograficaOk": boolean,
   "importoInTarget": boolean,
+  "lavoriInCorsoDetail": {
+    "numeroCantieriAttivi": number (activeJobsites dal profilo),
+    "cantieriCritici": string[] (descrizioni brevi cantieri che interferiscono — usa ["Cantiere generico attivo"] per ogni cantiere critico se non hai dettagli),
+    "cantieriCompatibili": string[] (cantieri che non interferiscono),
+    "impattoCaricoLavoro": "nessuno" | "lieve" | "moderato" | "critico",
+    "rischioInterferenza": boolean,
+    "risorseSottratte": string[] (es. ["2 operai specializzati", "1 caposquadra"] — risorse che i cantieri attuali assorbono),
+    "esito": "NESSUN_CONFLITTO" | "CONFLITTO_GESTIBILE" | "CONFLITTO_CRITICO" | "CONFLITTO_BLOCCANTE",
+    "motivazione": string (2-3 frasi),
+    "azioneConsigliata": string
+  },
+  "tempiDetail": {
+    "durataGaraStimataSettimane": number (ogni €100k ≈ 4 settimane OG standard),
+    "scadenzaOffertaGiorni": number (stima 30 giorni se non specificato nei requisiti),
+    "tempoPreparazioneNecessarioGiorni": number (stima basata su complessità gara: semplice=7, media=14, complessa=21),
+    "tempoPreparazioneDisponibileGiorni": number (scadenzaOffertaGiorni - 3 giorni buffer),
+    "preparazioneRealistica": boolean (tempoDisponibile >= tempoNecessario),
+    "sovrapposizioneCantieri": "nessuna" | "parziale" | "totale",
+    "esito": "TEMPI_OTTIMALI" | "TEMPI_ACCETTABILI" | "TEMPI_STRETTI" | "TEMPI_IMPOSSIBILI",
+    "motivazione": string (2-3 frasi),
+    "azioneConsigliata": string
+  },
+  "rischioOperativoDetail": {
+    "complessitaEsecutiva": "bassa" | "media" | "alta" | "molto_alta",
+    "rischioLogistico": "basso" | "medio" | "alto",
+    "rischioTempistico": "basso" | "medio" | "alto",
+    "rischioSubappalto": "basso" | "medio" | "alto",
+    "fattoriRischio": string[] (3-5 fattori concreti basati su categoria lavori, area, penali, anomalie),
+    "fattoriMitigazione": string[] (2-4 elementi che riducono il rischio),
+    "scoreRischioOperativo": number (0-100, più alto = più rischioso),
+    "esito": "RISCHIO_BASSO" | "RISCHIO_ACCETTABILE" | "RISCHIO_ELEVATO" | "RISCHIO_CRITICO",
+    "motivazione": string (2-3 frasi),
+    "azioneConsigliata": string
+  },
+  "rischioDocumentaleDetail": {
+    "complessitaDocumentale": "bassa" | "media" | "alta" | "molto_alta",
+    "documentiCritici": string[] (documenti difficili da produrre per questa specifica gara),
+    "rischioEsclusione": "basso" | "medio" | "alto",
+    "requisitiDifficili": string[] (requisiti di partecipazione difficili da soddisfare),
+    "tempoPreparazioneDocumenti": "sufficiente" | "stretto" | "critico",
+    "scoreRischioDocumentale": number (0-100),
+    "esito": "DOCUMENTAZIONE_SEMPLICE" | "DOCUMENTAZIONE_GESTIBILE" | "DOCUMENTAZIONE_COMPLESSA" | "DOCUMENTAZIONE_CRITICA",
+    "motivazione": string (2-3 frasi),
+    "azioneConsigliata": string
+  },
+  "storicoSimileDetail": {
+    "gareSimilariTrovate": number (gare in historicalTenders con stessa categoria SOA o importo ±50% rispetto a importoGara),
+    "tassoDiSuccessoCategoria": number (% gare vinte sul totale similari — 0 se nessuna similare),
+    "ribassoMedioCategoria": number (ribasso medio storico delle gare similari — 0 se nessuna),
+    "margineAttesoStorico": number (margine medio realizzato delle gare vinte similari — 0 se nessuna vinta),
+    "garePertinenti": array max 3 gare più recenti tra le similari, ogni elemento: { "anno": number, "importo": number, "ribasso": number, "esito": string, "categoria": string } — array vuoto se nessuna,
+    "confidenzaAnalisi": "alta" | "media" | "bassa" | "nessuna",
+    "esito": "STORICO_FAVOREVOLE" | "STORICO_NEUTRO" | "STORICO_SFAVOREVOLE" | "STORICO_ASSENTE",
+    "motivazione": string (2-3 frasi sul pattern storico),
+    "azioneConsigliata": string
+  },
   ${EXPLAINABILITY_JSON_INLINE}
 }
 
@@ -138,6 +194,49 @@ Logica CapacityDecisionDetail:
   - CAPACITA_INSUFFICIENTE: squadreDisponibili = 0 e dipendentiLiberi < 4, o carico dopo gara > 100%
 - rischioSaturazione: basso se carico < 70%, medio se 70-85%, alto se > 85%
 
+Logica LavoriInCorsoDetail:
+- Se activeJobsites = 0: esito NESSUN_CONFLITTO, cantieriCritici vuoto
+- Se activeJobsites = 1-2 e squadre sufficienti: CONFLITTO_GESTIBILE
+- Se activeJobsites >= 3 o squadre = 0: CONFLITTO_CRITICO
+- Se carico attuale > 90%: CONFLITTO_BLOCCANTE
+- risorseSottratte: stima concreta basata su dipendenti e squadre impegnate nei cantieri attivi
+
+Logica TempiDetail:
+- TEMPI_OTTIMALI: preparazioneRealistica true e scadenza > 21 giorni
+- TEMPI_ACCETTABILI: preparazioneRealistica true e scadenza 14-21 giorni
+- TEMPI_STRETTI: preparazioneRealistica borderline (disponibile < necessario + 3gg)
+- TEMPI_IMPOSSIBILI: tempoDisponibile < tempoNecessario
+- sovrapposizioneCantieri: considera durata gara stimata vs durata media cantieri in corso
+
+Logica RischioOperativoDetail:
+- scoreRischioOperativo considera: complessità categoria lavori, penali rilevate, anomalie, area geografica remota, durata
+- RISCHIO_BASSO: score < 25, categoria semplice, nessuna penale critica
+- RISCHIO_ACCETTABILE: score 25-50, complessità media, penali standard
+- RISCHIO_ELEVATO: score 50-75, alta complessità o penali severe o anomalie operative
+- RISCHIO_CRITICO: score > 75, combinazione di fattori critici (penali + anomalie + complessità alta)
+- rischioSubappalto: alto se categoria prevalente ha limiti subappalto stringenti (OG, OS specialistiche)
+
+Logica RischioDocumentaleDetail:
+- scoreRischioDocumentale considera: numero requisiti, difficoltà produzione documenti, SOA gap, certificazioni richieste
+- DOCUMENTAZIONE_SEMPLICE: score < 25, requisiti standard, SOA ok
+- DOCUMENTAZIONE_GESTIBILE: score 25-50, qualche documento complesso ma ottenibile
+- DOCUMENTAZIONE_COMPLESSA: score 50-75, più documenti difficili o SOA gap da colmare
+- DOCUMENTAZIONE_CRITICA: score > 75, requisiti molto stringenti, alto rischio esclusione formale
+- documentiCritici: basati su anomalie e requisiti della gara (es. "Referenze specifiche settore", "Fatturato triennale certificato")
+
+Logica StoricoSimileDetail:
+- gareSimilariTrovate: conta gare in historicalTenders con categoriaSOA uguale alla categoria della gara, OPPURE con importoGara ±50% rispetto all'importo della gara attuale
+- Se gareSimilariTrovate = 0: esito STORICO_ASSENTE, confidenzaAnalisi "nessuna", tutti i numeri a 0, garePertinenti []
+- tassoDiSuccessoCategoria: (count gare "vinta" tra similari / gareSimilariTrovate) * 100
+- ribassoMedioCategoria: media aritmetica dei campo ribasso delle gare similari
+- margineAttesoStorico: media dei margineRealizzato delle gare similari con esito "vinta" (0 se nessuna vinta)
+- garePertinenti: le 3 gare più recenti (anno più alto) tra le similari
+- confidenzaAnalisi: "alta" se gareSimilariTrovate >= 5, "media" se 2-4, "bassa" se 1, "nessuna" se 0
+- STORICO_FAVOREVOLE: tassoDiSuccessoCategoria >= 50 e margineAttesoStorico > 0
+- STORICO_NEUTRO: tassoDiSuccessoCategoria 25-49, oppure dati insufficienti per valutazione netta
+- STORICO_SFAVOREVOLE: tassoDiSuccessoCategoria < 25 o tutte le gare similari perse
+- STORICO_ASSENTE: gareSimilariTrovate = 0
+
 PROFILO IMPRESA:
 ${JSON.stringify(profile, null, 2)}
 
@@ -149,7 +248,8 @@ DATI GARA:
 - Regione: ${tender.region}
 - Requisiti richiesti: ${JSON.stringify(tender.requirements, null, 2)}
 - Anomalie rilevate: ${tender.anomalies.join(", ") || "nessuna"}
-- Penali: ${tender.penalties.join(", ") || "nessuna"}`;
+- Penali: ${tender.penalties.join(", ") || "nessuna"}
+- Storico gare passate: ${JSON.stringify(profile.historicalTenders || [], null, 2)}`;
 
   const text = await callInternalLlm(prompt, { temperature: 0.35, maxTokens: 8000 });
 

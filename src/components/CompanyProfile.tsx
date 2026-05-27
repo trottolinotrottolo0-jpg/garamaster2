@@ -26,6 +26,8 @@ import type {
   SOAClassifica,
   GeographicArea,
   WorkSector,
+  HistoricalTender,
+  TenderOutcome,
 } from "../types";
 
 const STORAGE_KEY = "gm_company_profile";
@@ -177,6 +179,7 @@ const emptyProfile: CompanyProfileType = {
   operationalPreferences: emptyOperationalPreferences,
   productivityData: emptyProductivityData,
   historicalMargins: [],
+  historicalTenders: [],
   lastYearRevenue: 0, avgMarginPercent: 0,
   avgRibassoPercent: 0, avgWinRatePercent: 0, minMargineAccettabile: 0,
   costoOraOperaio: 0, costoOraCaposquadra: 0, incidenzaSpeseGenerali: 0, incidenzaRischioMedio: 0,
@@ -194,6 +197,7 @@ function normalizeProfile(raw: Partial<CompanyProfileType>): CompanyProfileType 
     operationalPreferences: normalizeOperationalPreferences(raw.operationalPreferences),
     productivityData: normalizeProductivityData(raw.productivityData),
     historicalMargins: Array.isArray(raw.historicalMargins) ? raw.historicalMargins : [],
+    historicalTenders: Array.isArray(raw.historicalTenders) ? raw.historicalTenders : [],
   };
 }
 
@@ -219,9 +223,41 @@ export function CompanyProfile() {
   const similarWorks = profile.similarWorks ?? [];
   const activeProjects = profile.activeProjects ?? [];
   const historicalMargins = profile.historicalMargins ?? [];
+  const historicalTenders = profile.historicalTenders ?? [];
   const prefs = profile.operationalPreferences ?? emptyOperationalPreferences;
   const preferredCategories = prefs.preferredCategories ?? [];
   const [saved, setSaved] = useState(false);
+  const [showAddTender, setShowAddTender] = useState(false);
+  const [newTender, setNewTender] = useState<Omit<HistoricalTender, "id">>({
+    anno: new Date().getFullYear(),
+    categoriaSOA: "",
+    importoGara: 0,
+    regioneGara: "",
+    ribasso: 0,
+    esito: "vinta",
+    margineRealizzato: undefined,
+    noteGara: "",
+  });
+
+  const addHistoricalTender = () => {
+    const item: HistoricalTender = { ...newTender, id: crypto.randomUUID() };
+    set("historicalTenders", [...historicalTenders, item]);
+    setNewTender({
+      anno: new Date().getFullYear(),
+      categoriaSOA: "",
+      importoGara: 0,
+      regioneGara: "",
+      ribasso: 0,
+      esito: "vinta",
+      margineRealizzato: undefined,
+      noteGara: "",
+    });
+    setShowAddTender(false);
+  };
+
+  const removeHistoricalTender = (id: string) => {
+    set("historicalTenders", historicalTenders.filter((t) => t.id !== id));
+  };
 
   const setPrefs = (patch: Partial<CompanyOperationalPreferences>) => {
     set("operationalPreferences", { ...prefs, ...patch });
@@ -1760,6 +1796,163 @@ export function CompanyProfile() {
           <Plus className="w-3.5 h-3.5" />
           Aggiungi lavoro simile
         </button>
+      </div>
+
+      {/* Archivio gare passate */}
+      <div className="bg-black border border-neutral-800 rounded-xl p-5 space-y-4">
+        <SectionTitle>Archivio gare passate</SectionTitle>
+
+        {historicalTenders.length === 0 && !showAddTender && (
+          <p className="text-xs text-slate-500 italic">Nessuna gara archiviata.</p>
+        )}
+
+        <div className="space-y-2">
+          {historicalTenders.map((t) => {
+            const esitoCls =
+              t.esito === "vinta" ? "bg-emerald-950/40 border-emerald-800 text-emerald-400"
+              : t.esito === "persa" ? "bg-red-950/40 border-red-800 text-red-400"
+              : t.esito === "in_corso" ? "bg-blue-950/40 border-blue-800 text-blue-400"
+              : "bg-neutral-800 border-neutral-700 text-slate-400";
+            return (
+              <div key={t.id} className="bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2.5 flex items-center gap-3 flex-wrap">
+                <span className="text-xs font-mono text-slate-400 shrink-0">{t.anno}</span>
+                <span className="text-xs font-bold text-white">{t.categoriaSOA || "—"}</span>
+                <span className="text-xs text-slate-300">€{(t.importoGara / 1000).toFixed(0)}k</span>
+                <span className="text-xs text-slate-400">-{t.ribasso}%</span>
+                {t.margineRealizzato !== undefined && (
+                  <span className="text-xs text-emerald-400 font-mono">+{t.margineRealizzato}% marg.</span>
+                )}
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border font-mono uppercase ${esitoCls}`}>
+                  {t.esito.replace("_", " ")}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removeHistoricalTender(t.id)}
+                  className="cursor-pointer ml-auto p-1 rounded border border-neutral-700 hover:border-red-700 text-slate-500 hover:text-red-400 transition-colors"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        {showAddTender && (
+          <div className="bg-neutral-950 border border-neutral-700 rounded-xl p-4 space-y-3">
+            <p className="text-[9px] font-extrabold uppercase tracking-widest text-slate-500">Nuova gara passata</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Anno</label>
+                <input
+                  type="number"
+                  className={inputCls()}
+                  value={newTender.anno === 0 ? "" : newTender.anno}
+                  onChange={(e) => setNewTender((p) => ({ ...p, anno: e.target.value === "" ? 0 : parseInt(e.target.value) }))}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Categoria SOA</label>
+                <input
+                  className={inputCls()}
+                  value={newTender.categoriaSOA}
+                  onChange={(e) => setNewTender((p) => ({ ...p, categoriaSOA: e.target.value }))}
+                  placeholder="es. OG1"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Importo gara (€)</label>
+                <input
+                  type="number"
+                  className={inputCls()}
+                  value={newTender.importoGara === 0 ? "" : newTender.importoGara}
+                  onChange={(e) => setNewTender((p) => ({ ...p, importoGara: e.target.value === "" ? 0 : parseFloat(e.target.value) }))}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Regione</label>
+                <input
+                  className={inputCls()}
+                  value={newTender.regioneGara}
+                  onChange={(e) => setNewTender((p) => ({ ...p, regioneGara: e.target.value }))}
+                  placeholder="es. Lombardia"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Ribasso offerto (%)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  className={inputCls()}
+                  value={newTender.ribasso === 0 ? "" : newTender.ribasso}
+                  onChange={(e) => setNewTender((p) => ({ ...p, ribasso: e.target.value === "" ? 0 : parseFloat(e.target.value) }))}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Esito</label>
+                <select
+                  className="bg-neutral-900 border border-neutral-800 rounded-lg text-xs text-white focus:border-brand-gold focus:outline-none px-3 py-2 w-full"
+                  value={newTender.esito}
+                  onChange={(e) => setNewTender((p) => ({ ...p, esito: e.target.value as TenderOutcome }))}
+                >
+                  <option value="vinta">Vinta</option>
+                  <option value="persa">Persa</option>
+                  <option value="ritirata">Ritirata</option>
+                  <option value="in_corso">In corso</option>
+                </select>
+              </div>
+              {newTender.esito === "vinta" && (
+                <div>
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Margine realizzato (%)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    className={inputCls()}
+                    value={newTender.margineRealizzato === undefined || newTender.margineRealizzato === 0 ? "" : newTender.margineRealizzato}
+                    onChange={(e) => setNewTender((p) => ({ ...p, margineRealizzato: e.target.value === "" ? undefined : parseFloat(e.target.value) }))}
+                    placeholder="opzionale"
+                  />
+                </div>
+              )}
+              <div className={newTender.esito === "vinta" ? "" : "col-span-2"}>
+                <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Note (opzionale)</label>
+                <textarea
+                  className="bg-neutral-950 border border-neutral-800 rounded-lg text-xs text-white focus:border-brand-gold focus:outline-none px-3 py-2 w-full resize-none h-16"
+                  value={newTender.noteGara ?? ""}
+                  onChange={(e) => setNewTender((p) => ({ ...p, noteGara: e.target.value.slice(0, 200) }))}
+                  maxLength={200}
+                  placeholder="max 200 caratteri"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={addHistoricalTender}
+                className="cursor-pointer bg-brand-gold hover:bg-yellow-400 text-black text-xs font-bold px-4 py-2 rounded-lg transition-colors"
+              >
+                Aggiungi
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAddTender(false)}
+                className="cursor-pointer bg-neutral-900 border border-neutral-700 hover:border-neutral-500 text-slate-300 text-xs font-bold px-4 py-2 rounded-lg transition-colors"
+              >
+                Annulla
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!showAddTender && (
+          <button
+            type="button"
+            onClick={() => setShowAddTender(true)}
+            className="cursor-pointer flex items-center gap-2 text-xs text-brand-gold border border-brand-gold/40 hover:border-brand-gold rounded-lg px-3 py-2 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Aggiungi gara passata
+          </button>
+        )}
       </div>
 
       {/* Note storico */}

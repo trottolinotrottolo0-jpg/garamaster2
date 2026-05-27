@@ -393,6 +393,354 @@ export function BidNoBidEngine({ tender, isOpen, onClose }: BidNoBidEngineProps)
                 </div>
               )}
 
+              {/* Lavori in corso Detail */}
+              {result.lavoriInCorsoDetail && (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-[9px] font-extrabold uppercase tracking-widest text-slate-500">
+                      Analisi lavori in corso
+                    </h3>
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded border font-mono ${
+                      result.lavoriInCorsoDetail.esito === "NESSUN_CONFLITTO"
+                        ? "bg-emerald-950/40 border-emerald-800 text-emerald-400"
+                        : result.lavoriInCorsoDetail.esito === "CONFLITTO_GESTIBILE"
+                        ? "bg-blue-950/40 border-blue-800 text-blue-400"
+                        : result.lavoriInCorsoDetail.esito === "CONFLITTO_CRITICO"
+                        ? "bg-amber-950/40 border-amber-800 text-amber-400"
+                        : "bg-red-950/40 border-red-800 text-red-400"
+                    }`}>
+                      {result.lavoriInCorsoDetail.esito.replace(/_/g, " ")}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 text-[10px]">
+                    <div>
+                      <span className="text-slate-500 uppercase font-bold block mb-1">Cantieri critici</span>
+                      {result.lavoriInCorsoDetail.cantieriCritici.length > 0
+                        ? result.lavoriInCorsoDetail.cantieriCritici.map((c, i) => (
+                            <div key={i} className="text-amber-400 font-mono bg-amber-950/20 border border-amber-900/40 px-2 py-1 rounded mb-1">{c}</div>
+                          ))
+                        : <span className="text-emerald-400 italic">Nessuno</span>
+                      }
+                    </div>
+                    <div>
+                      <span className="text-slate-500 uppercase font-bold block mb-1">Risorse sottratte</span>
+                      {result.lavoriInCorsoDetail.risorseSottratte.length > 0
+                        ? result.lavoriInCorsoDetail.risorseSottratte.map((r, i) => (
+                            <div key={i} className="text-slate-300 font-mono text-[10px] bg-neutral-900 border border-neutral-700 px-2 py-1 rounded mb-1">{r}</div>
+                          ))
+                        : <span className="text-emerald-400 italic">Nessuna</span>
+                      }
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-400 leading-relaxed">{result.lavoriInCorsoDetail.motivazione}</p>
+
+                  <div className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2">
+                    <span className="text-[9px] font-bold text-brand-gold uppercase block mb-0.5">Azione consigliata</span>
+                    <p className="text-xs text-slate-300">{result.lavoriInCorsoDetail.azioneConsigliata}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Tempi Detail */}
+              {result.tempiDetail && (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-[9px] font-extrabold uppercase tracking-widest text-slate-500">
+                      Analisi tempi
+                    </h3>
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded border font-mono ${
+                      result.tempiDetail.esito === "TEMPI_OTTIMALI"
+                        ? "bg-emerald-950/40 border-emerald-800 text-emerald-400"
+                        : result.tempiDetail.esito === "TEMPI_ACCETTABILI"
+                        ? "bg-blue-950/40 border-blue-800 text-blue-400"
+                        : result.tempiDetail.esito === "TEMPI_STRETTI"
+                        ? "bg-amber-950/40 border-amber-800 text-amber-400"
+                        : "bg-red-950/40 border-red-800 text-red-400"
+                    }`}>
+                      {result.tempiDetail.esito.replace(/_/g, " ")}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-2">
+                      <span className="text-xl font-extrabold text-brand-gold font-mono">
+                        {result.tempiDetail.durataGaraStimataSettimane}
+                      </span>
+                      <p className="text-[9px] text-slate-500 mt-0.5">settimane gara</p>
+                    </div>
+                    <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-2">
+                      <span className={`text-xl font-extrabold font-mono ${result.tempiDetail.preparazioneRealistica ? "text-emerald-400" : "text-red-400"}`}>
+                        {result.tempiDetail.tempoPreparazioneDisponibileGiorni}
+                      </span>
+                      <p className="text-[9px] text-slate-500 mt-0.5">gg disponibili</p>
+                    </div>
+                    <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-2">
+                      <span className="text-xl font-extrabold text-white font-mono">
+                        {result.tempiDetail.tempoPreparazioneNecessarioGiorni}
+                      </span>
+                      <p className="text-[9px] text-slate-500 mt-0.5">gg necessari</p>
+                    </div>
+                  </div>
+
+                  <div className={`flex items-center gap-2 text-xs font-bold px-3 py-2 rounded-lg border ${
+                    result.tempiDetail.preparazioneRealistica
+                      ? "bg-emerald-950/40 border-emerald-800 text-emerald-400"
+                      : "bg-red-950/40 border-red-800 text-red-400"
+                  }`}>
+                    {result.tempiDetail.preparazioneRealistica
+                      ? "✓ Preparazione offerta realistica nei tempi"
+                      : "✗ Tempo insufficiente per preparare l'offerta"}
+                  </div>
+
+                  <p className="text-xs text-slate-400 leading-relaxed">{result.tempiDetail.motivazione}</p>
+
+                  <div className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2">
+                    <span className="text-[9px] font-bold text-brand-gold uppercase block mb-0.5">Azione consigliata</span>
+                    <p className="text-xs text-slate-300">{result.tempiDetail.azioneConsigliata}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Rischio Operativo Detail */}
+              {result.rischioOperativoDetail && (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-[9px] font-extrabold uppercase tracking-widest text-slate-500">
+                      Analisi rischio operativo
+                    </h3>
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded border font-mono ${
+                      result.rischioOperativoDetail.esito === "RISCHIO_BASSO"
+                        ? "bg-emerald-950/40 border-emerald-800 text-emerald-400"
+                        : result.rischioOperativoDetail.esito === "RISCHIO_ACCETTABILE"
+                        ? "bg-blue-950/40 border-blue-800 text-blue-400"
+                        : result.rischioOperativoDetail.esito === "RISCHIO_ELEVATO"
+                        ? "bg-amber-950/40 border-amber-800 text-amber-400"
+                        : "bg-red-950/40 border-red-800 text-red-400"
+                    }`}>
+                      {result.rischioOperativoDetail.esito.replace(/_/g, " ")}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-2 text-center">
+                    <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-2">
+                      <span className={`text-xl font-extrabold font-mono ${
+                        result.rischioOperativoDetail.scoreRischioOperativo < 25 ? "text-emerald-400"
+                        : result.rischioOperativoDetail.scoreRischioOperativo < 50 ? "text-blue-400"
+                        : result.rischioOperativoDetail.scoreRischioOperativo < 75 ? "text-amber-400"
+                        : "text-red-400"
+                      }`}>
+                        {result.rischioOperativoDetail.scoreRischioOperativo}
+                      </span>
+                      <p className="text-[9px] text-slate-500 mt-0.5">score rischio</p>
+                    </div>
+                    {[
+                      { label: "logistico", val: result.rischioOperativoDetail.rischioLogistico },
+                      { label: "tempistico", val: result.rischioOperativoDetail.rischioTempistico },
+                      { label: "subappalto", val: result.rischioOperativoDetail.rischioSubappalto },
+                    ].map(({ label, val }) => (
+                      <div key={label} className="bg-neutral-900 border border-neutral-800 rounded-lg p-2">
+                        <span className={`text-sm font-extrabold font-mono ${
+                          val === "basso" ? "text-emerald-400" : val === "medio" ? "text-amber-400" : "text-red-400"
+                        }`}>{val}</span>
+                        <p className="text-[9px] text-slate-500 mt-0.5">{label}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 text-[10px]">
+                    <div>
+                      <span className="text-slate-500 uppercase font-bold block mb-1">Fattori di rischio</span>
+                      {result.rischioOperativoDetail.fattoriRischio.map((f, i) => (
+                        <div key={i} className="flex items-start gap-1.5 mb-1">
+                          <span className="text-red-400 shrink-0">✗</span>
+                          <span className="text-slate-300">{f}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div>
+                      <span className="text-slate-500 uppercase font-bold block mb-1">Fattori mitigazione</span>
+                      {result.rischioOperativoDetail.fattoriMitigazione.map((f, i) => (
+                        <div key={i} className="flex items-start gap-1.5 mb-1">
+                          <span className="text-emerald-400 shrink-0">✓</span>
+                          <span className="text-slate-300">{f}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-400 leading-relaxed">{result.rischioOperativoDetail.motivazione}</p>
+                  <div className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2">
+                    <span className="text-[9px] font-bold text-brand-gold uppercase block mb-0.5">Azione consigliata</span>
+                    <p className="text-xs text-slate-300">{result.rischioOperativoDetail.azioneConsigliata}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Rischio Documentale Detail */}
+              {result.rischioDocumentaleDetail && (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-[9px] font-extrabold uppercase tracking-widest text-slate-500">
+                      Analisi rischio documentale
+                    </h3>
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded border font-mono ${
+                      result.rischioDocumentaleDetail.esito === "DOCUMENTAZIONE_SEMPLICE"
+                        ? "bg-emerald-950/40 border-emerald-800 text-emerald-400"
+                        : result.rischioDocumentaleDetail.esito === "DOCUMENTAZIONE_GESTIBILE"
+                        ? "bg-blue-950/40 border-blue-800 text-blue-400"
+                        : result.rischioDocumentaleDetail.esito === "DOCUMENTAZIONE_COMPLESSA"
+                        ? "bg-amber-950/40 border-amber-800 text-amber-400"
+                        : "bg-red-950/40 border-red-800 text-red-400"
+                    }`}>
+                      {result.rischioDocumentaleDetail.esito.replace(/_/g, " ")}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-center">
+                    <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-2">
+                      <span className={`text-xl font-extrabold font-mono ${
+                        result.rischioDocumentaleDetail.scoreRischioDocumentale < 25 ? "text-emerald-400"
+                        : result.rischioDocumentaleDetail.scoreRischioDocumentale < 50 ? "text-blue-400"
+                        : result.rischioDocumentaleDetail.scoreRischioDocumentale < 75 ? "text-amber-400"
+                        : "text-red-400"
+                      }`}>
+                        {result.rischioDocumentaleDetail.scoreRischioDocumentale}
+                      </span>
+                      <p className="text-[9px] text-slate-500 mt-0.5">score rischio doc.</p>
+                    </div>
+                    <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-2">
+                      <span className={`text-sm font-extrabold font-mono ${
+                        result.rischioDocumentaleDetail.rischioEsclusione === "basso" ? "text-emerald-400"
+                        : result.rischioDocumentaleDetail.rischioEsclusione === "medio" ? "text-amber-400"
+                        : "text-red-400"
+                      }`}>
+                        {result.rischioDocumentaleDetail.rischioEsclusione}
+                      </span>
+                      <p className="text-[9px] text-slate-500 mt-0.5">rischio esclusione</p>
+                    </div>
+                  </div>
+
+                  {result.rischioDocumentaleDetail.documentiCritici.length > 0 && (
+                    <div>
+                      <span className="text-[9px] text-slate-500 uppercase font-bold block mb-1">Documenti critici</span>
+                      {result.rischioDocumentaleDetail.documentiCritici.map((d, i) => (
+                        <div key={i} className="flex items-start gap-1.5 mb-1 text-[10px]">
+                          <span className="text-amber-400 shrink-0">⚠</span>
+                          <span className="text-slate-300">{d}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className={`flex items-center gap-2 text-xs font-bold px-3 py-2 rounded-lg border ${
+                    result.rischioDocumentaleDetail.tempoPreparazioneDocumenti === "sufficiente"
+                      ? "bg-emerald-950/40 border-emerald-800 text-emerald-400"
+                      : result.rischioDocumentaleDetail.tempoPreparazioneDocumenti === "stretto"
+                      ? "bg-amber-950/40 border-amber-800 text-amber-400"
+                      : "bg-red-950/40 border-red-800 text-red-400"
+                  }`}>
+                    Tempo preparazione documenti: {result.rischioDocumentaleDetail.tempoPreparazioneDocumenti.toUpperCase()}
+                  </div>
+
+                  <p className="text-xs text-slate-400 leading-relaxed">{result.rischioDocumentaleDetail.motivazione}</p>
+                  <div className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2">
+                    <span className="text-[9px] font-bold text-brand-gold uppercase block mb-0.5">Azione consigliata</span>
+                    <p className="text-xs text-slate-300">{result.rischioDocumentaleDetail.azioneConsigliata}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Storico Simile Detail */}
+              {result.storicoSimileDetail && (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-[9px] font-extrabold uppercase tracking-widest text-slate-500">
+                      Analisi storico gare similari
+                    </h3>
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded border font-mono ${
+                      result.storicoSimileDetail.esito === "STORICO_FAVOREVOLE"
+                        ? "bg-emerald-950/40 border-emerald-800 text-emerald-400"
+                        : result.storicoSimileDetail.esito === "STORICO_NEUTRO"
+                        ? "bg-blue-950/40 border-blue-800 text-blue-400"
+                        : result.storicoSimileDetail.esito === "STORICO_SFAVOREVOLE"
+                        ? "bg-amber-950/40 border-amber-800 text-amber-400"
+                        : "bg-neutral-800 border-neutral-700 text-slate-400"
+                    }`}>
+                      {result.storicoSimileDetail.esito.replace(/_/g, " ")}
+                    </span>
+                  </div>
+
+                  {result.storicoSimileDetail.esito === "STORICO_ASSENTE" ? (
+                    <p className="text-xs text-slate-500 italic">
+                      Nessuna gara similare in archivio — aggiungi gare passate nel Profilo azienda per abilitare l'analisi storica.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-2">
+                          <span className="text-xl font-extrabold text-brand-gold font-mono">
+                            {result.storicoSimileDetail.gareSimilariTrovate}
+                          </span>
+                          <p className="text-[9px] text-slate-500 mt-0.5">gare similari</p>
+                        </div>
+                        <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-2">
+                          <span className={`text-xl font-extrabold font-mono ${
+                            result.storicoSimileDetail.tassoDiSuccessoCategoria >= 50 ? "text-emerald-400"
+                            : result.storicoSimileDetail.tassoDiSuccessoCategoria >= 25 ? "text-amber-400"
+                            : "text-red-400"
+                          }`}>
+                            {result.storicoSimileDetail.tassoDiSuccessoCategoria.toFixed(0)}%
+                          </span>
+                          <p className="text-[9px] text-slate-500 mt-0.5">tasso successo</p>
+                        </div>
+                        <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-2">
+                          <span className="text-xl font-extrabold text-white font-mono">
+                            {result.storicoSimileDetail.ribassoMedioCategoria.toFixed(1)}%
+                          </span>
+                          <p className="text-[9px] text-slate-500 mt-0.5">ribasso medio</p>
+                        </div>
+                      </div>
+
+                      {result.storicoSimileDetail.garePertinenti.length > 0 && (
+                        <div>
+                          <span className="text-[9px] text-slate-500 uppercase font-bold block mb-1">Gare pertinenti</span>
+                          {result.storicoSimileDetail.garePertinenti.map((g, i) => (
+                            <div key={i} className="flex items-center justify-between text-[10px] bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 mb-1">
+                              <span className="text-slate-400 font-mono">{g.anno} · {g.categoria}</span>
+                              <span className="text-slate-300">€{g.importo.toLocaleString("it-IT")}</span>
+                              <span className="text-slate-400">-{g.ribasso}%</span>
+                              <span className={`font-bold font-mono ${
+                                g.esito === "vinta" ? "text-emerald-400"
+                                : g.esito === "persa" ? "text-red-400"
+                                : g.esito === "in_corso" ? "text-blue-400"
+                                : "text-neutral-500"
+                              }`}>{g.esito.toUpperCase()}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  <div className={`text-[9px] font-bold px-2 py-1 rounded border w-fit ${
+                    result.storicoSimileDetail.confidenzaAnalisi === "alta" ? "bg-emerald-950/40 border-emerald-800 text-emerald-400"
+                    : result.storicoSimileDetail.confidenzaAnalisi === "media" ? "bg-blue-950/40 border-blue-800 text-blue-400"
+                    : result.storicoSimileDetail.confidenzaAnalisi === "bassa" ? "bg-amber-950/40 border-amber-800 text-amber-400"
+                    : "bg-neutral-800 border-neutral-700 text-slate-500"
+                  }`}>
+                    Confidenza: {result.storicoSimileDetail.confidenzaAnalisi.toUpperCase()}
+                  </div>
+
+                  <p className="text-xs text-slate-400 leading-relaxed">{result.storicoSimileDetail.motivazione}</p>
+                  <div className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2">
+                    <span className="text-[9px] font-bold text-brand-gold uppercase block mb-0.5">Azione consigliata</span>
+                    <p className="text-xs text-slate-300">{result.storicoSimileDetail.azioneConsigliata}</p>
+                  </div>
+                </div>
+              )}
+
               {/* Rigenera */}
               {profile && (
                 <button

@@ -218,6 +218,20 @@ export interface CompanyHistoricalMargin {
   notes?: string;
 }
 
+export type TenderOutcome = "vinta" | "persa" | "ritirata" | "in_corso";
+
+export interface HistoricalTender {
+  id: string;
+  anno: number;
+  categoriaSOA: string;
+  importoGara: number;
+  regioneGara: string;
+  ribasso: number;
+  esito: TenderOutcome;
+  margineRealizzato?: number;
+  noteGara?: string;
+}
+
 export interface CompanyProfile {
   // Anagrafica
   companyName: string;
@@ -264,6 +278,9 @@ export interface CompanyProfile {
 
   // Margini storici per categoria
   historicalMargins?: CompanyHistoricalMargin[];
+
+  // Archivio gare passate strutturato
+  historicalTenders?: HistoricalTender[];
 
   // Economici
   lastYearRevenue: number;
@@ -430,6 +447,73 @@ export interface CapacityDecisionDetail {
   azioneConsigliata: string;
 }
 
+export interface LavoriInCorsoDecisionDetail {
+  numeroCantieriAttivi: number;
+  cantieriCritici: string[];
+  cantieriCompatibili: string[];
+  impattoCaricoLavoro: "nessuno" | "lieve" | "moderato" | "critico";
+  rischioInterferenza: boolean;
+  risorseSottratte: string[];
+  esito: "NESSUN_CONFLITTO" | "CONFLITTO_GESTIBILE" | "CONFLITTO_CRITICO" | "CONFLITTO_BLOCCANTE";
+  motivazione: string;
+  azioneConsigliata: string;
+}
+
+export interface TempiDecisionDetail {
+  durataGaraStimataSettimane: number;
+  scadenzaOffertaGiorni: number;
+  tempoPreparazioneNecessarioGiorni: number;
+  tempoPreparazioneDisponibileGiorni: number;
+  preparazioneRealistica: boolean;
+  sovrapposizioneCantieri: "nessuna" | "parziale" | "totale";
+  esito: "TEMPI_OTTIMALI" | "TEMPI_ACCETTABILI" | "TEMPI_STRETTI" | "TEMPI_IMPOSSIBILI";
+  motivazione: string;
+  azioneConsigliata: string;
+}
+
+export interface RischioOperativoDecisionDetail {
+  complessitaEsecutiva: "bassa" | "media" | "alta" | "molto_alta";
+  rischioLogistico: "basso" | "medio" | "alto";
+  rischioTempistico: "basso" | "medio" | "alto";
+  rischioSubappalto: "basso" | "medio" | "alto";
+  fattoriRischio: string[];
+  fattoriMitigazione: string[];
+  scoreRischioOperativo: number;
+  esito: "RISCHIO_BASSO" | "RISCHIO_ACCETTABILE" | "RISCHIO_ELEVATO" | "RISCHIO_CRITICO";
+  motivazione: string;
+  azioneConsigliata: string;
+}
+
+export interface RischioDocumentaleDecisionDetail {
+  complessitaDocumentale: "bassa" | "media" | "alta" | "molto_alta";
+  documentiCritici: string[];
+  rischioEsclusione: "basso" | "medio" | "alto";
+  requisitiDifficili: string[];
+  tempoPreparazioneDocumenti: "sufficiente" | "stretto" | "critico";
+  scoreRischioDocumentale: number;
+  esito: "DOCUMENTAZIONE_SEMPLICE" | "DOCUMENTAZIONE_GESTIBILE" | "DOCUMENTAZIONE_COMPLESSA" | "DOCUMENTAZIONE_CRITICA";
+  motivazione: string;
+  azioneConsigliata: string;
+}
+
+export interface StoricoSimileDecisionDetail {
+  gareSimilariTrovate: number;
+  tassoDiSuccessoCategoria: number;
+  ribassoMedioCategoria: number;
+  margineAttesoStorico: number;
+  garePertinenti: {
+    anno: number;
+    importo: number;
+    ribasso: number;
+    esito: TenderOutcome;
+    categoria: string;
+  }[];
+  confidenzaAnalisi: "alta" | "media" | "bassa" | "nessuna";
+  esito: "STORICO_FAVOREVOLE" | "STORICO_NEUTRO" | "STORICO_SFAVOREVOLE" | "STORICO_ASSENTE";
+  motivazione: string;
+  azioneConsigliata: string;
+}
+
 export interface BidNoBidResult {
   decision: BidDecision;
   scoreComplessivo: number;
@@ -442,6 +526,11 @@ export interface BidNoBidResult {
   soaDetail: SOADecisionDetail;
   capacitaSufficiente: boolean;
   capacitaDetail: CapacityDecisionDetail;
+  lavoriInCorsoDetail: LavoriInCorsoDecisionDetail;
+  tempiDetail: TempiDecisionDetail;
+  rischioOperativoDetail: RischioOperativoDecisionDetail;
+  rischioDocumentaleDetail: RischioDocumentaleDecisionDetail;
+  storicoSimileDetail: StoricoSimileDecisionDetail;
   areaGeograficaOk: boolean;
   importoInTarget: boolean;
   generatedAt: string;
