@@ -26,7 +26,19 @@ async function loadProfilo(userId?: string): Promise<Record<string, unknown> | n
     .select("*")
     .eq("user_id", userId)
     .maybeSingle();
-  return (data as Record<string, unknown> | null) ?? null;
+  if (!data) return null;
+
+  const row = data as Record<string, unknown>;
+  return {
+    ragioneSociale: row.ragione_sociale ?? row.ragioneSociale,
+    email: row.email,
+    regioni: row.regioni ?? row.regione_operativa,
+    soa: row.soa ?? row.categorie_soa,
+    fatturato: row.fatturato_annuo ?? row.fatturato,
+    dipendenti: row.numero_dipendenti ?? row.dipendenti,
+    certificazioni: row.certificazioni,
+    note: row.note,
+  };
 }
 
 export async function runScoutingEnrichment(params: {
@@ -69,12 +81,29 @@ export async function runScoutingEnrichment(params: {
     const ids = candidates.map((c) => c.id);
     const enrichedIds = new Set<string>();
     if (ids.length) {
-      const { data: scoutingRows } = await supabase
+      const { data: scoutingRows, error } = await supabase
         .from("gare_scouting")
-        .select("gare_anac_id, enriched_at, score")
+        .select("gare_anac_id, cig, enriched_at, score, summary, alert")
         .in("gare_anac_id", ids);
-      for (const row of scoutingRows ?? []) {
-        if (row.enriched_at && row.score != null) enrichedIds.add(String(row.gare_anac_id));
+
+      if (error && /enriched_at/i.test(error.message)) {
+        const { data: fallbackRows } = await supabase
+          .from("gare_scouting")
+          .select("gare_anac_id, cig, score, summary, alert")
+          .in("gare_anac_id", ids);
+        for (const row of fallbackRows ?? []) {
+          const hasAi =
+            row.score != null &&
+            String(row.summary ?? "").trim().length > 20 &&
+            String(row.alert ?? "").trim().length > 10;
+          if (hasAi && row.gare_anac_id) enrichedIds.add(String(row.gare_anac_id));
+        }
+      } else {
+        for (const row of scoutingRows ?? []) {
+          if (row.enriched_at && row.score != null && row.gare_anac_id) {
+            enrichedIds.add(String(row.gare_anac_id));
+          }
+        }
       }
     }
     candidates = candidates.filter((c) => !enrichedIds.has(c.id));

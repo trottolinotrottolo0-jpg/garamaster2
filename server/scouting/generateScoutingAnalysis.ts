@@ -53,7 +53,13 @@ export async function generateScoutingAnalysis(
   });
 
   const cleaned = text.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
-  const raw = JSON.parse(cleaned) as Record<string, unknown>;
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  let raw: Record<string, unknown>;
+  try {
+    raw = JSON.parse(jsonMatch?.[0] ?? cleaned) as Record<string, unknown>;
+  } catch {
+    throw new Error("Risposta analisi scouting non valida (JSON atteso).");
+  }
 
   return {
     score: clampScore(Number(raw.score ?? 50)),

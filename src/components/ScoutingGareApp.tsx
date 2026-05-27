@@ -121,12 +121,14 @@ export function ScoutingGareApp({
         limit: gareAnacIds?.length ?? 15,
         gareAnacIds,
         userId,
-        force: Boolean(gareAnacIds?.length),
+        force: true,
       });
+      const warnPreview =
+        result.warnings.length > 0 ? ` ${result.warnings.slice(0, 2).join(" ")}` : "";
       setSyncMessage(
         `Analisi AI: ${result.enriched} gare arricchite` +
           (result.failed ? `, ${result.failed} errori` : "") +
-          "."
+          `. Controlla strategia/alert sulle card e Alert AI nel Daily Feed.${warnPreview}`
       );
       await onAfterSync?.();
       await loadResults();
