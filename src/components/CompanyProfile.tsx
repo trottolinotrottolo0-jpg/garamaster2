@@ -1,7 +1,10 @@
 import { useState, type ReactNode } from "react";
 import { Plus, Trash2, Building2 } from "lucide-react";
 import type {
+  CompanyAvailableResource,
   CompanyProfile as CompanyProfileType,
+  CompanyResourceAvailability,
+  CompanyResourceType,
   SOACategory,
   SOACategoryCode,
   SOAClassifica,
@@ -26,17 +29,44 @@ const WORK_SECTORS: WorkSector[] = [
   "Restauro", "Verde pubblico", "Strade e autostrade", "Idraulica", "Bonifica", "Altro",
 ];
 
+const RESOURCE_TYPES: { value: CompanyResourceType; label: string }[] = [
+  { value: "mezzo", label: "Mezzo" },
+  { value: "attrezzatura", label: "Attrezzatura" },
+  { value: "risorsa_tecnica", label: "Risorsa tecnica" },
+  { value: "altro", label: "Altro" },
+];
+
+const RESOURCE_AVAILABILITY: { value: CompanyResourceAvailability; label: string }[] = [
+  { value: "disponibile", label: "Disponibile" },
+  { value: "parzialmente_disponibile", label: "Parzialmente disponibile" },
+  { value: "occupato", label: "Occupato" },
+  { value: "non_disponibile", label: "Non disponibile" },
+];
+
+function newResourceId(): string {
+  return `res-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
 const emptyProfile: CompanyProfileType = {
   companyName: "", vatNumber: "", legalForm: "", foundedYear: new Date().getFullYear(),
   soaCategories: [], soaAttestatoreName: "",
   geographicAreas: [], workSectors: [],
   targetImportMin: 0, targetImportMax: 0,
   employeesCount: 0, activeSquads: 0, activeJobsites: 0,
+  availableResources: [],
   lastYearRevenue: 0, avgMarginPercent: 0,
   avgRibassoPercent: 0, avgWinRatePercent: 0, minMargineAccettabile: 0,
   costoOraOperaio: 0, costoOraCaposquadra: 0, incidenzaSpeseGenerali: 0, incidenzaRischioMedio: 0,
   historicalNotes: "", lastUpdated: "",
 };
+
+function normalizeProfile(raw: Partial<CompanyProfileType>): CompanyProfileType {
+  return {
+    ...emptyProfile,
+    ...raw,
+    availableResources: Array.isArray(raw.availableResources) ? raw.availableResources : [],
+  };
+}
 
 function SectionTitle({ children }: { children: ReactNode }) {
   return (
@@ -52,8 +82,10 @@ const inputCls = (extra = "") =>
 export function CompanyProfile() {
   const [profile, setProfile] = useState<CompanyProfileType>(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
-    return stored ? (JSON.parse(stored) as CompanyProfileType) : emptyProfile;
+    return stored ? normalizeProfile(JSON.parse(stored) as Partial<CompanyProfileType>) : emptyProfile;
   });
+
+  const resources = profile.availableResources ?? [];
   const [saved, setSaved] = useState(false);
 
   const set = <K extends keyof CompanyProfileType>(key: K, value: CompanyProfileType[K]) => {
@@ -99,6 +131,31 @@ export function CompanyProfile() {
     );
   };
 
+  const addResource = () => {
+    const newRes: CompanyAvailableResource = {
+      id: newResourceId(),
+      name: "",
+      type: "mezzo",
+      quantity: "1",
+      availability: "disponibile",
+    };
+    set("availableResources", [...resources, newRes]);
+  };
+
+  const removeResource = (id: string) => {
+    set(
+      "availableResources",
+      resources.filter((r) => r.id !== id)
+    );
+  };
+
+  const updateResource = (id: string, patch: Partial<CompanyAvailableResource>) => {
+    set(
+      "availableResources",
+      resources.map((r) => (r.id === id ? { ...r, ...patch } : r))
+    );
+  };
+
   const hasProfile = !!profile.lastUpdated && !!profile.companyName;
 
   return (
@@ -111,6 +168,10 @@ export function CompanyProfile() {
           <span className="text-slate-600">—</span>
           <span className="text-xs text-slate-400">
             SOA: <span className="text-brand-gold font-bold">{profile.soaCategories.length}</span> categorie
+          </span>
+          <span className="text-slate-600">—</span>
+          <span className="text-xs text-slate-400">
+            Risorse: <span className="text-brand-gold font-bold">{resources.length}</span>
           </span>
           <span className="text-slate-600">—</span>
           <span className="text-xs text-slate-400">
@@ -366,6 +427,95 @@ export function CompanyProfile() {
             />
           </div>
         </div>
+      </div>
+
+      {/* Mezzi e risorse disponibili */}
+      <div className="bg-black border border-neutral-800 rounded-xl p-5 space-y-4">
+        <SectionTitle>Mezzi e risorse disponibili</SectionTitle>
+        {resources.length === 0 ? (
+          <p className="text-xs text-slate-500 italic">
+            Nessuna risorsa registrata. Aggiungi mezzi, attrezzature o risorse tecniche disponibili per le gare.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {resources.map((res) => (
+              <div
+                key={res.id}
+                className="flex items-end gap-2 flex-wrap bg-neutral-950 border border-neutral-800 rounded-lg p-3"
+              >
+                <div className="flex flex-col gap-1 flex-1 min-w-[160px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Nome risorsa</label>
+                  <input
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={res.name}
+                    onChange={(e) => updateResource(res.id, { name: e.target.value })}
+                    placeholder="Es. Escavatore 35q"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Tipologia</label>
+                  <select
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={res.type}
+                    onChange={(e) => updateResource(res.id, { type: e.target.value as CompanyResourceType })}
+                  >
+                    {RESOURCE_TYPES.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1 min-w-[80px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Quantità</label>
+                  <input
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={res.quantity}
+                    onChange={(e) => updateResource(res.id, { quantity: e.target.value })}
+                    placeholder="1"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Disponibilità</label>
+                  <select
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={res.availability}
+                    onChange={(e) =>
+                      updateResource(res.id, { availability: e.target.value as CompanyResourceAvailability })
+                    }
+                  >
+                    {RESOURCE_AVAILABILITY.map((a) => (
+                      <option key={a.value} value={a.value}>{a.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1 flex-1 min-w-[140px]">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-600">Note operative</label>
+                  <input
+                    className="bg-neutral-900 border border-neutral-800 rounded text-xs text-white focus:border-brand-gold focus:outline-none px-2 py-1.5"
+                    value={res.notes ?? ""}
+                    onChange={(e) => updateResource(res.id, { notes: e.target.value || undefined })}
+                    placeholder="Opzionale"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeResource(res.id)}
+                  className="cursor-pointer p-1.5 rounded-lg border border-neutral-700 hover:border-red-700 text-slate-500 hover:text-red-400 transition-colors"
+                  title="Rimuovi risorsa"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={addResource}
+          className="cursor-pointer flex items-center gap-2 text-xs text-brand-gold border border-brand-gold/40 hover:border-brand-gold rounded-lg px-3 py-2 transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Aggiungi risorsa
+        </button>
       </div>
 
       {/* Dati economici */}

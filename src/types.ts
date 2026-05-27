@@ -118,6 +118,23 @@ export type WorkSector =
   | "Impianti" | "Restauro" | "Verde pubblico" | "Strade e autostrade"
   | "Idraulica" | "Bonifica" | "Altro";
 
+export type CompanyResourceType = "mezzo" | "attrezzatura" | "risorsa_tecnica" | "altro";
+
+export type CompanyResourceAvailability =
+  | "disponibile"
+  | "parzialmente_disponibile"
+  | "occupato"
+  | "non_disponibile";
+
+export interface CompanyAvailableResource {
+  id: string;
+  name: string;
+  type: CompanyResourceType;
+  quantity: string;
+  availability: CompanyResourceAvailability;
+  notes?: string;
+}
+
 export interface CompanyProfile {
   // Anagrafica
   companyName: string;
@@ -139,6 +156,9 @@ export interface CompanyProfile {
   employeesCount: number;
   activeSquads: number;
   activeJobsites: number;
+
+  // Mezzi e risorse operative
+  availableResources?: CompanyAvailableResource[];
 
   // Economici
   lastYearRevenue: number;
