@@ -135,6 +135,65 @@ export interface CompanyAvailableResource {
   notes?: string;
 }
 
+export type CompanyTenderOutcome = "vinta" | "persa" | "partecipata";
+
+export interface CompanyTenderHistoryItem {
+  id: string;
+  title: string;
+  ente: string;
+  category: string;
+  amount: number | null;
+  year: number | null;
+  outcome: CompanyTenderOutcome;
+  notes?: string;
+}
+
+export interface CompanySimilarWork {
+  id: string;
+  title: string;
+  category: string;
+  amount: number | null;
+  location: string;
+  year: number | null;
+  description?: string;
+}
+
+export type CompanyActiveProjectStatus =
+  | "avvio"
+  | "operativo"
+  | "quasi_completato"
+  | "sospeso";
+
+export interface CompanyActiveProject {
+  id: string;
+  title: string;
+  category: string;
+  amount: number | null;
+  location: string;
+  status: CompanyActiveProjectStatus;
+  startDate?: string;
+  expectedEndDate?: string;
+  notes?: string;
+}
+
+export type PreferredTenderSize = "piccole" | "medie" | "grandi";
+export type PreferredWorkType = "pubblici" | "privati" | "misti";
+export type OperationalRiskTolerance = "basso" | "medio" | "alto";
+export type SaturationPreference = "conservativa" | "bilanciata" | "aggressiva";
+export type PreferredProjectDuration = "breve" | "media" | "lunga";
+
+export interface CompanyOperationalPreferences {
+  preferredTenderSize?: PreferredTenderSize;
+  preferredWorkType?: PreferredWorkType;
+  operationalRiskTolerance?: OperationalRiskTolerance;
+  saturationPreference?: SaturationPreference;
+  preferredProjectDuration?: PreferredProjectDuration;
+  prefersLocalProjects?: boolean;
+  availableForTransfers?: boolean;
+  preferredCategories?: string[];
+  strategicNotes?: string;
+}
+
 export interface CompanyProfile {
   // Anagrafica
   companyName: string;
@@ -159,6 +218,18 @@ export interface CompanyProfile {
 
   // Mezzi e risorse operative
   availableResources?: CompanyAvailableResource[];
+
+  // Storico gare strutturato
+  tenderHistory?: CompanyTenderHistoryItem[];
+
+  // Storico lavori simili
+  similarWorks?: CompanySimilarWork[];
+
+  // Lavori / cantieri in corso
+  activeProjects?: CompanyActiveProject[];
+
+  // Preferenze operative strategiche
+  operationalPreferences?: CompanyOperationalPreferences;
 
   // Economici
   lastYearRevenue: number;
