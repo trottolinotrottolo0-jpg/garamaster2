@@ -23,6 +23,9 @@ import { runAnacSync } from "./anacSync/runAnacSync";
 import { fetchLastAnacSyncLog } from "./anacSync/syncToSupabase";
 import { scheduleAnacSync } from "./anacSync/scheduleAnacSync";
 import { resolveSupabaseServiceRoleKey } from "./resolveSupabaseUrl";
+import { processGaraDocumento } from "./scouting/processGaraDocumento";
+import { runDocumentSync } from "./scouting/runDocumentSync";
+import { runScoutingEnrichment } from "./scouting/runScoutingEnrichment";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
@@ -269,15 +272,128 @@ async function createApp() {
         return;
       }
 
-      const body = (req.body ?? {}) as { limit?: number; demoExpand?: boolean };
+      const body = (req.body ?? {}) as {
+        limit?: number;
+        demoExpand?: boolean;
+        enrichAfter?: boolean;
+      };
       const result = await runAnacSync({
         limit: body.limit,
         preferDemoExpand: body.demoExpand,
       });
+
+      if (body.enrichAfter !== false && resolveSupabaseServiceRoleKey()) {
+        try {
+          const enrich = await runScoutingEnrichment({ limit: 20 });
+          result.warnings = [
+            ...result.warnings,
+            `Enrichment AI: ${enrich.enriched} gare arricchite.`,
+            ...enrich.warnings.slice(0, 5),
+          ];
+        } catch (enrichErr) {
+          const message = enrichErr instanceof Error ? enrichErr.message : "Enrichment fallito";
+          result.warnings.push(`Enrichment AI: ${message}`);
+        }
+      }
+
       res.json(result);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Errore sync ANAC";
       console.error("[/api/scouting/sync]", message);
+      res.status(503).json({ error: message });
+    }
+  });
+
+  app.post("/api/scouting/documents/upload", async (req, res) => {
+    try {
+      if (!resolveSupabaseServiceRoleKey()) {
+        res.status(503).json({ error: "SUPABASE_SERVICE_ROLE_KEY mancante." });
+        return;
+      }
+      const body = req.body as {
+        gareAnacId?: string;
+        pdfBase64?: string;
+        fileName?: string;
+        skipParse?: boolean;
+      };
+      if (!body.gareAnacId?.trim() || !body.pdfBase64?.trim()) {
+        res.status(400).json({ error: "gareAnacId e pdfBase64 obbligatori." });
+        return;
+      }
+      const result = await processGaraDocumento({
+        gareAnacId: body.gareAnacId.trim(),
+        pdfBase64: body.pdfBase64,
+        fileName: body.fileName,
+        skipParse: body.skipParse,
+      });
+      res.json(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Upload documento fallito";
+      console.error("[/api/scouting/documents/upload]", message);
+      res.status(503).json({ error: message });
+    }
+  });
+
+  app.post("/api/scouting/documents/sync", async (req, res) => {
+    try {
+      if (!resolveSupabaseServiceRoleKey()) {
+        res.status(503).json({ error: "SUPABASE_SERVICE_ROLE_KEY mancante." });
+        return;
+      }
+      const body = (req.body ?? {}) as {
+        limit?: number;
+        gareAnacIds?: string[];
+        force?: boolean;
+      };
+      const result = await runDocumentSync(body);
+      res.json(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Sync documenti fallito";
+      console.error("[/api/scouting/documents/sync]", message);
+      res.status(503).json({ error: message });
+    }
+  });
+
+  app.post("/api/scouting/documents/process", async (req, res) => {
+    try {
+      if (!resolveSupabaseServiceRoleKey()) {
+        res.status(503).json({ error: "SUPABASE_SERVICE_ROLE_KEY mancante." });
+        return;
+      }
+      const body = req.body as { gareAnacId?: string; sourceUrl?: string };
+      if (!body.gareAnacId?.trim()) {
+        res.status(400).json({ error: "gareAnacId obbligatorio." });
+        return;
+      }
+      const result = await processGaraDocumento({
+        gareAnacId: body.gareAnacId.trim(),
+        sourceUrl: body.sourceUrl,
+      });
+      res.json(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Process documento fallito";
+      console.error("[/api/scouting/documents/process]", message);
+      res.status(503).json({ error: message });
+    }
+  });
+
+  app.post("/api/scouting/enrich", async (req, res) => {
+    try {
+      if (!resolveSupabaseServiceRoleKey()) {
+        res.status(503).json({ error: "SUPABASE_SERVICE_ROLE_KEY mancante." });
+        return;
+      }
+      const body = (req.body ?? {}) as {
+        limit?: number;
+        gareAnacIds?: string[];
+        userId?: string;
+        force?: boolean;
+      };
+      const result = await runScoutingEnrichment(body);
+      res.json(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Enrichment scouting fallito";
+      console.error("[/api/scouting/enrich]", message);
       res.status(503).json({ error: message });
     }
   });

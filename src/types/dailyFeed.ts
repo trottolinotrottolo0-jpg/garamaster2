@@ -32,10 +32,21 @@ export interface DailyFeedUrgentItem {
   giorniRimanenti?: number;
 }
 
+export interface DailyFeedScoutingAlertItem {
+  id: string;
+  gareAnacId: string;
+  cig: string;
+  titolo: string;
+  alert: string;
+  strategia?: string;
+  fitScore: number;
+}
+
 export interface DailyFeedData {
   generatedAt: string;
   scadenzaProssimi7Giorni: DailyFeedExpiringItem[];
   nuoveGareAnac: DailyFeedAnacMatchItem[];
+  scoutingAiAlerts: DailyFeedScoutingAlertItem[];
   azioniUrgenti: DailyFeedUrgentItem[];
   totalAlerts: number;
 }

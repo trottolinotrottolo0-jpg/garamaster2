@@ -14,6 +14,7 @@ export async function fetchAnacSyncStatus(): Promise<AnacSyncStatusResponse> {
 export async function triggerAnacSync(params?: {
   limit?: number;
   demoExpand?: boolean;
+  enrichAfter?: boolean;
 }): Promise<AnacSyncResult> {
   const response = await fetch("/api/scouting/sync", {
     method: "POST",

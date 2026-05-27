@@ -50,6 +50,8 @@ export type ScoutingGaraItem = {
   aiSummary?: string;
   aiStrategia?: string;
   aiAlert?: string;
+  documentStatus?: string;
+  documentParsed?: boolean;
 };
 
 export type ScoutingFacetOptions = {

@@ -85,6 +85,7 @@ export interface GaraScoutingRow {
   summary?: string | null;
   strategia?: string | null;
   alert?: string | null;
+  enriched_at?: string | null;
   created_at?: string | null;
   [key: string]: JsonValue | undefined;
 }

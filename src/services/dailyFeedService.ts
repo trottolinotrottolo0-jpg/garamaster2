@@ -1,6 +1,12 @@
 import { getSupabaseClient } from "../lib/supabase/client";
 import type { GaraAnacRow, GaraRow, GaraScoutingRow } from "../types/database";
-import type { DailyFeedData, DailyFeedAnacMatchItem, DailyFeedExpiringItem, DailyFeedUrgentItem } from "../types/dailyFeed";
+import type {
+  DailyFeedData,
+  DailyFeedAnacMatchItem,
+  DailyFeedExpiringItem,
+  DailyFeedScoutingAlertItem,
+  DailyFeedUrgentItem,
+} from "../types/dailyFeed";
 import { mockTenders } from "../mockData";
 
 const SEEN_STORAGE_KEY = "gm_anac_viste";
@@ -179,6 +185,41 @@ function buildAnacMatches(
   return items.sort((a, b) => b.fitScore - a.fitScore);
 }
 
+function buildScoutingAiAlerts(
+  anacRows: GaraAnacRow[],
+  scoutingMap: Map<string, GaraScoutingRow>
+): DailyFeedScoutingAlertItem[] {
+  const anacById = new Map(anacRows.map((a) => [a.id, a]));
+  const items: DailyFeedScoutingAlertItem[] = [];
+
+  for (const scouting of scoutingMap.values()) {
+    const alertText = scouting.alert ? String(scouting.alert).trim() : "";
+    if (!alertText) continue;
+
+    const anac =
+      (scouting.gare_anac_id ? anacById.get(String(scouting.gare_anac_id)) : undefined) ??
+      (scouting.cig
+        ? anacRows.find((a) => String(a.cig) === String(scouting.cig))
+        : undefined);
+    if (!anac) continue;
+
+    const fitScore = Math.round(resolveFitScore(anac, scouting));
+    if (fitScore < 50) continue;
+
+    items.push({
+      id: `scout-alert-${anac.id}`,
+      gareAnacId: anac.id,
+      cig: String(anac.cig ?? scouting.cig ?? "N/D"),
+      titolo: String(anac.titolo ?? anac.oggetto ?? "Gara ANAC"),
+      alert: alertText,
+      strategia: scouting.strategia ? String(scouting.strategia) : undefined,
+      fitScore,
+    });
+  }
+
+  return items.sort((a, b) => b.fitScore - a.fitScore).slice(0, 12);
+}
+
 function buildMockDailyFeed(): DailyFeedData {
   const now = new Date();
   const in3 = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
@@ -219,7 +260,18 @@ function buildMockDailyFeed(): DailyFeedData {
         giorniRimanenti: 3,
       },
     ],
-    totalAlerts: 4,
+    scoutingAiAlerts: [
+      {
+        id: "mock-scout-alert-1",
+        gareAnacId: "demo-anac-1",
+        cig: "DEMO0000001",
+        titolo: "Riqualificazione energetica edifici scolastici",
+        alert: "Controllare penali e revisione prezzi nel disciplinare.",
+        strategia: "Valuta RTI se manca classifica.",
+        fitScore: 92,
+      },
+    ],
+    totalAlerts: 5,
   };
 }
 
@@ -279,6 +331,7 @@ export async function fetchDailyFeed(userId: string): Promise<DailyFeedData> {
     const { data: scoutingData } = await supabase.from("gare_scouting").select("*").in("cig", cigs);
     for (const row of (scoutingData ?? []) as GaraScoutingRow[]) {
       if (row.cig) scoutingMap.set(row.cig, row);
+      if (row.gare_anac_id) scoutingMap.set(String(row.gare_anac_id), row);
     }
   }
 
@@ -300,21 +353,27 @@ export async function fetchDailyFeed(userId: string): Promise<DailyFeedData> {
   }
 
   const nuoveGareAnac = buildAnacMatches(anacRows, scoutingMap, seenIds);
+  const scoutingAiAlerts = buildScoutingAiAlerts(anacRows, scoutingMap);
   const azioniUrgenti = buildUrgentFromGare(gare);
 
   const feed: DailyFeedData = {
     generatedAt: new Date().toISOString(),
     scadenzaProssimi7Giorni,
     nuoveGareAnac,
+    scoutingAiAlerts,
     azioniUrgenti,
     totalAlerts:
-      scadenzaProssimi7Giorni.length + nuoveGareAnac.length + azioniUrgenti.length,
+      scadenzaProssimi7Giorni.length +
+      nuoveGareAnac.length +
+      scoutingAiAlerts.length +
+      azioniUrgenti.length,
   };
 
   console.log("[DailyFeed] Aggiornato:", {
     userId,
     scadenze: feed.scadenzaProssimi7Giorni.length,
     anac: feed.nuoveGareAnac.length,
+    scoutingAlerts: feed.scoutingAiAlerts.length,
     urgenti: feed.azioniUrgenti.length,
     window: `${nowIso} → ${in7Iso}`,
   });

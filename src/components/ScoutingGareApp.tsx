@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bookmark,
   BookmarkCheck,
   CloudDownload,
   ExternalLink,
+  FileUp,
   Filter,
   Loader2,
   MapPin,
@@ -12,6 +13,7 @@ import {
   Sparkles,
   Target,
   Trash2,
+  Wand2,
 } from "lucide-react";
 import type { ProfiloImpresaContext } from "../types/database";
 import type { ScoutingFilters, ScoutingGaraItem } from "../types/scouting";
@@ -24,12 +26,18 @@ import {
 } from "../services/scoutingService";
 import { fetchAnacSyncStatus, triggerAnacSync } from "../lib/anacSyncApi";
 import type { AnacSyncStatusResponse } from "../types/anacSync";
+import {
+  enrichScoutingGare,
+  processGaraDocumentFromUrl,
+  readPdfAsBase64,
+  syncGaraDocuments,
+  uploadGaraDocument,
+} from "../lib/scoutingDocumentsApi";
 
 type ScoutingGareAppProps = {
   userId?: string;
   profilo: ProfiloImpresaContext | null;
   onOpenInChat: (gareAnacId: string, cig: string) => void;
-  onOpenAnalyzer: () => void;
   onAfterSync?: () => Promise<void>;
 };
 
@@ -52,7 +60,6 @@ export function ScoutingGareApp({
   userId,
   profilo,
   onOpenInChat,
-  onOpenAnalyzer,
   onAfterSync,
 }: ScoutingGareAppProps) {
   const [filters, setFilters] = useState<ScoutingFilters>(DEFAULT_SCOUTING_FILTERS);
@@ -67,6 +74,10 @@ export function ScoutingGareApp({
   const [syncStatus, setSyncStatus] = useState<AnacSyncStatusResponse | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [enriching, setEnriching] = useState(false);
+  const [docBusyId, setDocBusyId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadTargetId, setUploadTargetId] = useState<string | null>(null);
 
   const loadResults = useCallback(async () => {
     if (!userId) {
@@ -101,12 +112,103 @@ export function ScoutingGareApp({
       .catch(() => setSyncStatus(null));
   }, [reloadFacets]);
 
+  const handleEnrichAi = async (gareAnacIds?: string[]) => {
+    setEnriching(true);
+    setSyncMessage(null);
+    setError(null);
+    try {
+      const result = await enrichScoutingGare({
+        limit: gareAnacIds?.length ?? 15,
+        gareAnacIds,
+        userId,
+        force: Boolean(gareAnacIds?.length),
+      });
+      setSyncMessage(
+        `Analisi AI: ${result.enriched} gare arricchite` +
+          (result.failed ? `, ${result.failed} errori` : "") +
+          "."
+      );
+      await onAfterSync?.();
+      await loadResults();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Enrichment AI fallito");
+    } finally {
+      setEnriching(false);
+    }
+  };
+
+  const handleSyncDocuments = async () => {
+    setDocBusyId("batch");
+    setError(null);
+    try {
+      const result = await syncGaraDocuments({ limit: 10 });
+      setSyncMessage(
+        `Documenti: ${result.parsed} parsati su ${result.processed} processati` +
+          (result.failed ? `, ${result.failed} falliti` : "") +
+          "."
+      );
+      await loadResults();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sync documenti fallito");
+    } finally {
+      setDocBusyId(null);
+    }
+  };
+
+  const handleProcessDisciplinare = async (item: ScoutingGaraItem) => {
+    setDocBusyId(item.gareAnacId);
+    setError(null);
+    try {
+      if (item.urlDisciplinare) {
+        await processGaraDocumentFromUrl({
+          gareAnacId: item.gareAnacId,
+          sourceUrl: item.urlDisciplinare,
+        });
+      } else {
+        throw new Error("URL disciplinare assente: carica un PDF manualmente.");
+      }
+      setSyncMessage(`Disciplinare parsato per CIG ${item.cig}.`);
+      await loadResults();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Parse disciplinare fallito");
+    } finally {
+      setDocBusyId(null);
+    }
+  };
+
+  const handlePickPdf = (gareAnacId: string) => {
+    setUploadTargetId(gareAnacId);
+    fileInputRef.current?.click();
+  };
+
+  const handlePdfSelected = async (file: File | undefined) => {
+    if (!file || !uploadTargetId) return;
+    setDocBusyId(uploadTargetId);
+    setError(null);
+    try {
+      const pdfBase64 = await readPdfAsBase64(file);
+      await uploadGaraDocument({
+        gareAnacId: uploadTargetId,
+        pdfBase64,
+        fileName: file.name,
+      });
+      setSyncMessage(`PDF caricato e parsato per la gara selezionata.`);
+      await loadResults();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload PDF fallito");
+    } finally {
+      setDocBusyId(null);
+      setUploadTargetId(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   const handleAnacSync = async (demoExpand = false) => {
     setSyncing(true);
     setSyncMessage(null);
     setError(null);
     try {
-      const result = await triggerAnacSync({ limit: 200, demoExpand });
+      const result = await triggerAnacSync({ limit: 200, demoExpand, enrichAfter: true });
       setSyncMessage(
         `Import completato: ${result.imported} nuove, ${result.updated} aggiornate (${result.source}).`
       );
@@ -201,6 +303,24 @@ export function ScoutingGareApp({
             </button>
             <button
               type="button"
+              onClick={() => void handleEnrichAi()}
+              disabled={enriching || syncStatus?.configured === false}
+              className="cursor-pointer flex items-center gap-2 rounded-xl border border-purple-800/50 bg-purple-950/30 px-3 py-2 text-[11px] font-bold text-purple-300 hover:border-purple-600 disabled:opacity-50"
+            >
+              <Wand2 className={`w-4 h-4 ${enriching ? "animate-pulse" : ""}`} />
+              {enriching ? "AI…" : "Arricchisci AI"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSyncDocuments()}
+              disabled={docBusyId === "batch" || syncStatus?.configured === false}
+              className="cursor-pointer flex items-center gap-2 rounded-xl border border-cyan-900/50 bg-cyan-950/20 px-3 py-2 text-[11px] font-bold text-cyan-300 hover:border-cyan-600 disabled:opacity-50"
+            >
+              <FileUp className={`w-4 h-4 ${docBusyId === "batch" ? "animate-pulse" : ""}`} />
+              Sync PDF
+            </button>
+            <button
+              type="button"
               onClick={() => setShowFilters((v) => !v)}
               className="cursor-pointer flex items-center gap-2 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-[11px] font-bold text-slate-300 hover:border-brand-gold"
             >
@@ -224,6 +344,14 @@ export function ScoutingGareApp({
             {syncMessage}
           </div>
         )}
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/pdf,.pdf"
+          className="hidden"
+          onChange={(e) => void handlePdfSelected(e.target.files?.[0])}
+        />
 
         {syncStatus && !syncStatus.configured && (
           <div className="rounded-xl border border-amber-900/50 bg-amber-950/20 px-4 py-3 text-sm text-amber-200">
@@ -512,6 +640,21 @@ export function ScoutingGareApp({
                         {item.aiSummary}
                       </p>
                     )}
+                    {item.aiStrategia && (
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        <span className="text-slate-400 font-semibold">Strategia:</span> {item.aiStrategia}
+                      </p>
+                    )}
+                    {item.aiAlert && (
+                      <p className="text-[10px] text-purple-300/90 mt-1">
+                        <span className="font-semibold">Alert:</span> {item.aiAlert}
+                      </p>
+                    )}
+                    {item.documentParsed && (
+                      <p className="text-[9px] text-cyan-400/90 mt-1 font-mono">
+                        Disciplinare parsato ({item.documentStatus ?? "parsed"})
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -556,10 +699,31 @@ export function ScoutingGareApp({
                   )}
                   <button
                     type="button"
-                    onClick={onOpenAnalyzer}
-                    className="cursor-pointer rounded-lg border border-neutral-800 text-[10px] font-bold px-3 py-2 text-slate-400 hover:text-emerald-400"
+                    onClick={() => handlePickPdf(item.gareAnacId)}
+                    disabled={docBusyId === item.gareAnacId}
+                    className="cursor-pointer rounded-lg border border-neutral-800 text-[10px] font-bold px-3 py-2 text-slate-400 hover:text-cyan-300 flex items-center gap-1 disabled:opacity-50"
                   >
-                    Carica disciplinare PDF
+                    <FileUp className="w-3.5 h-3.5" />
+                    Carica PDF
+                  </button>
+                  {(item.urlDisciplinare || item.documentParsed) && (
+                    <button
+                      type="button"
+                      onClick={() => void handleProcessDisciplinare(item)}
+                      disabled={docBusyId === item.gareAnacId || !item.urlDisciplinare}
+                      className="cursor-pointer rounded-lg border border-neutral-800 text-[10px] font-bold px-3 py-2 text-slate-400 hover:text-emerald-400 disabled:opacity-50"
+                    >
+                      {docBusyId === item.gareAnacId ? "Parse…" : "Parse URL"}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void handleEnrichAi([item.gareAnacId])}
+                    disabled={enriching}
+                    className="cursor-pointer rounded-lg border border-neutral-800 text-[10px] font-bold px-3 py-2 text-slate-400 hover:text-purple-300 disabled:opacity-50 flex items-center gap-1"
+                  >
+                    <Wand2 className="w-3.5 h-3.5" />
+                    AI
                   </button>
                 </div>
               </article>

@@ -1306,7 +1306,6 @@ export default function App() {
                 userId={user?.id}
                 profilo={profilo}
                 onOpenInChat={(gareAnacId, cig) => void handleFeedSelectAnac(gareAnacId, cig)}
-                onOpenAnalyzer={() => setActiveTab("analyzer")}
                 onAfterSync={handleAfterAnacSync}
               />
             </div>

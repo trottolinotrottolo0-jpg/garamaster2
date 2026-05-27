@@ -204,6 +204,49 @@ export function AlertDailyFeed({
 
             <section className="rounded-2xl border border-neutral-800 bg-neutral-950/80 p-4">
               <SectionHeader
+                icon={<Sparkles className="w-4 h-4" />}
+                title="Alert AI scouting"
+                count={feed.scoutingAiAlerts.length}
+                accent="text-purple-400"
+              />
+              <p className="text-[10px] text-slate-500 mb-3">
+                Rischi e verifiche urgenti da analisi LLM su gare ANAC (fit ≥ 50).
+              </p>
+              {feed.scoutingAiAlerts.length === 0 ? (
+                <p className="text-[11px] text-slate-500 italic">
+                  Nessun alert AI. Usa «Arricchisci AI» in Scouting Gare.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {feed.scoutingAiAlerts.map((item) => (
+                    <li key={item.id}>
+                      <button
+                        type="button"
+                        onClick={() => onSelectAnac(item.gareAnacId, item.cig)}
+                        className="cursor-pointer w-full text-left rounded-xl border border-purple-900/40 hover:border-purple-600/50 bg-black/50 px-3 py-3 flex items-start gap-3 transition-colors group"
+                      >
+                        <span className="shrink-0 text-[10px] font-extrabold text-purple-300 bg-purple-950/50 border border-purple-900/50 px-2 py-1 rounded-lg">
+                          {item.fitScore}%
+                        </span>
+                        <span className="flex-1 min-w-0">
+                          <span className="text-[11px] font-bold text-white block truncate group-hover:text-brand-gold">
+                            {item.titolo}
+                          </span>
+                          <span className="text-[10px] text-purple-200/90 block mt-1 line-clamp-2">
+                            {item.alert}
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-mono">CIG {item.cig}</span>
+                        </span>
+                        <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-brand-gold shrink-0 mt-0.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            <section className="rounded-2xl border border-neutral-800 bg-neutral-950/80 p-4">
+              <SectionHeader
                 icon={<Zap className="w-4 h-4" />}
                 title="Azioni urgenti"
                 count={feed.azioniUrgenti.length}

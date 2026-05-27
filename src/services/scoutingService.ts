@@ -108,6 +108,8 @@ function mapRowToItem(
     scouting?: GaraScoutingRow;
     statoUtente?: ScoutingStatoUtente;
     isNew: boolean;
+    documentStatus?: string;
+    documentParsed?: boolean;
   }
 ): ScoutingGaraItem {
   const record = row as Record<string, unknown>;
@@ -137,6 +139,8 @@ function mapRowToItem(
     aiSummary: params.scouting?.summary ? String(params.scouting.summary) : undefined,
     aiStrategia: params.scouting?.strategia ? String(params.scouting.strategia) : undefined,
     aiAlert: params.scouting?.alert ? String(params.scouting.alert) : undefined,
+    documentStatus: params.documentStatus,
+    documentParsed: params.documentParsed,
   };
 }
 
@@ -228,7 +232,7 @@ export async function searchScoutingGare(
     return [];
   }
 
-  const [anacResult, scoutingResult, utenteResult, visteResult] = await Promise.all([
+  const [anacResult, scoutingResult, utenteResult, visteResult, documentiResult] = await Promise.all([
     supabase
       .from("gare_anac")
       .select("*")
@@ -237,6 +241,11 @@ export async function searchScoutingGare(
     supabase.from("gare_scouting").select("*").limit(500),
     supabase.from("gare_scouting_utente").select("gare_anac_id, stato").eq("user_id", userId),
     supabase.from("gare_anac_viste").select("gare_anac_id").eq("user_id", userId),
+    supabase
+      .from("gare_documenti")
+      .select("gare_anac_id, status, parsed_at")
+      .eq("tipo", "disciplinare")
+      .limit(500),
   ]);
 
   if (anacResult.error) {
@@ -247,6 +256,21 @@ export async function searchScoutingGare(
   }
   if (visteResult.error) {
     console.warn("[Scouting] gare_anac_viste:", visteResult.error.message);
+  }
+  if (documentiResult.error) {
+    console.warn("[Scouting] gare_documenti:", documentiResult.error.message);
+  }
+
+  const documentMap = new Map<string, { status?: string; parsed: boolean }>();
+  for (const row of (documentiResult.data ?? []) as {
+    gare_anac_id: string;
+    status?: string;
+    parsed_at?: string | null;
+  }[]) {
+    documentMap.set(row.gare_anac_id, {
+      status: row.status ? String(row.status) : undefined,
+      parsed: Boolean(row.parsed_at),
+    });
   }
 
   const scoutingMap = new Map<string, GaraScoutingRow>();
@@ -267,11 +291,14 @@ export async function searchScoutingGare(
   const items = ((anacResult.data ?? []) as GaraAnacRow[]).map((row) => {
     const cig = row.cig ? String(row.cig) : undefined;
     const scouting = scoutingMap.get(row.id) ?? (cig ? scoutingMap.get(cig) : undefined);
+    const doc = documentMap.get(row.id);
     return mapRowToItem(row, {
       profilo,
       scouting,
       statoUtente: statoMap.get(row.id),
       isNew: !seenIds.has(row.id),
+      documentStatus: doc?.status,
+      documentParsed: doc?.parsed,
     });
   });
 

@@ -19,6 +19,7 @@
 | Alert & Daily Feed (scadenze, fit ANAC, urgenti) | **Sì** — colonne + `gare_anac_viste` |
 | **Scouting Gare (Fase 1)** | **Sì** — `gare_scouting_utente` + `gare_documenti` + colonne URL su `gare_anac` |
 | **Sync ANAC (Fase 2)** | **Sì** — `solo-anac-sync-fase2.sql` + `SUPABASE_SERVICE_ROLE_KEY` server |
+| **Documenti + AI scouting (Fase 3–4)** | **Sì** — `solo-scouting-fase3-fase4.sql` + bucket Storage |
 | Profilo / login / lista gare demo | **Sì** — `schema.sql` (prima volta) |
 
 ---
@@ -90,6 +91,7 @@ In **Authentication → Policies** (o RLS sulla tabella): policy attive su ogni 
 | `solo-scouting-gare.sql` | App Scouting Gare (filtri, salva/scarta, documenti) |
 | `solo-anac-sync-fase2.sql` | Import/sync bandi ANAC (CIG univoco, log sync; dedup automatico) |
 | `fix-duplicate-cig.sql` | Solo se errore `gare_anac_cig_unique_idx` / CIG duplicato (es. DEMO0000001) |
+| `solo-scouting-fase3-fase4.sql` | Documenti PDF (Storage + parse) + enrichment AI `gare_scouting` + alert feed |
 | `solo-storico-gare-ai.sql` | Solo Historical Knowledge Layer |
 
 ---
