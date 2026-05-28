@@ -88,6 +88,8 @@ export interface TenderDocument {
   regionalPriceListReference?: string;
   regionalPriceListYear?: number;
   regionalPriceListRegion?: string;
+  procedureType?: string;
+  sector?: string;
   requirements: TenderRequirement[];
   sections: DocumentSection[];
   anomalies: string[];
@@ -350,6 +352,93 @@ export interface HistoricalTender {
   noteGara?: string;
 }
 
+export interface TenderOutcomeDetailed extends HistoricalTender {
+  marginRealePercent?: number;
+  tempoEsecuzioneMesi?: number;
+  complessita?: number;
+  hasRedFlags?: boolean;
+  offertaTecnicaScore?: number;
+  tipoProcedura?: string;
+  settore?: string;
+}
+
+export interface WinningPattern {
+  clusterId: string;
+  nome: string;
+  attributi: {
+    regioniTarget: string[];
+    categorieSoa: string[];
+    importoMin: number;
+    importoMax: number;
+    tipiProcedura?: string[];
+    settori?: string[];
+  };
+  gareVinteInCluster: TenderOutcomeDetailed[];
+  statsVittoria: {
+    numeroGarePartecipate: number;
+    numeroGareVinte: number;
+    tassoDiSuccesso: number;
+  };
+  statsEconomiche: {
+    ribassoMedioVincente: number;
+    ribassoMinVincente: number;
+    ribassoMaxVincente: number;
+    margineAttesoMedioPercent: number;
+    margineRealiMedi: number[];
+  };
+  statsTempi: {
+    durataMediaMesi: number;
+    tempoDecisioneMediGiorni: number;
+  };
+  statsRischio: {
+    percentualeRiskFlag: number;
+    mediaComplessita: number;
+  };
+  confidence: number;
+}
+
+export type WinningPatternRecommendation = "GO_SICURO" | "GO_CAUTO" | "SKIP";
+
+export interface SimilarityScore {
+  clusterId: string;
+  clusterNome: string;
+  similarita: number;
+  fattoriMatching: {
+    regione: boolean;
+    categoria: boolean;
+    importoRange: boolean;
+    procedura: boolean;
+    settore: boolean;
+  };
+  recomandazione: WinningPatternRecommendation;
+  motivazione: string;
+  predictionWinRate: number;
+}
+
+export interface WinningPatternAnalysis {
+  gara: TenderDocument;
+  patternsSimilari: SimilarityScore[];
+  bestMatchCluster?: SimilarityScore;
+  recommendedRibasso?: {
+    min: number;
+    consigliato: number;
+    max: number;
+    spiegazione: string;
+  };
+  recommendedMargin?: {
+    min: number;
+    target: number;
+    max: number;
+  };
+}
+
+export interface PatternInsights {
+  keySuccessFactors: string[];
+  risksToAvoid: string[];
+  recommendations: string[];
+  explanation: string;
+}
+
 export interface CompanyProfile {
   // Anagrafica
   companyName: string;
@@ -398,7 +487,10 @@ export interface CompanyProfile {
   historicalMargins?: CompanyHistoricalMargin[];
 
   // Archivio gare passate strutturato
-  historicalTenders?: HistoricalTender[];
+  historicalTenders?: TenderOutcomeDetailed[];
+
+  winningPatterns?: WinningPattern[];
+  lastPatternAnalysisDate?: string;
 
   prezzariAttivi?: string[];
   prezzarioPreferito?: string;
