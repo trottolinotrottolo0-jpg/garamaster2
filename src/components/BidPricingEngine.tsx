@@ -17,8 +17,14 @@ import {
   calcProductivityImpact,
   calcInternalRealCost,
   calcPrezzarioCost,
+  calcDynamicPricing,
+  calcMaxRibassoSostenibile,
+  runMonteCarloSimulation,
   parseTenderValue,
   type PricingLineItem,
+  type CompanySaturation,
+  type MonteCarloResult,
+  type TenderUrgency,
 } from "../lib/bidCalculations";
 
 interface BidPricingEngineProps {
@@ -78,6 +84,219 @@ function ScenarioCard({ s, minMargine }: { s: PricingScenario; minMargine: numbe
   );
 }
 
+const SATURATION_OPTIONS: { value: CompanySaturation; label: string }[] = [
+  { value: "bassa", label: "Bassa" },
+  { value: "media", label: "Media" },
+  { value: "alta", label: "Alta" },
+];
+
+const URGENCY_OPTIONS: { value: TenderUrgency; label: string }[] = [
+  { value: "oltre_10", label: "> 10 gg" },
+  { value: "3_10", label: "3–10 gg" },
+  { value: "sotto_3", label: "< 3 gg" },
+];
+
+interface AdvancedPricingPanelsProps {
+  concorrentiAttesi: number;
+  onConcorrentiChange: (v: number) => void;
+  urgenza: TenderUrgency;
+  onUrgenzaChange: (v: TenderUrgency) => void;
+  saturazione: CompanySaturation;
+  onSaturazioneChange: (v: CompanySaturation) => void;
+  dynamicRibasso: number;
+  dynamicBreakdown: {
+    aggiustamentoConcorrenza: number;
+    aggiustamentoUrgenza: number;
+    aggiustamentoSaturazione: number;
+  };
+  ribasso: number;
+  monteCarloResult: MonteCarloResult | null;
+  monteCarloWinRate: number | null;
+  onRunMonteCarlo: () => void;
+  monteCarloMu: number;
+  maxRibassoSostenibile: number;
+}
+
+function AdvancedPricingPanels({
+  concorrentiAttesi,
+  onConcorrentiChange,
+  urgenza,
+  onUrgenzaChange,
+  saturazione,
+  onSaturazioneChange,
+  dynamicRibasso,
+  dynamicBreakdown,
+  ribasso,
+  monteCarloResult,
+  monteCarloWinRate,
+  onRunMonteCarlo,
+  monteCarloMu,
+  maxRibassoSostenibile,
+}: AdvancedPricingPanelsProps) {
+  const userBinIndex = monteCarloResult
+    ? monteCarloResult.histogram.findIndex(
+        (b) => ribasso >= b.binStart && (ribasso < b.binEnd || b.binEnd === 40)
+      )
+    : -1;
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 space-y-4">
+        <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-300">
+          Pannello Pricing Dinamico
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="space-y-2">
+            <label className="text-[9px] uppercase tracking-widest text-slate-500 font-bold">
+              Concorrenti attesi ({concorrentiAttesi})
+            </label>
+            <input
+              type="range"
+              min={1}
+              max={20}
+              step={1}
+              value={concorrentiAttesi}
+              onChange={(e) => onConcorrentiChange(parseInt(e.target.value, 10))}
+              className="w-full h-1.5 rounded-full cursor-pointer accent-brand-gold"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-[9px] uppercase tracking-widest text-slate-500 font-bold">
+              Urgenza scadenza
+            </label>
+            <div className="flex gap-1">
+              {URGENCY_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => onUrgenzaChange(opt.value)}
+                  className={`cursor-pointer flex-1 text-[10px] font-bold px-2 py-1.5 rounded border transition-colors ${
+                    urgenza === opt.value
+                      ? "bg-brand-gold text-black border-brand-gold"
+                      : "bg-neutral-900 text-slate-400 border-neutral-700 hover:border-neutral-500"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <label className="text-[9px] uppercase tracking-widest text-slate-500 font-bold">
+              Saturazione aziendale
+            </label>
+            <div className="flex gap-1">
+              {SATURATION_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => onSaturazioneChange(opt.value)}
+                  className={`cursor-pointer flex-1 text-[10px] font-bold px-2 py-1.5 rounded border transition-colors ${
+                    saturazione === opt.value
+                      ? "bg-brand-gold text-black border-brand-gold"
+                      : "bg-neutral-900 text-slate-400 border-neutral-700 hover:border-neutral-500"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-[9px] uppercase tracking-widest text-slate-500 font-bold">
+            Ribasso dinamico suggerito
+          </span>
+          <span className="text-2xl font-extrabold text-brand-gold font-mono">{fmtPct(dynamicRibasso)}</span>
+          <span className="text-[10px] text-slate-500">
+            concorrenza {dynamicBreakdown.aggiustamentoConcorrenza >= 0 ? "+" : ""}
+            {dynamicBreakdown.aggiustamentoConcorrenza.toFixed(1)}% · urgenza{" "}
+            {dynamicBreakdown.aggiustamentoUrgenza >= 0 ? "+" : ""}
+            {dynamicBreakdown.aggiustamentoUrgenza.toFixed(1)}% · saturazione{" "}
+            {dynamicBreakdown.aggiustamentoSaturazione >= 0 ? "+" : ""}
+            {dynamicBreakdown.aggiustamentoSaturazione.toFixed(1)}%
+          </span>
+        </div>
+      </div>
+
+      <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-300">
+            Simulazione statistica Monte Carlo
+          </p>
+          <button
+            type="button"
+            onClick={onRunMonteCarlo}
+            className="cursor-pointer shrink-0 bg-neutral-900 border border-neutral-700 hover:border-brand-gold text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-colors"
+          >
+            Esegui Simulazione Monte Carlo
+          </button>
+        </div>
+        <p className="text-[10px] text-slate-500">
+          μ = {fmtPct(monteCarloMu)} · σ = 3.0 · soglia costo interno ≤ {fmtPct(maxRibassoSostenibile)}
+        </p>
+
+        {monteCarloResult && (
+          <>
+            <div className="flex items-end justify-center gap-0.5 h-32 px-2 border border-neutral-800 rounded-lg bg-black">
+              {monteCarloResult.histogram.map((bin, idx) => (
+                <div
+                  key={`${bin.binStart}-${bin.binEnd}`}
+                  className="flex-1 flex flex-col items-center justify-end min-w-0"
+                  title={`${fmtPct(bin.binStart)}–${fmtPct(bin.binEnd)}: ${bin.count} sim.`}
+                >
+                  <div
+                    className={`w-full max-w-[14px] rounded-t transition-all ${
+                      idx === userBinIndex ? "bg-blue-400" : "bg-neutral-600 hover:bg-neutral-500"
+                    }`}
+                    style={{ height: `${Math.max(bin.heightPercent, bin.count > 0 ? 4 : 0)}%` }}
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-between text-[9px] text-slate-600 font-mono px-1">
+              <span>0%</span>
+              <span>Distribuzione ribassi concorrenti (N=500)</span>
+              <span>40%</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-black border border-neutral-800 rounded-lg p-3">
+                <p className="text-[9px] uppercase tracking-widest text-slate-500 font-bold">
+                  Win rate statistico
+                </p>
+                <p className="text-2xl font-extrabold text-emerald-400 font-mono">
+                  {fmtPct(monteCarloWinRate ?? monteCarloResult.winRate)}
+                </p>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Ribasso slider {fmtPct(ribasso)} vs campione normale
+                </p>
+              </div>
+              <div className="bg-black border border-neutral-800 rounded-lg p-3">
+                <p className="text-[9px] uppercase tracking-widest text-slate-500 font-bold">
+                  Densità vittoria al ribasso corrente
+                </p>
+                <div className="mt-2 h-2 rounded-full bg-neutral-800 overflow-hidden">
+                  <div
+                    className="h-full bg-brand-gold transition-all"
+                    style={{ width: `${Math.min(monteCarloWinRate ?? monteCarloResult.winRate, 100)}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-2">
+                  {(monteCarloWinRate ?? monteCarloResult.winRate) < 5
+                    ? "Probabilità quasi nulla (ribasso troppo conservativo)"
+                    : (monteCarloWinRate ?? monteCarloResult.winRate) > 60
+                      ? "Alta densità competitiva sul ribasso simulato"
+                      : "Zona intermedia: bilanciare aggressività e margine"}
+                </p>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const MOCK_PREZZARIO_ITEMS: PricingLineItem[] = [
   {
     codice: "E.01.001",
@@ -121,6 +340,10 @@ export function BidPricingEngine({ tender, isOpen, onClose }: BidPricingEnginePr
   const [error, setError] = useState<string | null>(null);
   const [isOptimizerOpen, setIsOptimizerOpen] = useState(true);
   const [pricingItems, setPricingItems] = useState<PricingLineItem[]>(MOCK_PREZZARIO_ITEMS);
+  const [concorrentiAttesi, setConcorrentiAttesi] = useState(8);
+  const [urgenza, setUrgenza] = useState<TenderUrgency>("3_10");
+  const [saturazione, setSaturazione] = useState<CompanySaturation>("media");
+  const [monteCarloResult, setMonteCarloResult] = useState<MonteCarloResult | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -138,6 +361,10 @@ export function BidPricingEngine({ tender, isOpen, onClose }: BidPricingEnginePr
     setError(null);
     setIsOptimizerOpen(true);
     setPricingItems(MOCK_PREZZARIO_ITEMS.map((item) => ({ ...item })));
+    setConcorrentiAttesi(8);
+    setUrgenza("3_10");
+    setSaturazione("media");
+    setMonteCarloResult(null);
   }, [isOpen, tender]);
 
   const handleRun = async (prof: CompanyProfile, r: number) => {
@@ -154,8 +381,6 @@ export function BidPricingEngine({ tender, isOpen, onClose }: BidPricingEnginePr
     }
   };
 
-  if (!isOpen) return null;
-
   const BAR_MAX = 40;
   const toBarPct = (v: number) => `${Math.min(Math.max((v / BAR_MAX) * 100, 0), 100)}%`;
   const importoBaseAsta = useMemo(() => {
@@ -169,6 +394,71 @@ export function BidPricingEngine({ tender, isOpen, onClose }: BidPricingEnginePr
     () => calcProductivityImpact(pricingItems, importoBaseAsta),
     [pricingItems, importoBaseAsta]
   );
+
+  const baseRibassoForDynamic = result?.ribassoOttimale ?? ribasso;
+  const dynamicPricing = useMemo(
+    () =>
+      calcDynamicPricing({
+        baseRibasso: baseRibassoForDynamic,
+        concorrentiAttesi,
+        urgenza,
+        saturazione,
+      }),
+    [baseRibassoForDynamic, concorrentiAttesi, urgenza, saturazione]
+  );
+
+  const maxRibassoSostenibile = useMemo(
+    () => calcMaxRibassoSostenibile(ribasso, productivityImpact.deltaPercentTender),
+    [ribasso, productivityImpact.deltaPercentTender]
+  );
+
+  const monteCarloMu = result?.ribassoOttimale ?? profile?.avgRibassoPercent ?? ribasso;
+
+  const monteCarloWinRate = useMemo(() => {
+    if (!monteCarloResult) return null;
+    let wins = 0;
+    for (const competitorRibasso of monteCarloResult.competitorSamples) {
+      if (ribasso > competitorRibasso && ribasso <= maxRibassoSostenibile) wins += 1;
+    }
+    return (wins / monteCarloResult.iterations) * 100;
+  }, [monteCarloResult, ribasso, maxRibassoSostenibile]);
+
+  const handleRunMonteCarlo = () => {
+    setMonteCarloResult(
+      runMonteCarloSimulation({
+        userRibasso: ribasso,
+        mu: monteCarloMu,
+        sigma: 3,
+        iterations: 500,
+        maxRibassoSostenibile,
+      })
+    );
+  };
+
+  const advancedPanelsProps: AdvancedPricingPanelsProps | null = profile
+    ? {
+        concorrentiAttesi,
+        onConcorrentiChange: setConcorrentiAttesi,
+        urgenza,
+        onUrgenzaChange: setUrgenza,
+        saturazione,
+        onSaturazioneChange: setSaturazione,
+        dynamicRibasso: dynamicPricing.ribassoSuggerito,
+        dynamicBreakdown: {
+          aggiustamentoConcorrenza: dynamicPricing.aggiustamentoConcorrenza,
+          aggiustamentoUrgenza: dynamicPricing.aggiustamentoUrgenza,
+          aggiustamentoSaturazione: dynamicPricing.aggiustamentoSaturazione,
+        },
+        ribasso,
+        monteCarloResult,
+        monteCarloWinRate,
+        onRunMonteCarlo: handleRunMonteCarlo,
+        monteCarloMu,
+        maxRibassoSostenibile,
+      }
+    : null;
+
+  if (!isOpen) return null;
 
   const offeredBySlider = calcImportoOfferto(importoBaseAsta, ribasso);
   const productivityCoverageThreshold =
@@ -413,6 +703,8 @@ export function BidPricingEngine({ tender, isOpen, onClose }: BidPricingEnginePr
                 <div className="text-[11px] text-slate-500 font-mono">
                   Offerta stimata al ribasso attuale: {fmtEuro(offeredBySlider)}
                 </div>
+                {!result && advancedPanelsProps && <AdvancedPricingPanels {...advancedPanelsProps} />}
+
                 <button
                   type="button"
                   onClick={() => handleRun(profile, ribasso)}
@@ -528,6 +820,8 @@ export function BidPricingEngine({ tender, isOpen, onClose }: BidPricingEnginePr
                   <span>40%</span>
                 </div>
               </div>
+
+              {advancedPanelsProps && <AdvancedPricingPanels {...advancedPanelsProps} />}
 
               {/* Scenario cards */}
               <div>
