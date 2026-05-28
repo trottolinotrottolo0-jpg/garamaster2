@@ -1,7 +1,15 @@
 import { useState, useEffect, useMemo } from "react";
 import { X, RefreshCw, CheckCircle, XCircle, AlertTriangle, Loader2 } from "lucide-react";
 import type { TenderDocument, CompanyProfile, BidNoBidResult, WinningPattern } from "../types";
-import { runBidNoBid } from "../lib/gemini";
+import { runBidNoBid, analyzeFitStrategicInsights, type FitStrategicInsights } from "../lib/gemini";
+import { checkSOAQualificationForTender } from "../lib/bidQualificationEngine";
+import {
+  calculateStrategicFit,
+  combineFitWithPattern,
+  FIT_RECOMMENDATION_CLASS,
+  FIT_RECOMMENDATION_LABEL,
+  FIT_SUPER_VERDICT_CLASS,
+} from "../lib/fitEngineStrategic";
 import { matchGaraToPatterns } from "../lib/winningPatternEngine";
 import { ExplainabilityLayer } from "./ExplainabilityLayer";
 import { WinningPatternViewer } from "./WinningPatternViewer";
@@ -44,6 +52,59 @@ export function BidNoBidEngine({
   const [result, setResult] = useState<BidNoBidResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fitInsights, setFitInsights] = useState<FitStrategicInsights | null>(null);
+  const [fitInsightsLoading, setFitInsightsLoading] = useState(false);
+
+  const strategicFit = useMemo(
+    () =>
+      profile?.fitStrategicProfile
+        ? calculateStrategicFit(tender, profile.fitStrategicProfile)
+        : null,
+    [tender, profile?.fitStrategicProfile]
+  );
+
+  const bestPatternMatch = useMemo(() => {
+    if (similarityScores.length === 0) return undefined;
+    return similarityScores.reduce((best, s) =>
+      s.similarita > best.similarita ? s : best
+    );
+  }, [similarityScores]);
+
+  const fitPlusPattern = useMemo(() => {
+    if (!strategicFit) return null;
+    return combineFitWithPattern(
+      strategicFit,
+      bestPatternMatch?.similarita,
+      bestPatternMatch?.predictionWinRate
+    );
+  }, [strategicFit, bestPatternMatch]);
+
+  useEffect(() => {
+    if (!isOpen || loading || !profile?.fitStrategicProfile) {
+      setFitInsights(null);
+      setFitInsightsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setFitInsightsLoading(true);
+    setFitInsights(null);
+
+    analyzeFitStrategicInsights(tender, profile.fitStrategicProfile)
+      .then((data) => {
+        if (!cancelled) setFitInsights(data);
+      })
+      .catch(() => {
+        if (!cancelled) setFitInsights(null);
+      })
+      .finally(() => {
+        if (!cancelled) setFitInsightsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, loading, tender, profile?.fitStrategicProfile]);
 
   const loadAndRun = async (prof: CompanyProfile) => {
     setLoading(true);
@@ -171,6 +232,147 @@ export function BidNoBidEngine({
               similarityScores={similarityScores}
               isLoading={isAnalyzingPatterns}
             />
+          )}
+
+          {profile?.soaAttuale && !loading && (
+            <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-3">
+              <div className="text-[9px] font-bold text-brand-gold uppercase mb-2">
+                Verifica qualificazione SOA
+              </div>
+              {(() => {
+                const qual = checkSOAQualificationForTender(profile.soaAttuale, tender);
+                return (
+                  <div
+                    className={`text-[9px] ${qual.isQualified ? "text-emerald-400" : "text-red-400"}`}
+                  >
+                    <div className="font-bold mb-1">
+                      {qual.isQualified ? "✓ Qualificati" : "✗ Non qualificati"}
+                    </div>
+                    <div className="text-slate-300">{qual.recommendation}</div>
+                    {qual.percentualeCopertura > 0 && (
+                      <div className="mt-1 text-[8px] text-slate-400">
+                        Copertura: {qual.percentualeCopertura.toFixed(0)}% dell&apos;importo
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {strategicFit && !loading && (
+            <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-3 space-y-3">
+              <h4 className="text-[9px] font-bold text-brand-gold uppercase">
+                Allineamento strategico
+              </h4>
+              <div
+                className={`text-[9px] space-y-1 ${FIT_RECOMMENDATION_CLASS[strategicFit.recommendation]}`}
+              >
+                <div className="flex justify-between items-center">
+                  <span className="font-bold">
+                    {FIT_RECOMMENDATION_LABEL[strategicFit.recommendation]}
+                  </span>
+                  <span className="font-mono text-[10px] font-bold text-white">
+                    {strategicFit.scoreComplessivo}/100
+                  </span>
+                </div>
+                <div className="text-slate-300 text-[8px]">{strategicFit.motivazione}</div>
+                <div className="flex gap-3 text-[8px] text-slate-500 font-mono">
+                  <span>Nicchia {strategicFit.breakdownScore.nicchiaMatch}/50</span>
+                  <span>Area {strategicFit.breakdownScore.areaMatch}/30</span>
+                  <span>Importo {strategicFit.breakdownScore.importoMatch}/20</span>
+                </div>
+                {strategicFit.nicchieMatching.length > 0 && (
+                  <div className="text-[8px] text-slate-400">
+                    ✓ Nicchie: {strategicFit.nicchieMatching.map((n) => n.nome).join(", ")}
+                  </div>
+                )}
+                {strategicFit.areeMatching.length > 0 && (
+                  <div className="text-[8px] text-slate-400">
+                    ✓ Aree: {strategicFit.areeMatching.map((a) => a.regione).join(", ")}
+                  </div>
+                )}
+              </div>
+
+              {fitPlusPattern && (
+                <div className="border-t border-neutral-800 pt-2">
+                  <div className="text-[9px] font-bold text-slate-500 uppercase mb-1">
+                    Fit + Winning pattern
+                  </div>
+                  <div
+                    className={`text-[9px] ${FIT_SUPER_VERDICT_CLASS[fitPlusPattern.verdict]}`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold">{fitPlusPattern.verdict.replace(/_/g, " ")}</span>
+                      <span className="font-mono text-white">
+                        Super {fitPlusPattern.superScore}/100
+                      </span>
+                    </div>
+                    <div className="text-[8px] text-slate-400 mt-0.5">
+                      Fit {fitPlusPattern.fitScore} · Pattern {fitPlusPattern.patternScore}
+                    </div>
+                    <div className="text-[8px] text-slate-300 mt-1">{fitPlusPattern.motivazione}</div>
+                  </div>
+                </div>
+              )}
+
+              <div className="border-t border-neutral-800 pt-2">
+                <h4 className="text-[9px] font-bold text-brand-gold uppercase mb-2">
+                  Insight strategici
+                </h4>
+                {fitInsightsLoading && (
+                  <div className="flex items-center gap-2 text-[9px] text-slate-400">
+                    <Loader2 className="w-3 h-3 animate-spin text-brand-gold" />
+                    Analisi strategica DeepSeek...
+                  </div>
+                )}
+                {!fitInsightsLoading && fitInsights && (
+                  <div className="space-y-2 text-[9px]">
+                    {fitInsights.spiegazione && (
+                      <p className="text-[8px] text-slate-400 leading-relaxed">
+                        {fitInsights.spiegazione}
+                      </p>
+                    )}
+                    {fitInsights.opportunita.length > 0 && (
+                      <div>
+                        <div className="text-emerald-400 mb-1">Opportunità</div>
+                        <ul className="space-y-0.5 ml-2">
+                          {fitInsights.opportunita.map((opp, i) => (
+                            <li key={i} className="text-slate-300">
+                              • {opp}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {fitInsights.rischi.length > 0 && (
+                      <div>
+                        <div className="text-amber-400 mb-1">Rischi strategici</div>
+                        <ul className="space-y-0.5 ml-2">
+                          {fitInsights.rischi.map((risk, i) => (
+                            <li key={i} className="text-slate-300">
+                              ⚠ {risk}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {fitInsights.azioni.length > 0 && (
+                      <div>
+                        <div className="text-blue-400 mb-1">Azioni consigliate</div>
+                        <ul className="space-y-0.5 ml-2">
+                          {fitInsights.azioni.map((azione, i) => (
+                            <li key={i} className="text-slate-300">
+                              → {azione}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
           )}
 
           {/* Result */}

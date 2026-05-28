@@ -118,6 +118,32 @@ export interface SOACategory {
   isPrevale?: boolean;
 }
 
+/** Categoria SOA estratta da attestazione CCIAA / file importato */
+export interface SOACategoria {
+  id: string;
+  codice: string;
+  descrizione: string;
+  importoMaxRealizzato: number;
+  annoUltimaRealizzazione: number;
+  confidenza: number;
+}
+
+export type SOAStructuredFonte = "PDF_CCIAA" | "EXCEL" | "MANUALE";
+export type SOAStructuredStatoValidazione = "NUOVO" | "VALIDATO" | "RESPINTO";
+
+export interface SOAStructured {
+  id: string;
+  dataImportazione: string;
+  fonte: SOAStructuredFonte;
+  fileName: string;
+  categorie: SOACategoria[];
+  totalCategorie: number;
+  importoTotaleMassimoRealizzabile: number;
+  noteParsing: string[];
+  statoValidazione: SOAStructuredStatoValidazione;
+  validazioneManualeNote?: string;
+}
+
 // ─── PREZZARI REGIONALI ─────────────────────────────────────────────────────
 
 export interface VocePrezzario {
@@ -439,6 +465,39 @@ export interface PatternInsights {
   explanation: string;
 }
 
+export interface NicchiaStrategica {
+  id: string;
+  nome: string;
+  descrizione: string;
+  priorita: number;
+  targetImportoMedio: number;
+  targetMargineMedio: number;
+}
+
+export interface AreaGeografica {
+  id: string;
+  regione: string;
+  priorita: number;
+  hasLogisticsHub: boolean;
+}
+
+export interface StrategiaGrowth {
+  periodo: "2025" | "2026" | "2027";
+  nicchieTarget: NicchiaStrategica[];
+  areeTarget: AreaGeografica[];
+  importoTargetAnnuale: number;
+  margineTargetMedio: number;
+  descrizioneVersione: string;
+}
+
+export interface FitStrategicProfile {
+  id: string;
+  strategiaAttiva: StrategiaGrowth;
+  storicoStrategie?: StrategiaGrowth[];
+  dataCreazione: string;
+  dataUltimaModifica: string;
+}
+
 export interface CompanyProfile {
   // Anagrafica
   companyName: string;
@@ -449,6 +508,8 @@ export interface CompanyProfile {
   // SOA
   soaCategories: SOACategory[];
   soaAttestatoreName?: string;
+  soaAttuale?: SOAStructured;
+  storicoSOA?: SOAStructured[];
 
   // Operatività
   geographicAreas: GeographicArea[];
@@ -491,6 +552,8 @@ export interface CompanyProfile {
 
   winningPatterns?: WinningPattern[];
   lastPatternAnalysisDate?: string;
+
+  fitStrategicProfile?: FitStrategicProfile;
 
   prezzariAttivi?: string[];
   prezzarioPreferito?: string;
