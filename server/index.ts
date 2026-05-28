@@ -14,6 +14,7 @@ import type { GaraRoiRequestBody } from "./garaRoiTypes";
 import { transcribeAudio } from "./transcribeAudio";
 import { parseDisciplinarePdf } from "./parseDisciplinare";
 import { parsePrezzarioPdf } from "./parsePrezzario";
+import { parseSOAFile } from "./parseSOA";
 import { generatePostGaraForensics } from "./postGaraForensics";
 import { generateSoaGapForecast } from "./soaGapForecast";
 import type { SoaGapForecastRequestBody } from "./soaGapForecastTypes";
@@ -241,6 +242,35 @@ async function createApp() {
       const message =
         error instanceof Error ? error.message : "Errore parser disciplinare.";
       console.error("[/api/parse-disciplinare]", message);
+      res.status(503).json({ error: message });
+    }
+  });
+
+  app.post("/api/parse-soa", async (req, res) => {
+    try {
+      const { fileBase64, fileName, mimeType } = req.body as {
+        fileBase64?: string;
+        fileName?: string;
+        mimeType?: string;
+      };
+
+      if (!fileBase64?.trim()) {
+        res.status(400).json({ error: "File SOA mancante." });
+        return;
+      }
+
+      const name = fileName?.trim() || "soa.pdf";
+      const result = await parseSOAFile({
+        fileBase64,
+        fileName: name,
+        mimeType: mimeType ?? "application/pdf",
+      });
+
+      res.json(result);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Errore parser SOA.";
+      console.error("[/api/parse-soa]", message);
       res.status(503).json({ error: message });
     }
   });

@@ -17,7 +17,9 @@ import type {
   RedFlagSourceReference,
   WinningPattern,
   PatternInsights,
+  FitStrategicProfile,
 } from "../types";
+import { parseTenderValue } from "./bidCalculations";
 import { requestParsePrezzario } from "./parsePrezzarioApi";
 import {
   calcolaBreakdownDaPrezzario,
@@ -1543,6 +1545,128 @@ export interface CompetitorPatternAnalysis {
   competitorWeaknesses: string[];
   strategyToCounterCompetitor: string[];
   riskAssessment: string;
+}
+
+export interface SOACategoryANCEMapping {
+  locale: string;
+  anceStandard: string;
+  codiceANCE: string;
+  confidenza: number;
+}
+
+function parseLlmJsonArray<T>(text: string): T[] {
+  try {
+    const extracted = extractJsonFromLlmResponse(text);
+    const parsed = JSON.parse(extracted) as unknown;
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export interface FitStrategicInsights {
+  opportunita: string[];
+  rischi: string[];
+  azioni: string[];
+  spiegazione: string;
+}
+
+export async function analyzeFitStrategicInsights(
+  tender: TenderDocument,
+  fitProfile: FitStrategicProfile
+): Promise<FitStrategicInsights> {
+  const importoGara = parseTenderValue(tender.value);
+  const importoLabel =
+    importoGara > 0 ? `€${importoGara.toLocaleString("it-IT")}` : tender.value;
+
+  const prompt = `Sei un consulente strategico per imprese edili italiane.
+Analizza l'allineamento di una gara con il profilo strategico di crescita dell'impresa.
+
+PROFILO STRATEGICO:
+- Nicchie target: ${fitProfile.strategiaAttiva.nicchieTarget.map((n) => n.nome).join(", ") || "non definite"}
+- Aree target: ${fitProfile.strategiaAttiva.areeTarget.map((a) => a.regione).join(", ") || "non definite"}
+- Target fatturato annuale: €${(fitProfile.strategiaAttiva.importoTargetAnnuale / 1_000_000).toFixed(1)}M
+- Margine target: ${fitProfile.strategiaAttiva.margineTargetMedio}%
+
+GARA ANALIZZATA:
+- Titolo: ${tender.title}
+- Categoria: ${tender.category}
+- Regione: ${tender.region}
+- Importo: ${importoLabel}
+- Procedura: ${tender.procedureType || "non specificata"}
+
+Rispondi SOLO con JSON valido, senza markdown, senza backtick:
+{
+  "opportunita": ["string", "..."],
+  "rischi": ["string", "..."],
+  "azioni": ["string", "..."],
+  "spiegazione": "paragrafo 3-4 frasi"
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.4, maxTokens: 1800 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = parseGeminiJson<FitStrategicInsights>(cleaned);
+    return {
+      opportunita: Array.isArray(parsed.opportunita) ? parsed.opportunita : [],
+      rischi: Array.isArray(parsed.rischi) ? parsed.rischi : [],
+      azioni: Array.isArray(parsed.azioni) ? parsed.azioni : [],
+      spiegazione: parsed.spiegazione || "",
+    };
+  } catch {
+    return {
+      opportunita: ["Accesso a nuovo segmento di mercato", "Diversificazione del portfolio commesse"],
+      rischi: ["Impegno risorse su commessa non core", "Complessità organizzativa aggiuntiva"],
+      azioni: ["Valutare partnership o RTI", "Pianificare timeline e capacità produttiva"],
+      spiegazione:
+        "Analisi strategica automatica non disponibile — valutare manualmente l'allineamento con il profilo di crescita.",
+    };
+  }
+}
+
+export async function mapSOACategoriesToANCE(
+  categorieLocali: string[]
+): Promise<SOACategoryANCEMapping[]> {
+  if (categorieLocali.length === 0) return [];
+
+  const prompt = `Sei un esperto di categorie SOA italiane e standard ANCE.
+Mappa queste categorie locali estratte da un file SOA verso le categorie standard ANCE.
+
+Categorie locali da mappare:
+${categorieLocali.map((c, i) => `${i + 1}. ${c}`).join("\n")}
+
+Rispondi SOLO con un JSON array valido, senza markdown, senza backtick:
+[
+  {
+    "locale": "descrizione locale esattamente come estratta",
+    "anceStandard": "descrizione categoria ANCE standard equivalente",
+    "codiceANCE": "codice ANCE (es. '01.01', '02.03', 'OG1')",
+    "confidenza": 95
+  }
+]
+
+Logica:
+- Se categoria locale corrisponde perfettamente a ANCE, confidenza 95-100
+- Se corrisponde parzialmente, confidenza 70-90
+- Se dubbia, confidenza 50-70
+- Se non mappabile, ometti dalla risposta
+
+Standard ANCE principali:
+01.xx = Scavi
+02.xx = Fondazioni
+03.xx = Murature
+04.xx = Solai
+05.xx = Coperture
+06.xx = Impianti`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.3, maxTokens: 2000 });
+
+  try {
+    return parseLlmJsonArray<SOACategoryANCEMapping>(text);
+  } catch {
+    return [];
+  }
 }
 
 export async function reverseEngineerCompetitorPattern(
