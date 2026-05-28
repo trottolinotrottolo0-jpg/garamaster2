@@ -1,5 +1,21 @@
 import type { ProfitabilityVerdict, ProfitabilityGateResult } from "../types";
 
+export interface PricingLineItem {
+  codice: string;
+  descrizione: string;
+  um: string;
+  qta: number;
+  prezzoPrezzario: number;
+  produttivita: number;
+}
+
+export interface ProductivityImpactSummary {
+  totalePrezzario: number;
+  totaleInternoReale: number;
+  deltaEuro: number;
+  deltaPercentTender: number;
+}
+
 export function calcImportoOfferto(importoGara: number, ribassoPercent: number): number {
   return importoGara * (1 - ribassoPercent / 100);
 }
@@ -40,4 +56,31 @@ export function parseTenderValue(valueStr: string): number {
     .replace(/\./g, "")
     .replace(",", ".");
   return parseFloat(cleaned) || 0;
+}
+
+export function calcPrezzarioCost(item: Pick<PricingLineItem, "qta" | "prezzoPrezzario">): number {
+  return item.qta * item.prezzoPrezzario;
+}
+
+export function calcInternalRealCost(
+  item: Pick<PricingLineItem, "qta" | "prezzoPrezzario" | "produttivita">
+): number {
+  return item.qta * item.prezzoPrezzario * (item.produttivita / 100);
+}
+
+export function calcProductivityImpact(
+  items: Array<Pick<PricingLineItem, "qta" | "prezzoPrezzario" | "produttivita">>,
+  importoBaseAsta: number
+): ProductivityImpactSummary {
+  const totalePrezzario = items.reduce((acc, item) => acc + calcPrezzarioCost(item), 0);
+  const totaleInternoReale = items.reduce((acc, item) => acc + calcInternalRealCost(item), 0);
+  const deltaEuro = totalePrezzario - totaleInternoReale;
+  const deltaPercentTender = importoBaseAsta > 0 ? (deltaEuro / importoBaseAsta) * 100 : 0;
+
+  return {
+    totalePrezzario,
+    totaleInternoReale,
+    deltaEuro,
+    deltaPercentTender,
+  };
 }

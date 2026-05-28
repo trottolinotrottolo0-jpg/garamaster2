@@ -1,8 +1,25 @@
-import { useState, useEffect, Fragment } from "react";
-import { X, TrendingUp, AlertTriangle, RefreshCw, Loader2, XCircle } from "lucide-react";
+import { useState, useEffect, Fragment, useMemo } from "react";
+import {
+  X,
+  TrendingUp,
+  AlertTriangle,
+  RefreshCw,
+  Loader2,
+  XCircle,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
 import type { TenderDocument, CompanyProfile, BidPricingResult, PricingScenario } from "../types";
 import { runBidPricing } from "../lib/gemini";
 import { ExplainabilityLayer } from "./ExplainabilityLayer";
+import {
+  calcImportoOfferto,
+  calcProductivityImpact,
+  calcInternalRealCost,
+  calcPrezzarioCost,
+  parseTenderValue,
+  type PricingLineItem,
+} from "../lib/bidCalculations";
 
 interface BidPricingEngineProps {
   tender: TenderDocument;
@@ -61,12 +78,49 @@ function ScenarioCard({ s, minMargine }: { s: PricingScenario; minMargine: numbe
   );
 }
 
+const MOCK_PREZZARIO_ITEMS: PricingLineItem[] = [
+  {
+    codice: "E.01.001",
+    descrizione: "Scavi in sezione obbligata",
+    um: "mc",
+    qta: 1250,
+    prezzoPrezzario: 22,
+    produttivita: 100,
+  },
+  {
+    codice: "E.03.045",
+    descrizione: "Calcestruzzo per fondazioni",
+    um: "mc",
+    qta: 620,
+    prezzoPrezzario: 145,
+    produttivita: 100,
+  },
+  {
+    codice: "M.02.110",
+    descrizione: "Acciaio B450C",
+    um: "kg",
+    qta: 58000,
+    prezzoPrezzario: 1.45,
+    produttivita: 100,
+  },
+  {
+    codice: "F.09.020",
+    descrizione: "Opere di finitura",
+    um: "mq",
+    qta: 2800,
+    prezzoPrezzario: 38,
+    produttivita: 100,
+  },
+];
+
 export function BidPricingEngine({ tender, isOpen, onClose }: BidPricingEngineProps) {
   const [profile, setProfile] = useState<CompanyProfile | null>(null);
   const [ribasso, setRibasso] = useState(12);
   const [result, setResult] = useState<BidPricingResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isOptimizerOpen, setIsOptimizerOpen] = useState(true);
+  const [pricingItems, setPricingItems] = useState<PricingLineItem[]>(MOCK_PREZZARIO_ITEMS);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -82,6 +136,8 @@ export function BidPricingEngine({ tender, isOpen, onClose }: BidPricingEnginePr
     setRibasso(prof.avgRibassoPercent || 12);
     setResult(null);
     setError(null);
+    setIsOptimizerOpen(true);
+    setPricingItems(MOCK_PREZZARIO_ITEMS.map((item) => ({ ...item })));
   }, [isOpen, tender]);
 
   const handleRun = async (prof: CompanyProfile, r: number) => {
@@ -102,6 +158,37 @@ export function BidPricingEngine({ tender, isOpen, onClose }: BidPricingEnginePr
 
   const BAR_MAX = 40;
   const toBarPct = (v: number) => `${Math.min(Math.max((v / BAR_MAX) * 100, 0), 100)}%`;
+  const importoBaseAsta = useMemo(() => {
+    const maybeImporto = (tender as TenderDocument & { importo?: number | string }).importo;
+    if (typeof maybeImporto === "number") return maybeImporto;
+    if (typeof maybeImporto === "string") return parseTenderValue(maybeImporto);
+    return parseTenderValue(tender.value);
+  }, [tender]);
+
+  const productivityImpact = useMemo(
+    () => calcProductivityImpact(pricingItems, importoBaseAsta),
+    [pricingItems, importoBaseAsta]
+  );
+
+  const offeredBySlider = calcImportoOfferto(importoBaseAsta, ribasso);
+  const productivityCoverageThreshold =
+    productivityImpact.deltaPercentTender > 0 ? productivityImpact.deltaPercentTender : 0;
+  const isRibassoCoveredByProductivity = ribasso <= productivityCoverageThreshold;
+
+  const updateProductivita = (index: number, nextValue: number) => {
+    const safeValue = Number.isFinite(nextValue) ? nextValue : 100;
+    const clamped = Math.min(130, Math.max(60, safeValue));
+    setPricingItems((prev) =>
+      prev.map((item, idx) =>
+        idx === index
+          ? {
+              ...item,
+              produttivita: Number(clamped.toFixed(1)),
+            }
+          : item
+      )
+    );
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4">
@@ -143,42 +230,199 @@ export function BidPricingEngine({ tender, isOpen, onClose }: BidPricingEnginePr
 
           {/* Slider + launch (only when profile loaded) */}
           {profile && (
-            <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <label className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">
-                  Ribasso personalizzato da simulare
-                </label>
-                <span className="text-2xl font-extrabold text-brand-gold font-mono">
-                  {ribasso.toFixed(1)}%
-                </span>
+            <>
+              <div className="bg-neutral-950 border border-neutral-800 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setIsOptimizerOpen((prev) => !prev)}
+                  className="w-full px-5 py-4 flex items-center justify-between border-b border-neutral-800/70 cursor-pointer"
+                >
+                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-300">
+                    Strumento Ottimizzazione Prezzario &amp; Produttività
+                  </span>
+                  {isOptimizerOpen ? (
+                    <ChevronUp className="w-4 h-4 text-slate-400" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-slate-400" />
+                  )}
+                </button>
+
+                {isOptimizerOpen && (
+                  <div className="p-4 space-y-4">
+                    <div className="overflow-x-auto border border-neutral-800 rounded-lg">
+                      <table className="w-full min-w-[760px] text-xs">
+                        <thead className="bg-neutral-900 text-slate-400 uppercase tracking-wider text-[10px]">
+                          <tr>
+                            <th className="px-3 py-2 text-left">Codice</th>
+                            <th className="px-3 py-2 text-left">Descrizione</th>
+                            <th className="px-3 py-2 text-right">Q.tà</th>
+                            <th className="px-3 py-2 text-right">Prezzo</th>
+                            <th className="px-3 py-2 text-center">Prod. %</th>
+                            <th className="px-3 py-2 text-right">Costo prezzario</th>
+                            <th className="px-3 py-2 text-right">Costo interno reale</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-neutral-800 bg-neutral-950">
+                          {pricingItems.map((item, index) => (
+                            <tr key={item.codice}>
+                              <td className="px-3 py-2 text-slate-300 font-mono">{item.codice}</td>
+                              <td className="px-3 py-2 text-slate-100">{item.descrizione}</td>
+                              <td className="px-3 py-2 text-right text-slate-300 font-mono">
+                                {item.qta.toLocaleString("it-IT")} {item.um}
+                              </td>
+                              <td className="px-3 py-2 text-right text-slate-300 font-mono">
+                                {fmtEuro(item.prezzoPrezzario)}
+                              </td>
+                              <td className="px-3 py-2">
+                                <div className="flex items-center justify-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => updateProductivita(index, item.produttivita - 1)}
+                                    className="cursor-pointer px-1.5 py-0.5 rounded border border-neutral-700 text-slate-300 hover:border-brand-gold"
+                                    aria-label={`Diminuisci produttività ${item.codice}`}
+                                  >
+                                    -
+                                  </button>
+                                  <input
+                                    type="number"
+                                    min={60}
+                                    max={130}
+                                    step={0.5}
+                                    value={item.produttivita}
+                                    onChange={(e) => updateProductivita(index, parseFloat(e.target.value))}
+                                    className="w-16 bg-neutral-900 border border-neutral-700 rounded px-1.5 py-1 text-center text-slate-100 font-mono"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => updateProductivita(index, item.produttivita + 1)}
+                                    className="cursor-pointer px-1.5 py-0.5 rounded border border-neutral-700 text-slate-300 hover:border-brand-gold"
+                                    aria-label={`Aumenta produttività ${item.codice}`}
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="px-3 py-2 text-right text-slate-200 font-mono">
+                                {fmtEuro(calcPrezzarioCost(item))}
+                              </td>
+                              <td className="px-3 py-2 text-right font-mono">
+                                <span
+                                  className={
+                                    item.produttivita <= 100 ? "text-emerald-400 font-bold" : "text-red-400 font-bold"
+                                  }
+                                >
+                                  {fmtEuro(calcInternalRealCost(item))}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="bg-black border border-neutral-800 rounded-lg p-3">
+                        <p className="text-[9px] uppercase tracking-widest text-slate-500 font-bold">
+                          Totale prezzario
+                        </p>
+                        <p className="text-lg font-extrabold text-white font-mono">
+                          {fmtEuro(productivityImpact.totalePrezzario)}
+                        </p>
+                      </div>
+                      <div className="bg-black border border-neutral-800 rounded-lg p-3">
+                        <p className="text-[9px] uppercase tracking-widest text-slate-500 font-bold">
+                          Costo interno reale
+                        </p>
+                        <p className="text-lg font-extrabold text-white font-mono">
+                          {fmtEuro(productivityImpact.totaleInternoReale)}
+                        </p>
+                      </div>
+                      <div className="bg-black border border-neutral-800 rounded-lg p-3">
+                        <p className="text-[9px] uppercase tracking-widest text-slate-500 font-bold">
+                          {productivityImpact.deltaEuro >= 0
+                            ? "Margine Extra da Produttività"
+                            : "Soglia di Protezione"}
+                        </p>
+                        <p
+                          className={`text-lg font-extrabold font-mono ${
+                            productivityImpact.deltaEuro >= 0 ? "text-emerald-400" : "text-red-400"
+                          }`}
+                        >
+                          {fmtEuro(productivityImpact.deltaEuro)}
+                        </p>
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          {fmtPct(Math.abs(productivityImpact.deltaPercentTender))} su base d&apos;asta
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-              <input
-                type="range"
-                min={0}
-                max={40}
-                step={0.5}
-                value={ribasso}
-                onChange={(e) => setRibasso(parseFloat(e.target.value))}
-                className="w-full h-2 rounded-full cursor-pointer appearance-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-brand-gold [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-black [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-brand-gold [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:cursor-pointer"
-                style={{
-                  background:
-                    "linear-gradient(to right, #22c55e 0%, #eab308 50%, #ef4444 80%, #ef4444 100%)",
-                }}
-              />
-              <div className="flex justify-between text-[9px] text-slate-600 font-mono">
-                <span>0%</span>
-                <span>20%</span>
-                <span>40%</span>
+
+              <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">
+                    Ribasso personalizzato da simulare
+                  </label>
+                  <span className="text-2xl font-extrabold text-brand-gold font-mono">
+                    {ribasso.toFixed(1)}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={40}
+                  step={0.5}
+                  value={ribasso}
+                  onChange={(e) => setRibasso(parseFloat(e.target.value))}
+                  className="w-full h-2 rounded-full cursor-pointer appearance-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-brand-gold [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-black [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-brand-gold [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:cursor-pointer"
+                  style={{
+                    background:
+                      "linear-gradient(to right, #22c55e 0%, #eab308 50%, #ef4444 80%, #ef4444 100%)",
+                  }}
+                />
+                <div className="flex justify-between text-[9px] text-slate-600 font-mono">
+                  <span>0%</span>
+                  <span>20%</span>
+                  <span>40%</span>
+                </div>
+                <div
+                  className={`rounded-lg border px-3 py-2 text-xs ${
+                    productivityImpact.deltaEuro >= 0
+                      ? isRibassoCoveredByProductivity
+                        ? "bg-emerald-950/30 border-emerald-800 text-emerald-300"
+                        : "bg-amber-950/30 border-amber-800 text-amber-300"
+                      : "bg-red-950/30 border-red-800 text-red-300"
+                  }`}
+                >
+                  {productivityImpact.deltaEuro >= 0 ? (
+                    <>
+                      Copertura efficienza: <span className="font-bold">{fmtPct(productivityCoverageThreshold)}</span> di
+                      ribasso su base d&apos;asta. Ribasso selezionato{" "}
+                      <span className="font-bold">{isRibassoCoveredByProductivity ? "coperto" : "non coperto"}</span>{" "}
+                      dal margine produttività.
+                    </>
+                  ) : (
+                    <>
+                      Produttività sotto benchmark: incremento costi di{" "}
+                      <span className="font-bold">{fmtEuro(Math.abs(productivityImpact.deltaEuro))}</span>, riduce lo
+                      spazio di ribasso sostenibile.
+                    </>
+                  )}
+                </div>
+                <div className="text-[11px] text-slate-500 font-mono">
+                  Offerta stimata al ribasso attuale: {fmtEuro(offeredBySlider)}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleRun(profile, ribasso)}
+                  disabled={loading}
+                  className="cursor-pointer w-full bg-brand-gold hover:bg-yellow-400 disabled:opacity-50 text-black text-xs font-bold px-6 py-2.5 rounded-lg transition-colors"
+                >
+                  Avvia analisi Gemini
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => handleRun(profile, ribasso)}
-                disabled={loading}
-                className="cursor-pointer w-full bg-brand-gold hover:bg-yellow-400 disabled:opacity-50 text-black text-xs font-bold px-6 py-2.5 rounded-lg transition-colors"
-              >
-                Avvia analisi Gemini
-              </button>
-            </div>
+            </>
           )}
 
           {/* Loading */}
