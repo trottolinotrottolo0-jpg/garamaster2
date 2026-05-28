@@ -509,3 +509,93 @@ export function buildComputoFromTender(tender: TenderDocument): ComputoMetricoVo
     prezzoUnitarioStimato: 0,
   }));
 }
+
+type VoceConQta = VocePrezzario & { qta?: number };
+
+/**
+ * Estrae breakdown costi da prezzario
+ * Raggruppa voci per categoria e calcola totali
+ */
+export function calcolaBreakdownDaPrezzario(voci: VoceConQta[]): {
+  costoPrevisto: number;
+  incidenzaManodopera: number;
+  incidenzaMateriali: number;
+  incidenzaNoli: number;
+  incidenzaAltro: number;
+  dettaglioCategorie: Array<{
+    categoria: string;
+    totale: number;
+    percentuale: number;
+    numerovoci: number;
+  }>;
+} {
+  const categorie = new Map<string, number>();
+  let totale = 0;
+
+  for (const voce of voci) {
+    const cat = voce.categoria || "Altro";
+    const qta = typeof voce.qta === "number" && voce.qta > 0 ? voce.qta : 1;
+    const importo = voce.prezzo * qta;
+    const attuale = categorie.get(cat) || 0;
+    categorie.set(cat, attuale + importo);
+    totale += importo;
+  }
+
+  const result = {
+    costoPrevisto: totale,
+    incidenzaManodopera: 0,
+    incidenzaMateriali: 0,
+    incidenzaNoli: 0,
+    incidenzaAltro: 0,
+    dettaglioCategorie: [] as Array<{
+      categoria: string;
+      totale: number;
+      percentuale: number;
+      numerovoci: number;
+    }>,
+  };
+
+  for (const [cat, subtotale] of categorie) {
+    const percentuale = totale > 0 ? (subtotale / totale) * 100 : 0;
+    const numerovoci = voci.filter((v) => (v.categoria || "Altro") === cat).length;
+
+    result.dettaglioCategorie.push({
+      categoria: cat,
+      totale: subtotale,
+      percentuale,
+      numerovoci,
+    });
+
+    if (cat === "Manodopera" || cat === "Manodopra") {
+      result.incidenzaManodopera = percentuale;
+    } else if (cat === "Materiali") {
+      result.incidenzaMateriali = percentuale;
+    } else if (cat === "Noli" || cat === "Noleggi") {
+      result.incidenzaNoli = percentuale;
+    } else {
+      result.incidenzaAltro += percentuale;
+    }
+  }
+
+  result.dettaglioCategorie.sort((a, b) => b.totale - a.totale);
+
+  return result;
+}
+
+/**
+ * Genera voci PricingLineItem da Prezzario per tabella UI
+ * Mantiene struktura qta/produttivita per essere editabili
+ */
+export function vociDaPrezzarioPerPricing(
+  prezzario: Prezzario,
+  qtyDefault = 1,
+  produttivitaDefault = 100
+): PricingLineItem[] {
+  return prezzario.voci.map((v) => ({
+    ...v,
+    qta: qtyDefault,
+    produttivita: produttivitaDefault,
+    importoPrezzario: v.prezzo * qtyDefault,
+    importoInterno: (v.prezzo * qtyDefault * produttivitaDefault) / 100,
+  }));
+}

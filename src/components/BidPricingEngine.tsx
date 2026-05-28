@@ -32,10 +32,55 @@ import {
   parseTenderValue,
   matchComputoConPrezzarioBest,
   buildComputoFromTender,
+  calcolaBreakdownDaPrezzario,
+  vociDaPrezzarioPerPricing,
   type CompanySaturation,
   type MonteCarloResult,
   type TenderUrgency,
 } from "../lib/bidCalculations";
+
+const FALLBACK_PRICING_ITEMS: PricingLineItem[] = [
+  {
+    id: "fb-1",
+    codice: "01",
+    descrizione: "Scavo",
+    um: "m³",
+    prezzo: 22,
+    categoria: "Manodopera",
+    qta: 100,
+    produttivita: 100,
+  },
+  {
+    id: "fb-2",
+    codice: "02",
+    descrizione: "Conglomerato cementizio",
+    um: "m³",
+    prezzo: 95,
+    categoria: "Materiali",
+    qta: 50,
+    produttivita: 100,
+  },
+  {
+    id: "fb-3",
+    codice: "03",
+    descrizione: "Noleggio escavatore",
+    um: "h",
+    prezzo: 85,
+    categoria: "Noli",
+    qta: 40,
+    produttivita: 100,
+  },
+  {
+    id: "fb-4",
+    codice: "04",
+    descrizione: "Caposquadra",
+    um: "h",
+    prezzo: 38,
+    categoria: "Manodopera",
+    qta: 200,
+    produttivita: 100,
+  },
+];
 
 interface BidPricingEngineProps {
   tender: TenderDocument;
@@ -381,20 +426,6 @@ export function BidPricingEngine({
     setComputoCollegamenti([]);
   }, [prezzarioSelezionato, computoEffettivo.length]);
 
-  const handleRun = async (prof: CompanyProfile, r: number) => {
-    setLoading(true);
-    setError(null);
-    setResult(null);
-    try {
-      const res = await runBidPricing(tender, prof, r);
-      setResult(res);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Errore sconosciuto");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const BAR_MAX = 40;
   const toBarPct = (v: number) => `${Math.min(Math.max((v / BAR_MAX) * 100, 0), 100)}%`;
   const importoBaseAsta = useMemo(() => {
@@ -407,19 +438,55 @@ export function BidPricingEngine({
   const vociDaMostrare = useMemo((): PricingLineItem[] => {
     if (prezzarioSelezionato && prezzari?.length) {
       const prezzario = prezzari.find((p) => p.id === prezzarioSelezionato);
-      if (prezzario) {
-        return prezzario.voci.map((v) => {
+      if (prezzario && prezzario.voci.length > 0) {
+        return vociDaPrezzarioPerPricing(prezzario).map((v) => {
           const override = pricingOverrides[v.id];
           return {
             ...v,
-            qta: override?.qta ?? 1,
-            produttivita: override?.produttivita ?? 100,
+            qta: override?.qta ?? v.qta,
+            produttivita: override?.produttivita ?? v.produttivita,
           };
         });
       }
     }
-    return [];
+    return FALLBACK_PRICING_ITEMS.map((v) => {
+      const override = pricingOverrides[v.id];
+      return {
+        ...v,
+        qta: override?.qta ?? v.qta,
+        produttivita: override?.produttivita ?? v.produttivita,
+      };
+    });
   }, [prezzarioSelezionato, prezzari, pricingOverrides]);
+
+  const usaPrezzarioReale = Boolean(
+    prezzarioSelezionato && prezzari?.find((p) => p.id === prezzarioSelezionato)?.voci.length
+  );
+
+  const breakdownPrezzario = useMemo(() => {
+    if (!usaPrezzarioReale || vociDaMostrare.length === 0) return null;
+    return calcolaBreakdownDaPrezzario(vociDaMostrare);
+  }, [usaPrezzarioReale, vociDaMostrare]);
+
+  const handleRun = async (prof: CompanyProfile, r: number) => {
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    try {
+      const res = await runBidPricing(
+        tender,
+        prof,
+        r,
+        usaPrezzarioReale ? vociDaMostrare : undefined,
+        usaPrezzarioReale ? vociDaMostrare : undefined
+      );
+      setResult(res);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Errore sconosciuto");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const productivityImpact = useMemo(
     () => calcProductivityImpact(vociDaMostrare, importoBaseAsta),
@@ -591,20 +658,37 @@ export function BidPricingEngine({
 
                 {isOptimizerOpen && (
                   <div className="p-4 space-y-4">
+                    {usaPrezzarioReale ? (
+                      <div className="bg-emerald-950/20 border border-emerald-900/50 rounded p-2 text-[9px] text-emerald-400">
+                        ✓ Usando prezzi reali da prezzario: margini e scenari sono più accurati
+                      </div>
+                    ) : (
+                      <div className="bg-amber-950/20 border border-amber-900/50 rounded p-2 text-[9px] text-amber-400">
+                        ⚠ Nessun prezzario regionale selezionato — margini basati su voci di esempio e
+                        percentuali stimate (meno affidabili)
+                      </div>
+                    )}
+
                     {prezzari && prezzari.length > 0 && (
-                      <div className="flex items-center gap-2 mb-2">
-                        <label className="text-[10px] text-slate-500 uppercase font-bold">
-                          Usa prezzario:
+                      <div className="bg-neutral-950 border border-neutral-800 rounded-lg p-3">
+                        <label className="text-[10px] text-slate-500 uppercase font-bold block mb-2">
+                          Usa prezzario regionale:
                         </label>
                         <select
-                          value={prezzarioSelezionato || ""}
-                          onChange={(e) => onPrezzarioChange?.(e.target.value)}
-                          className="bg-neutral-900 border border-neutral-700 text-white text-xs rounded px-2 py-1"
+                          value={prezzarioSelezionato || "personalizzato"}
+                          onChange={(e) => {
+                            if (e.target.value === "personalizzato") {
+                              onPrezzarioChange?.("");
+                            } else {
+                              onPrezzarioChange?.(e.target.value);
+                            }
+                          }}
+                          className="w-full text-[10px] px-2 py-1.5 bg-neutral-900 border border-neutral-700 text-white rounded"
                         >
-                          <option value="">Voci personalizzate</option>
+                          <option value="personalizzato">Voci personalizzate (esempio)</option>
                           {prezzari.map((p) => (
                             <option key={p.id} value={p.id}>
-                              {p.nome} ({p.regione})
+                              {p.nome} ({p.regione} {p.anno})
                             </option>
                           ))}
                         </select>
@@ -697,11 +781,9 @@ export function BidPricingEngine({
                       </div>
                     )}
 
-                    {vociDaMostrare.length === 0 ? (
+                    {usaPrezzarioReale && vociDaMostrare.length === 0 ? (
                       <p className="text-xs text-slate-500 py-4 text-center">
-                        {prezzarioSelezionato
-                          ? "Il prezzario selezionato non contiene voci."
-                          : "Seleziona un prezzario o creane uno in Gestisci Prezzari."}
+                        Il prezzario selezionato non contiene voci. Aggiungine in Gestisci Prezzari.
                       </p>
                     ) : (
                     <div className="overflow-x-auto border border-neutral-800 rounded-lg">
@@ -784,6 +866,33 @@ export function BidPricingEngine({
                         </tbody>
                       </table>
                     </div>
+                    )}
+
+                    {breakdownPrezzario && (
+                      <div className="bg-neutral-950 border border-neutral-800 rounded-lg p-3 mt-4">
+                        <h4 className="text-[9px] font-bold text-brand-gold uppercase mb-2">
+                          Breakdown costi da prezzario
+                        </h4>
+                        <div className="space-y-1.5">
+                          {breakdownPrezzario.dettaglioCategorie.map((cat) => (
+                            <div key={cat.categoria} className="flex justify-between text-[9px]">
+                              <span className="text-slate-400">{cat.categoria}</span>
+                              <div className="flex gap-4 text-white">
+                                <span className="font-mono">€{cat.totale.toFixed(2)}</span>
+                                <span className="font-mono text-slate-500">
+                                  {cat.percentuale.toFixed(1)}%
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                          <div className="border-t border-neutral-700 pt-1.5 mt-1.5 flex justify-between font-bold">
+                            <span className="text-slate-300">Totale costo previsto</span>
+                            <span className="text-brand-gold font-mono">
+                              €{breakdownPrezzario.costoPrevisto.toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
                     )}
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

@@ -1,13 +1,17 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { X, RefreshCw, CheckCircle, XCircle, AlertTriangle, Loader2 } from "lucide-react";
-import type { TenderDocument, CompanyProfile, BidNoBidResult } from "../types";
+import type { TenderDocument, CompanyProfile, BidNoBidResult, WinningPattern } from "../types";
 import { runBidNoBid } from "../lib/gemini";
+import { matchGaraToPatterns } from "../lib/winningPatternEngine";
 import { ExplainabilityLayer } from "./ExplainabilityLayer";
+import { WinningPatternViewer } from "./WinningPatternViewer";
 
 interface BidNoBidEngineProps {
   tender: TenderDocument;
   isOpen: boolean;
   onClose: () => void;
+  winningPatterns?: WinningPattern[];
+  isAnalyzingPatterns?: boolean;
 }
 
 function CheckPill({ label, ok }: { label: string; ok: boolean }) {
@@ -25,7 +29,17 @@ function CheckPill({ label, ok }: { label: string; ok: boolean }) {
   );
 }
 
-export function BidNoBidEngine({ tender, isOpen, onClose }: BidNoBidEngineProps) {
+export function BidNoBidEngine({
+  tender,
+  isOpen,
+  onClose,
+  winningPatterns = [],
+  isAnalyzingPatterns = false,
+}: BidNoBidEngineProps) {
+  const similarityScores = useMemo(
+    () => (winningPatterns.length > 0 ? matchGaraToPatterns(tender, winningPatterns) : []),
+    [tender, winningPatterns]
+  );
   const [profile, setProfile] = useState<CompanyProfile | null>(null);
   const [result, setResult] = useState<BidNoBidResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -148,6 +162,15 @@ export function BidNoBidEngine({ tender, isOpen, onClose }: BidNoBidEngineProps)
                 </button>
               )}
             </div>
+          )}
+
+          {/* Winning patterns */}
+          {(winningPatterns.length > 0 || isAnalyzingPatterns) && !loading && profile && (
+            <WinningPatternViewer
+              patterns={winningPatterns}
+              similarityScores={similarityScores}
+              isLoading={isAnalyzingPatterns}
+            />
           )}
 
           {/* Result */}

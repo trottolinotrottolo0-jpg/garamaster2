@@ -14,11 +14,22 @@ import type {
   VocePrezzario,
   ScorporoResult,
   RedFlag,
-  RedFlagCategory,
   RedFlagSourceReference,
+  WinningPattern,
+  PatternInsights,
 } from "../types";
 import { requestParsePrezzario } from "./parsePrezzarioApi";
-import { summarizePrezzarioVoci } from "./bidCalculations";
+import {
+  calcolaBreakdownDaPrezzario,
+  calcProductivityImpact,
+  summarizePrezzarioVoci,
+  vociDaPrezzarioPerPricing,
+} from "./bidCalculations";
+import type { PricingLineItem } from "../types";
+import {
+  normalizeRedFlagCategory,
+  resolveRedFlagExplainability,
+} from "./redFlagNormalization";
 
 /**
  * Parser robusto per JSON da DeepSeek
@@ -305,34 +316,57 @@ function calcScenario(
   ribasso: number,
   importoGara: number,
   profile: CompanyProfile,
-  label: PricingScenario["label"]
+  label: PricingScenario["label"],
+  pricingItems?: PricingLineItem[]
 ): PricingScenario {
   const importoOfferto = importoGara * (1 - ribasso / 100);
 
   const fattoreProduttivita = (profile.rendimentoSquadrePercent || 100) / 100;
   const incidenzaManodopera = 0.35;
 
-  const costoManodoperaBase = importoOfferto * incidenzaManodopera;
-  const costoManodoperaStimato =
-    fattoreProduttivita > 0 ? costoManodoperaBase / fattoreProduttivita : costoManodoperaBase;
+  const speseGeneraliEuro = importoOfferto * ((profile.incidenzaSpeseGenerali || 15) / 100);
+  const rischioEuro = importoOfferto * ((profile.incidenzaRischioMedio || 3) / 100);
 
-  const altriCosti =
-    importoOfferto *
-    ((profile.incidenzaSpeseGenerali || 15) / 100 +
-      (profile.incidenzaRischioMedio || 3) / 100 +
-      (1 - incidenzaManodopera - (profile.avgMarginPercent || 10) / 100));
+  let costoManodoperaStimato: number;
+  let costoTotale: number;
+  let margineEuro: number;
+  let margineStimato: number;
+  let margineCorrettoEuro: number;
+  let margineCorrettoPercent: number;
 
-  const costoTotale = costoManodoperaStimato + altriCosti;
-  const margineCorrettoEuro = importoOfferto - costoTotale;
-  const margineCorrettoPercent =
-    importoOfferto > 0 ? (margineCorrettoEuro / importoOfferto) * 100 : 0;
+  if (pricingItems && pricingItems.length > 0) {
+    const impact = calcProductivityImpact(pricingItems, importoGara);
+    costoManodoperaStimato = impact.totaleInternoReale;
+    const costoPrezzario = impact.totalePrezzario + speseGeneraliEuro + rischioEuro;
+    costoTotale = impact.totaleInternoReale + speseGeneraliEuro + rischioEuro;
+    margineEuro = importoOfferto - costoPrezzario;
+    margineStimato = importoOfferto > 0 ? (margineEuro / importoOfferto) * 100 : 0;
+    margineCorrettoEuro = importoOfferto - costoTotale;
+    margineCorrettoPercent =
+      importoOfferto > 0 ? (margineCorrettoEuro / importoOfferto) * 100 : 0;
+  } else {
+    const costoManodoperaBase = importoOfferto * incidenzaManodopera;
+    costoManodoperaStimato =
+      fattoreProduttivita > 0 ? costoManodoperaBase / fattoreProduttivita : costoManodoperaBase;
 
-  const costiBase =
-    importoOfferto * (1 - (profile.avgMarginPercent || 10) / 100) +
-    importoOfferto * ((profile.incidenzaSpeseGenerali || 15) / 100) +
-    importoOfferto * ((profile.incidenzaRischioMedio || 3) / 100);
-  const margineEuro = importoOfferto - costiBase;
-  const margineStimato = importoOfferto > 0 ? (margineEuro / importoOfferto) * 100 : 0;
+    const altriCosti =
+      importoOfferto *
+      ((profile.incidenzaSpeseGenerali || 15) / 100 +
+        (profile.incidenzaRischioMedio || 3) / 100 +
+        (1 - incidenzaManodopera - (profile.avgMarginPercent || 10) / 100));
+
+    costoTotale = costoManodoperaStimato + altriCosti;
+    margineCorrettoEuro = importoOfferto - costoTotale;
+    margineCorrettoPercent =
+      importoOfferto > 0 ? (margineCorrettoEuro / importoOfferto) * 100 : 0;
+
+    const costiBase =
+      importoOfferto * (1 - (profile.avgMarginPercent || 10) / 100) +
+      speseGeneraliEuro +
+      rischioEuro;
+    margineEuro = importoOfferto - costiBase;
+    margineStimato = importoOfferto > 0 ? (margineEuro / importoOfferto) * 100 : 0;
+  }
 
   return {
     ribasso,
@@ -739,16 +773,62 @@ function normalizeProfitabilityResult(
 export async function runBidPricing(
   tender: TenderDocument,
   profile: CompanyProfile,
-  ribassoPersonalizzato: number
+  ribassoPersonalizzato: number,
+  vociPrezzario?: VocePrezzario[],
+  pricingItems?: PricingLineItem[]
 ): Promise<BidPricingResult> {
   const importoGara = parseTenderValue(tender.value);
 
+  const itemsForScenario =
+    pricingItems && pricingItems.length > 0
+      ? pricingItems
+      : vociPrezzario && vociPrezzario.length > 0
+        ? vociPrezzario.map((v) => ({
+            ...v,
+            qta: 1,
+            produttivita: profile.rendimentoSquadrePercent || 100,
+          }))
+        : undefined;
+
   const scenari: PricingScenario[] = [
-    calcScenario(profile.avgRibassoPercent + 3, importoGara, profile, "Aggressivo"),
-    calcScenario(profile.avgRibassoPercent, importoGara, profile, "Bilanciato"),
-    calcScenario(Math.max(0, profile.avgRibassoPercent - 3), importoGara, profile, "Conservativo"),
-    calcScenario(ribassoPersonalizzato, importoGara, profile, "Personalizzato"),
+    calcScenario(profile.avgRibassoPercent + 3, importoGara, profile, "Aggressivo", itemsForScenario),
+    calcScenario(profile.avgRibassoPercent, importoGara, profile, "Bilanciato", itemsForScenario),
+    calcScenario(
+      Math.max(0, profile.avgRibassoPercent - 3),
+      importoGara,
+      profile,
+      "Conservativo",
+      itemsForScenario
+    ),
+    calcScenario(ribassoPersonalizzato, importoGara, profile, "Personalizzato", itemsForScenario),
   ];
+
+  const breakdownBlock =
+    vociPrezzario && vociPrezzario.length > 0
+      ? (() => {
+          const breakdown = calcolaBreakdownDaPrezzario(
+            pricingItems?.length
+              ? pricingItems
+              : vociPrezzario.map((v) => ({ ...v, qta: 1 }))
+          );
+          return `
+BREAKDOWN COSTI DA PREZZARIO REGIONALE (reale, non stimato):
+Costo previsto voci: €${breakdown.costoPrevisto.toFixed(2)}
+- Manodopera: ${breakdown.incidenzaManodopera.toFixed(1)}%
+- Materiali: ${breakdown.incidenzaMateriali.toFixed(1)}%
+- Noli: ${breakdown.incidenzaNoli.toFixed(1)}%
+- Altro: ${breakdown.incidenzaAltro.toFixed(1)}%
+
+Usa questi valori REALI nel calcolo margini e scenari, non percentuali stimate.
+`;
+        })()
+      : `
+BREAKDOWN COSTI STIMATO (nessun prezzario disponibile — usa medie storiche):
+- Manodopera: 35%
+- Materiali: 40%
+- Noli: 15%
+- Contingenze: 10%
+`;
 
   const prompt = `Sei un esperto di pricing per gare d'appalto pubbliche italiane (D.Lgs. 36/2023).
 Analizza la situazione e restituisci SOLO un oggetto JSON valido, senza markdown, senza backtick.
@@ -775,6 +855,16 @@ Logica per il range:
 - ribassoOttimale = punto di equilibrio tra competitività e margine
 - alertMargine = true se anche ribassoOttimale porta margine vicino al limite (< minMargine + 2%)
 - winRatePrudente: considera storico impresa, fit gara, complessità — rimani prudente
+
+${breakdownBlock}
+
+Logica calcolo margine:
+Se prezzario disponibile:
+  margineStimato = (importoOfferta - costoPrezzario) / importoOfferta * 100
+  Più accurato perché usa costi reali
+Se NO prezzario:
+  margineStimato = (importoOfferta - costoStimato percentuale) / importoOfferta * 100
+  Meno affidabile perché usa medie
 
 Logica produttività nel ribasso:
 - fattoreProduttivitaGlobale = profile.rendimentoSquadrePercent / 100
@@ -835,16 +925,6 @@ ${JSON.stringify(scenari, null, 2)}`;
 export async function runRedFlagAnalysis(
   tender: TenderDocument
 ): Promise<RedFlagAnalysisResult> {
-  const normalizeCategory = (value: unknown): RedFlagCategory | string => {
-    const raw = String(value ?? "").trim().toLowerCase().replace(/\s+/g, "_");
-    if (!raw) return "altro";
-    if (raw.includes("hyper") || raw.includes("iper") || raw.includes("detailed")) return "hyper_detailed_specs";
-    if (raw.includes("unbalanced") || raw.includes("sbilanc")) return "unbalanced_award_criteria";
-    if (raw.includes("timeline") || raw.includes("tempi")) return "anomalous_timeline";
-    if (raw.includes("combination") || raw.includes("combinazione")) return "restrictive_requirement_combination";
-    return raw;
-  };
-
   const normalizeSourceReference = (value: unknown): RedFlagSourceReference | undefined => {
     if (!value || typeof value !== "object") return undefined;
     const source = value as Record<string, unknown>;
@@ -862,7 +942,7 @@ export async function runRedFlagAnalysis(
   const normalizeRedFlagItem = (item: Record<string, unknown>): RedFlag => {
     return {
       title: String(item.title ?? "Rischio da verificare").trim(),
-      type: normalizeCategory(item.type),
+      type: normalizeRedFlagCategory(item.type),
       clause: String(item.clause ?? "Estratto non disponibile").trim(),
       articleRef: String(item.articleRef ?? "Verifica disciplinare").trim(),
       severity:
@@ -885,7 +965,7 @@ Struttura JSON richiesta:
   "redFlags": [
     {
       "title": string,
-      "type": "hyper_detailed_specs" | "unbalanced_award_criteria" | "anomalous_timeline" | "restrictive_requirement_combination" | string,
+      "type": "hyper_detailed_specs" | "unbalanced_award_criteria" | "anomalous_timeline" | "restrictive_requirement_combination" | "requisito_sproporzionato" | "clausola_sensibile" | "rischio_operativo" | "rischio_esclusione" | "altro",
       "clause": string (citazione breve della clausola problematica, max 200 caratteri),
       "articleRef": string (riferimento normativo preciso),
       "severity": "high" | "medium" | "low",
@@ -910,11 +990,16 @@ Struttura JSON richiesta:
   ${EXPLAINABILITY_JSON_INLINE}
 }
 
-Categorie da cercare in modo esplicito (se c'e evidenza testuale):
+Categorie da cercare in modo esplicito (se c'e evidenza testuale; usa esattamente questi valori nel campo type):
+- requisito_sproporzionato: requisiti economici/tecnici/organizzativi potenzialmente sproporzionati rispetto a oggetto/importo
+- clausola_sensibile: clausole da approfondire rispetto a schemi standard o potenziale restrittivita
+- rischio_operativo: clausole che aumentano rischio operativo/esecutivo/cantiere
+- rischio_esclusione: requisiti o condizioni che aumentano rischio di esclusione formale/documentale
 - hyper_detailed_specs: specifiche tecniche iper-dettagliate potenzialmente cucite su uno specifico operatore
 - unbalanced_award_criteria: criteri OEPV/punteggi potenzialmente sbilanciati o opachi
 - anomalous_timeline: tempi di gara/esecuzione anomali o compressi
 - restrictive_requirement_combination: combinazioni di requisiti che riducono eccessivamente la platea
+- altro: solo se nessuna categoria precedente e applicabile (motiva nel title/simpleExplanation)
 
 Per ogni red flag usa linguaggio prudente: "potenzialmente restrittivo", "da verificare", "richiede revisione umana".
 Non usare formulazioni di illegittimita certa senza base documentale forte.
@@ -951,9 +1036,15 @@ DATI GARA:
     const redFlags = Array.isArray(parsed.redFlags)
       ? parsed.redFlags.map((item) => normalizeRedFlagItem(item as Record<string, unknown>))
       : [];
+    const explainability = resolveRedFlagExplainability(parsed.explainability, redFlags, {
+      sintesiRischio: parsed.sintesiRischio,
+      rischioComplessivo: parsed.rischioComplessivo,
+      tender,
+    });
     return {
       ...parsed,
       redFlags,
+      explainability,
       conteggioHigh: redFlags.filter((r) => r.severity === "high").length,
       conteggioMedium: redFlags.filter((r) => r.severity === "medium").length,
       conteggioLow: redFlags.filter((r) => r.severity === "low").length,
@@ -1392,5 +1483,124 @@ ${prezzarioBlock}`;
     return { ...normalized, generatedAt: new Date().toISOString() };
   } catch {
     throw new Error("Risposta LLM non valida — riprova");
+  }
+}
+
+export async function analyzePatternInsights(pattern: WinningPattern): Promise<PatternInsights> {
+  const regione = pattern.attributi.regioniTarget.join(", ") || "n/d";
+  const categoria = pattern.attributi.categorieSoa.join(", ") || "n/d";
+
+  const prompt = `Sei un esperto di appalti pubblici edili italiani.
+Analizza questo pattern di gare vinte e identifica fattori di successo.
+
+Pattern dati:
+- Regione: ${regione}
+- Categoria SOA: ${categoria}
+- Importo range: €${pattern.attributi.importoMin}-${pattern.attributi.importoMax}
+- Gare vinte: ${pattern.statsVittoria.numeroGareVinte}/${pattern.statsVittoria.numeroGarePartecipate}
+- Tasso successo: ${pattern.statsVittoria.tassoDiSuccesso.toFixed(1)}%
+- Ribasso medio vincente: ${pattern.statsEconomiche.ribassoMedioVincente.toFixed(1)}%
+- Margine medio realizzato: ${pattern.statsEconomiche.margineAttesoMedioPercent.toFixed(1)}%
+- Durata media progetti: ${pattern.statsTempi.durataMediaMesi.toFixed(0)} mesi
+- Complessità media: ${pattern.statsRischio.mediaComplessita.toFixed(0)}/100
+
+Rispondi SOLO con JSON valido, senza markdown, senza backtick:
+{
+  "keySuccessFactors": [string array, 3-4 fattori di successo principali],
+  "risksToAvoid": [string array, 3-4 rischi riscontrati],
+  "recommendations": [string array, 3-4 azioni consigliate per gare future],
+  "explanation": "paragrafo 3-4 frasi che sintetizza il pattern"
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.4, maxTokens: 1500 });
+
+  try {
+    return parseGeminiJson<PatternInsights>(text);
+  } catch {
+    return {
+      keySuccessFactors: [
+        "Ribasso competitivo ma sostenibile",
+        "Solidità tecnica e referenze coerenti",
+      ],
+      risksToAvoid: [
+        "Sottostima dei costi operativi",
+        "Sottovalutazione della complessità esecutiva",
+      ],
+      recommendations: [
+        "Mantieni il ribasso vicino alla media storica vincente",
+        "Rafforza l'offerta tecnica sui criteri premiali",
+      ],
+      explanation:
+        "Pattern con dati limitati: usa le medie storiche con prudenza e verifica sempre disciplinare e capacità operativa.",
+    };
+  }
+}
+
+export interface CompetitorPatternAnalysis {
+  estimatedCompetitorRibasso: number;
+  estimatedCompetitorMargin: number;
+  competitorAdvantages: string[];
+  competitorWeaknesses: string[];
+  strategyToCounterCompetitor: string[];
+  riskAssessment: string;
+}
+
+export async function reverseEngineerCompetitorPattern(
+  pattern: WinningPattern,
+  yourMargin = 8
+): Promise<CompetitorPatternAnalysis> {
+  const categoria = pattern.attributi.categorieSoa.join(", ") || "n/d";
+  const regione = pattern.attributi.regioniTarget.join(", ") || "n/d";
+
+  const prompt = `Sei un esperto strategico di appalti pubblici edili italiani.
+Analizza questo pattern di gare vinte da un competitor (stimato) e reverse-engineer la loro strategia.
+
+Pattern dati:
+- Categoria: ${categoria}
+- Regione: ${regione}
+- Importo range: €${pattern.attributi.importoMin}-${pattern.attributi.importoMax}
+- Win rate: ${pattern.statsVittoria.tassoDiSuccesso.toFixed(1)}%
+- Ribasso medio: ${pattern.statsEconomiche.ribassoMedioVincente.toFixed(1)}%
+- Margine medio realizzato: ${pattern.statsEconomiche.margineAttesoMedioPercent.toFixed(1)}%
+- Complessità media: ${pattern.statsRischio.mediaComplessita.toFixed(0)}/100
+
+Voi offrite margine target: ${yourMargin.toFixed(1)}%
+
+Risposta SOLO JSON, senza markdown, senza backtick:
+{
+  "estimatedCompetitorRibasso": number,
+  "estimatedCompetitorMargin": number,
+  "competitorAdvantages": [string array, 3-4 vantaggi competitivi competitor],
+  "competitorWeaknesses": [string array, 3-4 debolezze competitor],
+  "strategyToCounterCompetitor": [string array, 3-4 strategie per battere competitor],
+  "riskAssessment": "paragrafo 2-3 frasi valutazione rischio di competere contro questo competitor"
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.5, maxTokens: 2000 });
+
+  try {
+    return parseGeminiJson<CompetitorPatternAnalysis>(text);
+  } catch {
+    return {
+      estimatedCompetitorRibasso: pattern.statsEconomiche.ribassoMedioVincente + 1,
+      estimatedCompetitorMargin: Math.max(
+        0,
+        pattern.statsEconomiche.margineAttesoMedioPercent - 1
+      ),
+      competitorAdvantages: [
+        "Alta esperienza nella categoria",
+        "Costi operativi potenzialmente più bassi",
+      ],
+      competitorWeaknesses: [
+        "Possibile minore differenziazione tecnica",
+        "Qualità offerta variabile su gare complesse",
+      ],
+      strategyToCounterCompetitor: [
+        "Rafforzare offerta tecnica e referenze mirate",
+        "Proteggere margine con pricing disciplinato",
+      ],
+      riskAssessment:
+        "Competitor stimato competitivo su ribasso; superabile con differenziazione tecnica e controllo costi.",
+    };
   }
 }

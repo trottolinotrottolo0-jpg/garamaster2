@@ -9,7 +9,16 @@ import {
   Prezzario,
   CompanyProfile,
   type ColllegamentoComputoPrezzario,
+  type WinningPattern,
 } from "./types";
+import {
+  generateWinningPatterns,
+  matchGaraToPatterns,
+  analyzePatternsTimeTrend,
+  generatePatternAlerts,
+  type PatternAlert,
+} from "./lib/winningPatternEngine";
+import { WinningPatternViewer } from "./components/WinningPatternViewer";
 import { buildComputoFromTender } from "./lib/bidCalculations";
 import { initialMcpServers, mockTenders } from "./mockData";
 import { useGaraMaster } from "./context/GaraMasterContext";
@@ -139,6 +148,11 @@ export default function App() {
   const [isPrezzariManagerOpen, setIsPrezzariManagerOpen] = useState(false);
   const [companyProfile, setCompanyProfile] = useState<CompanyProfile | null>(null);
   const [computoCollegamenti, setComputoCollegamenti] = useState<ColllegamentoComputoPrezzario[]>([]);
+  const [winningPatterns, setWinningPatterns] = useState<WinningPattern[]>([]);
+  const [isAnalyzingPatterns, setIsAnalyzingPatterns] = useState(false);
+  const [isWinningPatternOpen, setIsWinningPatternOpen] = useState(false);
+  const [patternAlerts, setPatternAlerts] = useState<PatternAlert[]>([]);
+  const [dismissedAlertIds, setDismissedAlertIds] = useState<string[]>([]);
 
   // Custom states for settings
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -194,6 +208,49 @@ export default function App() {
       setCompanyProfile(null);
     }
   }, [isBidPricingOpen, isPrezzariManagerOpen]);
+
+  useEffect(() => {
+    const storico = companyProfile?.historicalTenders;
+    if (!storico?.length) {
+      setWinningPatterns([]);
+      return;
+    }
+    setIsAnalyzingPatterns(true);
+    const timer = window.setTimeout(() => {
+      const patterns = generateWinningPatterns(storico);
+      setWinningPatterns(patterns);
+      setIsAnalyzingPatterns(false);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [companyProfile?.historicalTenders]);
+
+  useEffect(() => {
+    if (!selectedTender?.id || winningPatterns.length === 0) {
+      setPatternAlerts([]);
+      return;
+    }
+    const matches = matchGaraToPatterns(selectedTender, winningPatterns);
+    const trends = analyzePatternsTimeTrend(winningPatterns);
+    setPatternAlerts(generatePatternAlerts(matches, winningPatterns, trends));
+  }, [selectedTender, winningPatterns]);
+
+  const visiblePatternAlerts = useMemo(
+    () => patternAlerts.filter((a) => !dismissedAlertIds.includes(a.id)),
+    [patternAlerts, dismissedAlertIds]
+  );
+
+  const handlePatternAlertAction = useCallback(
+    (alert: PatternAlert) => {
+      if (alert.tipo === "VERY_SIMILAR" || alert.tipo === "TREND_WARNING") {
+        setIsWinningPatternOpen(true);
+      } else if (alert.tipo === "OPPORTUNITY") {
+        setIsBidNoBidOpen(true);
+      } else if (alert.tipo === "RISK") {
+        setIsVessatorieOpen(true);
+      }
+    },
+    []
+  );
 
   const savePrezzari = useCallback((nuoviPrezzari: Prezzario[]) => {
     setPrezzari(nuoviPrezzari);
@@ -1504,6 +1561,51 @@ export default function App() {
                 <div className="flex-1 overflow-y-auto p-4 scrollbar-thin space-y-3">
                   <GaraRoiCalculator tender={activeTender} profilo={profilo} sidebar />
 
+                  {visiblePatternAlerts.length > 0 && (
+                    <div className="space-y-2" id="pattern-alerts-panel">
+                      {visiblePatternAlerts.map((alert) => (
+                        <div
+                          key={alert.id}
+                          className={`border rounded-lg p-3 text-[10px] ${
+                            alert.severity === "ALTA"
+                              ? "bg-red-950/30 border-red-900 text-red-300"
+                              : alert.severity === "MEDIA"
+                                ? "bg-amber-950/30 border-amber-900 text-amber-300"
+                                : "bg-blue-950/30 border-blue-900 text-blue-300"
+                          }`}
+                        >
+                          <div className="flex justify-between items-start gap-2 mb-1">
+                            <span className="font-bold leading-snug">{alert.titolo}</span>
+                            {alert.dismissible && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setDismissedAlertIds((prev) => [...prev, alert.id])
+                                }
+                                className="cursor-pointer text-xs opacity-50 hover:opacity-100 shrink-0"
+                                aria-label="Chiudi alert"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                          <p className="mb-2 leading-relaxed text-[9px] opacity-90">
+                            {alert.descrizione}
+                          </p>
+                          {alert.actionLabel && (
+                            <button
+                              type="button"
+                              onClick={() => handlePatternAlertAction(alert)}
+                              className="cursor-pointer text-xs font-bold underline hover:no-underline"
+                            >
+                              {alert.actionLabel}
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <SidebarDropdownSection
                     title="Requisiti analizzati"
                     badge={
@@ -1610,6 +1712,17 @@ export default function App() {
                           id="vessatorie-analysis-sidebar-btn"
                         >
                           Rileva clausole vessatorie
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          onClick={() => setIsWinningPatternOpen(true)}
+                          className="cursor-pointer text-slate-300 hover:text-brand-gold transition-colors text-left flex items-center gap-1.5"
+                          id="winning-pattern-sidebar-btn"
+                        >
+                          <Target className="w-3 h-3 text-brand-gold shrink-0" />
+                          Pattern vincenti ({winningPatterns.length})
                         </button>
                       </li>
                       <li>
@@ -1951,10 +2064,40 @@ export default function App() {
         onClose={() => setIsRtiAvvalimentoOpen(false)}
       />
 
+      {isWinningPatternOpen && (
+        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-black border border-neutral-800 rounded-2xl max-w-lg w-full shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-800 shrink-0">
+              <span className="text-xs font-extrabold tracking-widest uppercase text-white flex items-center gap-2">
+                <Target className="w-4 h-4 text-brand-gold" />
+                Winning Pattern Engine
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsWinningPatternOpen(false)}
+                className="cursor-pointer text-slate-500 hover:text-white text-lg font-bold"
+                aria-label="Chiudi"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-5 overflow-y-auto scrollbar-thin">
+              <WinningPatternViewer
+                patterns={winningPatterns}
+                similarityScores={matchGaraToPatterns(selectedTender, winningPatterns)}
+                isLoading={isAnalyzingPatterns}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       <BidNoBidEngine
         tender={selectedTender}
         isOpen={isBidNoBidOpen}
         onClose={() => setIsBidNoBidOpen(false)}
+        winningPatterns={winningPatterns}
+        isAnalyzingPatterns={isAnalyzingPatterns}
       />
 
       <PrezzariManager
