@@ -108,6 +108,116 @@ export interface SOACategory {
   isPrevale?: boolean;
 }
 
+// ─── PREZZARI REGIONALI ─────────────────────────────────────────────────────
+
+export interface VocePrezzario {
+  id: string;
+  codice: string;
+  descrizione: string;
+  um: string;
+  prezzo: number;
+  categoria?: string;
+}
+
+export interface Prezzario {
+  id: string;
+  nome: string;
+  regione: string;
+  anno: number;
+  fonte: string;
+  voci: VocePrezzario[];
+  dataCreazione: string;
+  dataUltimAggiornamento: string;
+  note?: string;
+}
+
+export interface ExtractedVocePrezzario {
+  codice: string;
+  descrizione: string;
+  um: string;
+  prezzo: number;
+  categoria?: string;
+  confidenza: number;
+}
+
+export interface ParsePrezzarioPdfResponse {
+  success: boolean;
+  vocieEstratte: ExtractedVocePrezzario[];
+  totaleVoci: number;
+  regioneRilevata?: string;
+  annoRilevato?: number;
+  erroriEstrazione: string[];
+  messaggioEsito: string;
+}
+
+export interface VoceScorporata {
+  voceOriginalId: string;
+  voceOriginale: VocePrezzario;
+  voceScorporata: VocePrezzario;
+  operazione: string;
+  confidenza: number;
+}
+
+export interface MappingVociSimilari {
+  vocePrezzario1Id: string;
+  vocePrezzario2Id: string;
+  prezzario1Nome: string;
+  prezzario2Nome: string;
+  descrizione1: string;
+  descrizione2: string;
+  prezzo1: number;
+  prezzo2: number;
+  deltaPrezzoPercent: number;
+  similarita: number;
+  suggerimentoUnificazione: boolean;
+}
+
+export interface ScorporoResult {
+  voceOriginaleId: string;
+  voceOriginale: VocePrezzario;
+  vocieScorprate: VocePrezzario[];
+  successoScorporo: boolean;
+  motivazione: string;
+}
+
+export interface ComputoMetricoVoce {
+  id: string;
+  codice?: string;
+  descrizione: string;
+  um: string;
+  quantita: number;
+  prezzoUnitarioStimato: number;
+}
+
+export interface ColllegamentoComputoPrezzario {
+  computoVoceId: string;
+  prezzarioVoceId: string;
+  computoDescrizione: string;
+  prezzarioDescrizione: string;
+  um: string;
+  quantita: number;
+  prezzoComputo: number;
+  prezzoPrezzario: number;
+  deltaPercent: number;
+  similarita: number;
+  collegato: boolean;
+}
+
+export interface AggiornamentoPrezzoVoce {
+  voceId: string;
+  prezzoVecchio: number;
+  prezzoNuovo: number;
+  motivazione: string;
+  dataAggiornamento: string;
+}
+
+export interface PricingLineItem extends VocePrezzario {
+  qta: number;
+  produttivita: number;
+  importoPrezzario?: number;
+  importoInterno?: number;
+}
+
 // ─── COMPANY PROFILE ────────────────────────────────────────────────────────
 
 export type GeographicArea =
@@ -282,6 +392,9 @@ export interface CompanyProfile {
   // Archivio gare passate strutturato
   historicalTenders?: HistoricalTender[];
 
+  prezzariAttivi?: string[];
+  prezzarioPreferito?: string;
+
   // Economici
   lastYearRevenue: number;
   avgMarginPercent: number;
@@ -313,6 +426,10 @@ export interface PricingScenario {
   margineEuro: number;
   label: "Aggressivo" | "Bilanciato" | "Conservativo" | "Personalizzato";
   rischioAlert: boolean;
+  fattoreProduttivita: number;
+  costoManodoperaStimato: number;
+  margineCorrettoPercent: number;
+  margineCorrettoEuro: number;
 }
 
 export interface BidPricingResult {
@@ -325,6 +442,9 @@ export interface BidPricingResult {
   alertText: string;
   winRatePrudente: number;
   winRateMotivazione: string;
+  impattoProduttivita: string;
+  fattoreProduttivitaGlobale: number;
+  avvertenzaProduttivita: boolean;
   generatedAt: string;
   explainability?: ExplainabilityData;
 }

@@ -9,7 +9,16 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
-import type { TenderDocument, CompanyProfile, BidPricingResult, PricingScenario } from "../types";
+import type {
+  TenderDocument,
+  CompanyProfile,
+  BidPricingResult,
+  PricingScenario,
+  Prezzario,
+  PricingLineItem,
+  ComputoMetricoVoce,
+  ColllegamentoComputoPrezzario,
+} from "../types";
 import { runBidPricing } from "../lib/gemini";
 import { ExplainabilityLayer } from "./ExplainabilityLayer";
 import {
@@ -21,7 +30,8 @@ import {
   calcMaxRibassoSostenibile,
   runMonteCarloSimulation,
   parseTenderValue,
-  type PricingLineItem,
+  matchComputoConPrezzarioBest,
+  buildComputoFromTender,
   type CompanySaturation,
   type MonteCarloResult,
   type TenderUrgency,
@@ -31,6 +41,11 @@ interface BidPricingEngineProps {
   tender: TenderDocument;
   isOpen: boolean;
   onClose: () => void;
+  prezzari?: Prezzario[];
+  prezzarioSelezionato?: string;
+  onPrezzarioChange?: (id: string) => void;
+  computoMetrico?: ComputoMetricoVoce[];
+  onCollegamentiComputo?: (collegamenti: ColllegamentoComputoPrezzario[]) => void;
 }
 
 const fmt = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -79,6 +94,18 @@ function ScenarioCard({ s, minMargine }: { s: PricingScenario; minMargine: numbe
             {fmtPct(s.margineStimato)}
           </span>
         </div>
+        {s.fattoreProduttivita < 1 && (
+          <div className="mt-1 pt-1 border-t border-neutral-700">
+            <span className="text-[9px] text-slate-500 block">Margine corretto (produttività)</span>
+            <span
+              className={`text-xs font-bold font-mono ${
+                s.margineCorrettoPercent > minMargine ? "text-emerald-400" : "text-red-400"
+              }`}
+            >
+              {s.margineCorrettoPercent.toFixed(1)}%
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -297,53 +324,34 @@ function AdvancedPricingPanels({
   );
 }
 
-const MOCK_PREZZARIO_ITEMS: PricingLineItem[] = [
-  {
-    codice: "E.01.001",
-    descrizione: "Scavi in sezione obbligata",
-    um: "mc",
-    qta: 1250,
-    prezzoPrezzario: 22,
-    produttivita: 100,
-  },
-  {
-    codice: "E.03.045",
-    descrizione: "Calcestruzzo per fondazioni",
-    um: "mc",
-    qta: 620,
-    prezzoPrezzario: 145,
-    produttivita: 100,
-  },
-  {
-    codice: "M.02.110",
-    descrizione: "Acciaio B450C",
-    um: "kg",
-    qta: 58000,
-    prezzoPrezzario: 1.45,
-    produttivita: 100,
-  },
-  {
-    codice: "F.09.020",
-    descrizione: "Opere di finitura",
-    um: "mq",
-    qta: 2800,
-    prezzoPrezzario: 38,
-    produttivita: 100,
-  },
-];
-
-export function BidPricingEngine({ tender, isOpen, onClose }: BidPricingEngineProps) {
+export function BidPricingEngine({
+  tender,
+  isOpen,
+  onClose,
+  prezzari,
+  prezzarioSelezionato,
+  onPrezzarioChange,
+  computoMetrico,
+  onCollegamentiComputo,
+}: BidPricingEngineProps) {
   const [profile, setProfile] = useState<CompanyProfile | null>(null);
   const [ribasso, setRibasso] = useState(12);
   const [result, setResult] = useState<BidPricingResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isOptimizerOpen, setIsOptimizerOpen] = useState(true);
-  const [pricingItems, setPricingItems] = useState<PricingLineItem[]>(MOCK_PREZZARIO_ITEMS);
+  const [pricingOverrides, setPricingOverrides] = useState<
+    Record<string, Pick<PricingLineItem, "qta" | "produttivita">>
+  >({});
   const [concorrentiAttesi, setConcorrentiAttesi] = useState(8);
   const [urgenza, setUrgenza] = useState<TenderUrgency>("3_10");
   const [saturazione, setSaturazione] = useState<CompanySaturation>("media");
   const [monteCarloResult, setMonteCarloResult] = useState<MonteCarloResult | null>(null);
+  const [computoLocale, setComputoLocale] = useState<ComputoMetricoVoce[]>([]);
+  const [computoCollegamenti, setComputoCollegamenti] = useState<ColllegamentoComputoPrezzario[]>([]);
+
+  const computoEffettivo =
+    computoMetrico && computoMetrico.length > 0 ? computoMetrico : computoLocale;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -360,12 +368,18 @@ export function BidPricingEngine({ tender, isOpen, onClose }: BidPricingEnginePr
     setResult(null);
     setError(null);
     setIsOptimizerOpen(true);
-    setPricingItems(MOCK_PREZZARIO_ITEMS.map((item) => ({ ...item })));
+    setPricingOverrides({});
     setConcorrentiAttesi(8);
     setUrgenza("3_10");
     setSaturazione("media");
     setMonteCarloResult(null);
+    setComputoLocale([]);
+    setComputoCollegamenti([]);
   }, [isOpen, tender]);
+
+  useEffect(() => {
+    setComputoCollegamenti([]);
+  }, [prezzarioSelezionato, computoEffettivo.length]);
 
   const handleRun = async (prof: CompanyProfile, r: number) => {
     setLoading(true);
@@ -390,9 +404,26 @@ export function BidPricingEngine({ tender, isOpen, onClose }: BidPricingEnginePr
     return parseTenderValue(tender.value);
   }, [tender]);
 
+  const vociDaMostrare = useMemo((): PricingLineItem[] => {
+    if (prezzarioSelezionato && prezzari?.length) {
+      const prezzario = prezzari.find((p) => p.id === prezzarioSelezionato);
+      if (prezzario) {
+        return prezzario.voci.map((v) => {
+          const override = pricingOverrides[v.id];
+          return {
+            ...v,
+            qta: override?.qta ?? 1,
+            produttivita: override?.produttivita ?? 100,
+          };
+        });
+      }
+    }
+    return [];
+  }, [prezzarioSelezionato, prezzari, pricingOverrides]);
+
   const productivityImpact = useMemo(
-    () => calcProductivityImpact(pricingItems, importoBaseAsta),
-    [pricingItems, importoBaseAsta]
+    () => calcProductivityImpact(vociDaMostrare, importoBaseAsta),
+    [vociDaMostrare, importoBaseAsta]
   );
 
   const baseRibassoForDynamic = result?.ribassoOttimale ?? ribasso;
@@ -465,19 +496,40 @@ export function BidPricingEngine({ tender, isOpen, onClose }: BidPricingEnginePr
     productivityImpact.deltaPercentTender > 0 ? productivityImpact.deltaPercentTender : 0;
   const isRibassoCoveredByProductivity = ribasso <= productivityCoverageThreshold;
 
-  const updateProductivita = (index: number, nextValue: number) => {
+  const updateQta = (voceId: string, nextValue: number) => {
+    const qta = Number.isFinite(nextValue) && nextValue > 0 ? nextValue : 1;
+    setPricingOverrides((prev) => ({
+      ...prev,
+      [voceId]: { qta, produttivita: prev[voceId]?.produttivita ?? 100 },
+    }));
+  };
+
+  const applyCollegamentiToPricing = (collegamenti: ColllegamentoComputoPrezzario[]) => {
+    const approved = collegamenti.filter((c) => c.collegato);
+    if (approved.length === 0) return;
+    setPricingOverrides((prev) => {
+      const next = { ...prev };
+      for (const coll of approved) {
+        next[coll.prezzarioVoceId] = {
+          qta: coll.quantita,
+          produttivita: prev[coll.prezzarioVoceId]?.produttivita ?? 100,
+        };
+      }
+      return next;
+    });
+    onCollegamentiComputo?.(approved);
+  };
+
+  const updateProductivita = (voceId: string, nextValue: number) => {
     const safeValue = Number.isFinite(nextValue) ? nextValue : 100;
     const clamped = Math.min(130, Math.max(60, safeValue));
-    setPricingItems((prev) =>
-      prev.map((item, idx) =>
-        idx === index
-          ? {
-              ...item,
-              produttivita: Number(clamped.toFixed(1)),
-            }
-          : item
-      )
-    );
+    setPricingOverrides((prev) => ({
+      ...prev,
+      [voceId]: {
+        qta: prev[voceId]?.qta ?? 1,
+        produttivita: Number(clamped.toFixed(1)),
+      },
+    }));
   };
 
   return (
@@ -539,6 +591,119 @@ export function BidPricingEngine({ tender, isOpen, onClose }: BidPricingEnginePr
 
                 {isOptimizerOpen && (
                   <div className="p-4 space-y-4">
+                    {prezzari && prezzari.length > 0 && (
+                      <div className="flex items-center gap-2 mb-2">
+                        <label className="text-[10px] text-slate-500 uppercase font-bold">
+                          Usa prezzario:
+                        </label>
+                        <select
+                          value={prezzarioSelezionato || ""}
+                          onChange={(e) => onPrezzarioChange?.(e.target.value)}
+                          className="bg-neutral-900 border border-neutral-700 text-white text-xs rounded px-2 py-1"
+                        >
+                          <option value="">Voci personalizzate</option>
+                          {prezzari.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.nome} ({p.regione})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {prezzarioSelezionato && computoEffettivo.length === 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setComputoLocale(buildComputoFromTender(tender))}
+                        className="cursor-pointer text-[9px] font-bold px-2 py-1 bg-neutral-900 border border-neutral-700 hover:border-brand-gold text-white rounded"
+                      >
+                        Carica computo da sezioni gara ({tender.sections.length} voci)
+                      </button>
+                    )}
+
+                    {prezzarioSelezionato && computoEffettivo.length > 0 && (
+                      <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-3 mb-2 space-y-2">
+                        <h4 className="text-[9px] font-bold text-brand-gold uppercase">
+                          Collegamento computo ↔ prezzario
+                        </h4>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const prezzario = prezzari?.find((p) => p.id === prezzarioSelezionato);
+                              if (prezzario) {
+                                const collegamenti = matchComputoConPrezzarioBest(
+                                  computoEffettivo,
+                                  prezzario
+                                );
+                                setComputoCollegamenti(collegamenti);
+                              }
+                            }}
+                            className="cursor-pointer text-[9px] font-bold px-2 py-1 bg-neutral-900 border border-neutral-700 hover:border-brand-gold text-white rounded"
+                          >
+                            Matcha voci computo
+                          </button>
+                          {computoCollegamenti.some((c) => c.collegato) && (
+                            <span className="text-[9px] text-emerald-400 self-center">
+                              {computoCollegamenti.filter((c) => c.collegato).length} collegamenti attivi
+                            </span>
+                          )}
+                        </div>
+
+                        {computoCollegamenti.length > 0 && (
+                          <div className="space-y-1 max-h-32 overflow-y-auto text-[9px]">
+                            {computoCollegamenti.map((coll) => (
+                              <div
+                                key={`${coll.computoVoceId}-${coll.prezzarioVoceId}`}
+                                className="bg-neutral-900 border border-neutral-700 rounded p-2 flex items-center gap-2"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={coll.collegato}
+                                  onChange={(e) => {
+                                    const updated = computoCollegamenti.map((c) =>
+                                      c.computoVoceId === coll.computoVoceId &&
+                                      c.prezzarioVoceId === coll.prezzarioVoceId
+                                        ? { ...c, collegato: e.target.checked }
+                                        : c
+                                    );
+                                    setComputoCollegamenti(updated);
+                                    applyCollegamentiToPricing(updated);
+                                  }}
+                                  className="w-3 h-3 cursor-pointer"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-white truncate">{coll.computoDescrizione}</div>
+                                  <div className="text-slate-500 text-[8px] truncate">
+                                    → {coll.prezzarioDescrizione}
+                                  </div>
+                                  <div
+                                    className={`text-[8px] ${
+                                      coll.deltaPercent > 0 ? "text-red-400" : "text-emerald-400"
+                                    }`}
+                                  >
+                                    €{coll.prezzoComputo.toFixed(2)} → €{coll.prezzoPrezzario.toFixed(2)} (
+                                    {coll.deltaPercent > 0 ? "+" : ""}
+                                    {coll.deltaPercent.toFixed(1)}%)
+                                  </div>
+                                </div>
+                                <span className="text-slate-500 text-[8px] shrink-0">
+                                  {coll.similarita.toFixed(0)}%
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {vociDaMostrare.length === 0 ? (
+                      <p className="text-xs text-slate-500 py-4 text-center">
+                        {prezzarioSelezionato
+                          ? "Il prezzario selezionato non contiene voci."
+                          : "Seleziona un prezzario o creane uno in Gestisci Prezzari."}
+                      </p>
+                    ) : (
                     <div className="overflow-x-auto border border-neutral-800 rounded-lg">
                       <table className="w-full min-w-[760px] text-xs">
                         <thead className="bg-neutral-900 text-slate-400 uppercase tracking-wider text-[10px]">
@@ -553,21 +718,29 @@ export function BidPricingEngine({ tender, isOpen, onClose }: BidPricingEnginePr
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-neutral-800 bg-neutral-950">
-                          {pricingItems.map((item, index) => (
-                            <tr key={item.codice}>
+                          {vociDaMostrare.map((item) => (
+                            <tr key={item.id}>
                               <td className="px-3 py-2 text-slate-300 font-mono">{item.codice}</td>
                               <td className="px-3 py-2 text-slate-100">{item.descrizione}</td>
-                              <td className="px-3 py-2 text-right text-slate-300 font-mono">
-                                {item.qta.toLocaleString("it-IT")} {item.um}
+                              <td className="px-3 py-2 text-right">
+                                <input
+                                  type="number"
+                                  min={0.01}
+                                  step={0.01}
+                                  value={item.qta}
+                                  onChange={(e) => updateQta(item.id, parseFloat(e.target.value))}
+                                  className="w-20 bg-neutral-900 border border-neutral-700 rounded px-1.5 py-1 text-right text-slate-100 font-mono text-xs"
+                                />
+                                <span className="text-slate-500 ml-1">{item.um}</span>
                               </td>
                               <td className="px-3 py-2 text-right text-slate-300 font-mono">
-                                {fmtEuro(item.prezzoPrezzario)}
+                                {fmtEuro(item.prezzo)}
                               </td>
                               <td className="px-3 py-2">
                                 <div className="flex items-center justify-center gap-1">
                                   <button
                                     type="button"
-                                    onClick={() => updateProductivita(index, item.produttivita - 1)}
+                                    onClick={() => updateProductivita(item.id, item.produttivita - 1)}
                                     className="cursor-pointer px-1.5 py-0.5 rounded border border-neutral-700 text-slate-300 hover:border-brand-gold"
                                     aria-label={`Diminuisci produttività ${item.codice}`}
                                   >
@@ -579,12 +752,14 @@ export function BidPricingEngine({ tender, isOpen, onClose }: BidPricingEnginePr
                                     max={130}
                                     step={0.5}
                                     value={item.produttivita}
-                                    onChange={(e) => updateProductivita(index, parseFloat(e.target.value))}
+                                    onChange={(e) =>
+                                      updateProductivita(item.id, parseFloat(e.target.value))
+                                    }
                                     className="w-16 bg-neutral-900 border border-neutral-700 rounded px-1.5 py-1 text-center text-slate-100 font-mono"
                                   />
                                   <button
                                     type="button"
-                                    onClick={() => updateProductivita(index, item.produttivita + 1)}
+                                    onClick={() => updateProductivita(item.id, item.produttivita + 1)}
                                     className="cursor-pointer px-1.5 py-0.5 rounded border border-neutral-700 text-slate-300 hover:border-brand-gold"
                                     aria-label={`Aumenta produttività ${item.codice}`}
                                   >
@@ -609,6 +784,7 @@ export function BidPricingEngine({ tender, isOpen, onClose }: BidPricingEnginePr
                         </tbody>
                       </table>
                     </div>
+                    )}
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       <div className="bg-black border border-neutral-800 rounded-lg p-3">
@@ -844,6 +1020,40 @@ export function BidPricingEngine({ tender, isOpen, onClose }: BidPricingEnginePr
                 </p>
                 <p className="text-sm text-slate-300 leading-relaxed">{result.motivazioneRange}</p>
               </div>
+
+              {result.avvertenzaProduttivita && (
+                <div className="bg-amber-950/30 border border-amber-800 rounded-xl p-4 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span className="text-[9px] font-extrabold uppercase tracking-widest text-amber-500">
+                      Attenzione — produttività squadre impatta il ribasso
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-center">
+                      <span className="text-2xl font-extrabold text-amber-400 font-mono">
+                        {((result.fattoreProduttivitaGlobale || 1) * 100).toFixed(0)}%
+                      </span>
+                      <p className="text-[9px] text-slate-500">rendimento squadre</p>
+                    </div>
+                    <p className="text-xs text-slate-300 leading-relaxed flex-1">
+                      {result.impattoProduttivita}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {!result.avvertenzaProduttivita && result.fattoreProduttivitaGlobale >= 0.85 && (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-3 flex items-center gap-3">
+                  <span className="text-emerald-400 text-lg">✓</span>
+                  <div>
+                    <span className="text-[9px] font-bold text-emerald-400 uppercase block">
+                      Produttività squadre adeguata
+                    </span>
+                    <p className="text-[10px] text-slate-400">{result.impattoProduttivita}</p>
+                  </div>
+                </div>
+              )}
 
               {/* Alert margine */}
               {result.alertMargine && result.alertText && (

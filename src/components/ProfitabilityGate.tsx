@@ -2,7 +2,13 @@ import { useState, useEffect } from "react";
 import {
   X, BarChart3, RefreshCw, AlertTriangle, Loader2, XCircle, ArrowLeft,
 } from "lucide-react";
-import type { TenderDocument, CompanyProfile, ProfitabilityGateResult, ProfitabilityVerdict } from "../types";
+import type {
+  TenderDocument,
+  CompanyProfile,
+  ProfitabilityGateResult,
+  ProfitabilityVerdict,
+  Prezzario,
+} from "../types";
 import { runProfitabilityGate } from "../lib/gemini";
 import { ExplainabilityLayer } from "./ExplainabilityLayer";
 
@@ -10,6 +16,7 @@ interface ProfitabilityGateProps {
   tender: TenderDocument;
   isOpen: boolean;
   onClose: () => void;
+  prezzari?: Prezzario[];
 }
 
 const VERDICT_CFG: Record<ProfitabilityVerdict, { bg: string; border: string; text: string; label: string }> = {
@@ -37,18 +44,24 @@ function fmt(n: number) {
   return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
 }
 
-export function ProfitabilityGate({ tender, isOpen, onClose }: ProfitabilityGateProps) {
+export function ProfitabilityGate({ tender, isOpen, onClose, prezzari }: ProfitabilityGateProps) {
   const [profile, setProfile] = useState<CompanyProfile | null>(null);
   const [result, setResult] = useState<ProfitabilityGateResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const resolveVociPrezzario = (prof: CompanyProfile) => {
+    if (!prof.prezzarioPreferito || !prezzari?.length) return undefined;
+    return prezzari.find((p) => p.id === prof.prezzarioPreferito)?.voci;
+  };
 
   const loadAndRun = async (prof: CompanyProfile) => {
     setLoading(true);
     setError(null);
     setResult(null);
     try {
-      const res = await runProfitabilityGate(tender, prof);
+      const voci = resolveVociPrezzario(prof);
+      const res = await runProfitabilityGate(tender, prof, voci);
       setResult(res);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Errore sconosciuto");
@@ -70,7 +83,7 @@ export function ProfitabilityGate({ tender, isOpen, onClose }: ProfitabilityGate
     setProfile(prof);
     loadAndRun(prof);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, tender]);
+  }, [isOpen, tender, prezzari]);
 
   if (!isOpen) return null;
 
@@ -118,6 +131,12 @@ export function ProfitabilityGate({ tender, isOpen, onClose }: ProfitabilityGate
               <Loader2 className="w-8 h-8 text-brand-gold mx-auto animate-spin" />
               <p className="text-sm text-slate-300 font-semibold">Analisi profittabilità in corso</p>
               <p className="text-xs text-slate-500">Gemini calcola costi, margini e scenari...</p>
+              {profile?.prezzarioPreferito && prezzari?.find((p) => p.id === profile.prezzarioPreferito) && (
+                <p className="text-[10px] text-brand-gold">
+                  Prezzario attivo:{" "}
+                  {prezzari.find((p) => p.id === profile.prezzarioPreferito)?.nome}
+                </p>
+              )}
             </div>
           )}
 

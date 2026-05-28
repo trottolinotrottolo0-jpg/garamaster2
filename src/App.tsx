@@ -1,6 +1,16 @@
 import { useState, useEffect, useRef, useMemo, useCallback, type ReactNode } from "react";
 import { motion } from "motion/react";
-import { Message, McpServer, PacketLog, TenderDocument, ChatAttachment } from "./types";
+import {
+  Message,
+  McpServer,
+  PacketLog,
+  TenderDocument,
+  ChatAttachment,
+  Prezzario,
+  CompanyProfile,
+  type ColllegamentoComputoPrezzario,
+} from "./types";
+import { buildComputoFromTender } from "./lib/bidCalculations";
 import { initialMcpServers, mockTenders } from "./mockData";
 import { useGaraMaster } from "./context/GaraMasterContext";
 import { requestGaraMasterReply } from "./lib/chatApi";
@@ -32,6 +42,7 @@ import { VessatorieModal } from "./components/VessatorieModal";
 import { BidNoBidEngine } from "./components/BidNoBidEngine";
 import { RtiAvvalimentoConfigurator } from "./components/RtiAvvalimentoConfigurator";
 import { BidPricingEngine } from "./components/BidPricingEngine";
+import { PrezzariManager } from "./components/PrezzariManager";
 import { CapacitySaturationEngine } from "./components/CapacitySaturationEngine";
 import { ProfitabilityGate } from "./components/ProfitabilityGate";
 import { AlertDailyFeed } from "./components/AlertDailyFeed";
@@ -50,6 +61,9 @@ import {
   Menu, ChevronDown, ChevronLeft, ChevronRight, PanelLeftOpen, PanelRightOpen,
   FileText, Calculator, Scale, TrendingUp, Activity, BarChart3, Users, Home, Target
 } from "lucide-react";
+
+const LOCALSTORAGE_PREZZARI_KEY = "gm_prezzari";
+const LOCALSTORAGE_PROFILO_KEY = "gm_company_profile";
 
 type SidebarDropdownSectionProps = {
   title: string;
@@ -121,7 +135,11 @@ export default function App() {
   const [isCapacityOpen, setIsCapacityOpen] = useState(false);
   const [isProfitabilityOpen, setIsProfitabilityOpen] = useState(false);
   const [isRtiAvvalimentoOpen, setIsRtiAvvalimentoOpen] = useState(false);
-  
+  const [prezzari, setPrezzari] = useState<Prezzario[]>([]);
+  const [isPrezzariManagerOpen, setIsPrezzariManagerOpen] = useState(false);
+  const [companyProfile, setCompanyProfile] = useState<CompanyProfile | null>(null);
+  const [computoCollegamenti, setComputoCollegamenti] = useState<ColllegamentoComputoPrezzario[]>([]);
+
   // Custom states for settings
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSysInfoOpen, setIsSysInfoOpen] = useState(false);
@@ -146,6 +164,51 @@ export default function App() {
   const toggleRightSection = (key: keyof typeof rightOpenSections) => {
     setRightOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
   };
+
+  useEffect(() => {
+    const storedPrezzari = localStorage.getItem(LOCALSTORAGE_PREZZARI_KEY);
+    if (storedPrezzari) {
+      try {
+        setPrezzari(JSON.parse(storedPrezzari) as Prezzario[]);
+      } catch {
+        setPrezzari([]);
+      }
+    }
+    const storedProfile = localStorage.getItem(LOCALSTORAGE_PROFILO_KEY);
+    if (storedProfile) {
+      try {
+        setCompanyProfile(JSON.parse(storedProfile) as CompanyProfile);
+      } catch {
+        setCompanyProfile(null);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isBidPricingOpen && !isPrezzariManagerOpen) return;
+    const storedProfile = localStorage.getItem(LOCALSTORAGE_PROFILO_KEY);
+    if (!storedProfile) return;
+    try {
+      setCompanyProfile(JSON.parse(storedProfile) as CompanyProfile);
+    } catch {
+      setCompanyProfile(null);
+    }
+  }, [isBidPricingOpen, isPrezzariManagerOpen]);
+
+  const savePrezzari = useCallback((nuoviPrezzari: Prezzario[]) => {
+    setPrezzari(nuoviPrezzari);
+    localStorage.setItem(LOCALSTORAGE_PREZZARI_KEY, JSON.stringify(nuoviPrezzari));
+  }, []);
+
+  const savePrezzarioPreferito = useCallback((id: string) => {
+    if (!companyProfile) return;
+    const updated: CompanyProfile = {
+      ...companyProfile,
+      prezzarioPreferito: id || undefined,
+    };
+    setCompanyProfile(updated);
+    localStorage.setItem(LOCALSTORAGE_PROFILO_KEY, JSON.stringify(updated));
+  }, [companyProfile]);
 
   useEffect(() => {
     if (dataError) {
@@ -1061,6 +1124,19 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => {
+                        setIsPrezzariManagerOpen(true);
+                        setIsNavMenuOpen(false);
+                      }}
+                      className="cursor-pointer text-slate-300 hover:text-brand-gold transition-colors flex items-center gap-1.5"
+                    >
+                      <FileText className="w-3 h-3 inline text-brand-gold shrink-0" />
+                      Gestisci Prezzari
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => {
                         setIsCapacityOpen(true);
                         setIsNavMenuOpen(false);
                       }}
@@ -1881,10 +1957,22 @@ export default function App() {
         onClose={() => setIsBidNoBidOpen(false)}
       />
 
+      <PrezzariManager
+        prezzari={prezzari}
+        onSavePrezzari={savePrezzari}
+        isOpen={isPrezzariManagerOpen}
+        onClose={() => setIsPrezzariManagerOpen(false)}
+      />
+
       <BidPricingEngine
         tender={selectedTender}
         isOpen={isBidPricingOpen}
         onClose={() => setIsBidPricingOpen(false)}
+        prezzari={prezzari}
+        prezzarioSelezionato={companyProfile?.prezzarioPreferito}
+        onPrezzarioChange={savePrezzarioPreferito}
+        computoMetrico={buildComputoFromTender(selectedTender)}
+        onCollegamentiComputo={setComputoCollegamenti}
       />
 
       <CapacitySaturationEngine
@@ -1897,6 +1985,7 @@ export default function App() {
         tender={selectedTender}
         isOpen={isProfitabilityOpen}
         onClose={() => setIsProfitabilityOpen(false)}
+        prezzari={prezzari}
       />
 
       {/* Deep D.Lgs. 36/2023 Vessatorie/Abusive Rules protective shield */}

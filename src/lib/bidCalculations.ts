@@ -1,13 +1,19 @@
-import type { ProfitabilityVerdict, ProfitabilityGateResult } from "../types";
+import type {
+  ProfitabilityVerdict,
+  ProfitabilityGateResult,
+  PricingLineItem,
+  VocePrezzario,
+  Prezzario,
+  ScorporoResult,
+  MappingVociSimilari,
+  ComputoMetricoVoce,
+  ColllegamentoComputoPrezzario,
+  TenderDocument,
+} from "../types";
 
-export interface PricingLineItem {
-  codice: string;
-  descrizione: string;
-  um: string;
-  qta: number;
-  prezzoPrezzario: number;
-  produttivita: number;
-}
+export type { ScorporoResult, MappingVociSimilari };
+
+export type { PricingLineItem };
 
 export interface ProductivityImpactSummary {
   totalePrezzario: number;
@@ -58,18 +64,42 @@ export function parseTenderValue(valueStr: string): number {
   return parseFloat(cleaned) || 0;
 }
 
-export function calcPrezzarioCost(item: Pick<PricingLineItem, "qta" | "prezzoPrezzario">): number {
-  return item.qta * item.prezzoPrezzario;
+export function calcPrezzarioCost(item: Pick<PricingLineItem, "qta" | "prezzo">): number {
+  return item.qta * item.prezzo;
 }
 
 export function calcInternalRealCost(
-  item: Pick<PricingLineItem, "qta" | "prezzoPrezzario" | "produttivita">
+  item: Pick<PricingLineItem, "qta" | "prezzo" | "produttivita">
 ): number {
-  return item.qta * item.prezzoPrezzario * (item.produttivita / 100);
+  return item.qta * item.prezzo * (item.produttivita / 100);
+}
+
+export interface PrezzarioCategoriaSummary {
+  categoria: string;
+  numeroVoci: number;
+  sommaPrezziUnitari: number;
+}
+
+export function summarizePrezzarioVoci(voci: VocePrezzario[]): PrezzarioCategoriaSummary[] {
+  const map = new Map<string, { numeroVoci: number; sommaPrezziUnitari: number }>();
+
+  for (const voce of voci) {
+    const categoria = voce.categoria?.trim() || "Altro";
+    const current = map.get(categoria) ?? { numeroVoci: 0, sommaPrezziUnitari: 0 };
+    current.numeroVoci += 1;
+    current.sommaPrezziUnitari += voce.prezzo;
+    map.set(categoria, current);
+  }
+
+  return Array.from(map.entries()).map(([categoria, stats]) => ({
+    categoria,
+    numeroVoci: stats.numeroVoci,
+    sommaPrezziUnitari: Math.round(stats.sommaPrezziUnitari * 100) / 100,
+  }));
 }
 
 export function calcProductivityImpact(
-  items: Array<Pick<PricingLineItem, "qta" | "prezzoPrezzario" | "produttivita">>,
+  items: Array<Pick<PricingLineItem, "qta" | "prezzo" | "produttivita">>,
   importoBaseAsta: number
 ): ProductivityImpactSummary {
   const totalePrezzario = items.reduce((acc, item) => acc + calcPrezzarioCost(item), 0);
@@ -235,4 +265,243 @@ export function runMonteCarloSimulation(input: MonteCarloInput): MonteCarloResul
     userRibasso,
     maxRibassoSostenibile,
   };
+}
+
+const SCORPORO_PATTERNS = [
+  {
+    pattern: /scavo.*carico|carico.*scavo/i,
+    split: ["Scavo", "Carico materiale"],
+    ratio: [0.6, 0.4],
+  },
+  {
+    pattern: /demoliz.*rimozione|rimozione.*demoliz/i,
+    split: ["Demolizione", "Rimozione macerie"],
+    ratio: [0.5, 0.5],
+  },
+  {
+    pattern: /preparazione.*compattazione|compattazione.*preparazione/i,
+    split: ["Preparazione terreno", "Compattazione"],
+    ratio: [0.4, 0.6],
+  },
+  {
+    pattern: /posa.*sigillatura|sigillatura.*posa/i,
+    split: ["Posa", "Sigillatura"],
+    ratio: [0.7, 0.3],
+  },
+];
+
+export function scorporaVoceComposita(voce: VocePrezzario): ScorporoResult {
+  const pattern = SCORPORO_PATTERNS.find((p) => p.pattern.test(voce.descrizione));
+
+  if (!pattern) {
+    return {
+      voceOriginaleId: voce.id,
+      voceOriginale: voce,
+      vocieScorprate: [voce],
+      successoScorporo: false,
+      motivazione: "Voce non riconosciuta come composita",
+    };
+  }
+
+  const vocieScorprate: VocePrezzario[] = pattern.split.map((desc, idx) => ({
+    id: `${voce.id}-scorporata-${idx}`,
+    codice: `${voce.codice}-${String.fromCharCode(97 + idx)}`,
+    descrizione: desc,
+    um: voce.um,
+    prezzo: voce.prezzo * pattern.ratio[idx],
+    categoria: voce.categoria,
+  }));
+
+  return {
+    voceOriginaleId: voce.id,
+    voceOriginale: voce,
+    vocieScorprate,
+    successoScorporo: true,
+    motivazione: `Scorporata in ${pattern.split.length} voci: ${pattern.split.join(", ")}`,
+  };
+}
+
+export function applicaScorporoMassivo(voci: VocePrezzario[]): VocePrezzario[] {
+  const vocieEsplase: VocePrezzario[] = [];
+  for (const voce of voci) {
+    const result = scorporaVoceComposita(voce);
+    vocieEsplase.push(...result.vocieScorprate);
+  }
+  return vocieEsplase;
+}
+
+function calcolaSimilarita(str1: string, str2: string): number {
+  const s1 = str1.toLowerCase().trim();
+  const s2 = str2.toLowerCase().trim();
+  const len1 = s1.length;
+  const len2 = s2.length;
+  const matrix: number[][] = Array(len1 + 1)
+    .fill(null)
+    .map(() => Array(len2 + 1).fill(0));
+
+  for (let i = 0; i <= len1; i++) matrix[i][0] = i;
+  for (let j = 0; j <= len2; j++) matrix[0][j] = j;
+
+  for (let i = 1; i <= len1; i++) {
+    for (let j = 1; j <= len2; j++) {
+      const cost = s1[i - 1] === s2[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(matrix[i - 1][j] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j - 1] + cost);
+    }
+  }
+
+  const maxLen = Math.max(len1, len2);
+  return maxLen === 0 ? 100 : ((maxLen - matrix[len1][len2]) / maxLen) * 100;
+}
+
+export function matchVociSimili(
+  prezzario1: Prezzario,
+  prezzario2: Prezzario,
+  sogliaSimilarita = 70
+): MappingVociSimilari[] {
+  const matches: MappingVociSimilari[] = [];
+
+  for (const voce1 of prezzario1.voci) {
+    for (const voce2 of prezzario2.voci) {
+      const similarita = calcolaSimilarita(voce1.descrizione, voce2.descrizione);
+
+      if (similarita >= sogliaSimilarita) {
+        const deltaPrezzoPercent =
+          voce1.prezzo > 0 ? ((voce2.prezzo - voce1.prezzo) / voce1.prezzo) * 100 : 0;
+
+        matches.push({
+          vocePrezzario1Id: voce1.id,
+          vocePrezzario2Id: voce2.id,
+          prezzario1Nome: prezzario1.nome,
+          prezzario2Nome: prezzario2.nome,
+          descrizione1: voce1.descrizione,
+          descrizione2: voce2.descrizione,
+          prezzo1: voce1.prezzo,
+          prezzo2: voce2.prezzo,
+          deltaPrezzoPercent,
+          similarita,
+          suggerimentoUnificazione: similarita > 85 && Math.abs(deltaPrezzoPercent) < 10,
+        });
+      }
+    }
+  }
+
+  return matches.sort((a, b) => b.similarita - a.similarita);
+}
+
+function umCompatibili(um1: string, um2: string): boolean {
+  const normalize = (um: string) => um.toLowerCase().trim();
+  const n1 = normalize(um1);
+  const n2 = normalize(um2);
+
+  if (n1 === n2) return true;
+
+  const mappature: Record<string, string[]> = {
+    m: ["metro", "mt"],
+    m2: ["mq", "metro quadro"],
+    m3: ["mc", "metro cubo"],
+    kg: ["chilogrammo", "chilo"],
+    ore: ["ora", "h"],
+    giorno: ["gg", "giornata"],
+  };
+
+  for (const [key, values] of Object.entries(mappature)) {
+    const all = [key, ...values].map(normalize);
+    if (all.includes(n1) && all.includes(n2)) return true;
+  }
+
+  return false;
+}
+
+export function matchComputoConPrezzario(
+  computoVoci: ComputoMetricoVoce[],
+  prezzario: Prezzario,
+  sogliaSimilarita = 60
+): ColllegamentoComputoPrezzario[] {
+  const collegamenti: ColllegamentoComputoPrezzario[] = [];
+
+  for (const computoVoce of computoVoci) {
+    for (const prezzarioVoce of prezzario.voci) {
+      if (!umCompatibili(computoVoce.um, prezzarioVoce.um)) continue;
+
+      const similarita = calcolaSimilarita(computoVoce.descrizione, prezzarioVoce.descrizione);
+
+      if (similarita >= sogliaSimilarita) {
+        const deltaPercent =
+          computoVoce.prezzoUnitarioStimato > 0
+            ? ((prezzarioVoce.prezzo - computoVoce.prezzoUnitarioStimato) /
+                computoVoce.prezzoUnitarioStimato) *
+              100
+            : 0;
+
+        collegamenti.push({
+          computoVoceId: computoVoce.id,
+          prezzarioVoceId: prezzarioVoce.id,
+          computoDescrizione: computoVoce.descrizione,
+          prezzarioDescrizione: prezzarioVoce.descrizione,
+          um: computoVoce.um,
+          quantita: computoVoce.quantita,
+          prezzoComputo: computoVoce.prezzoUnitarioStimato,
+          prezzoPrezzario: prezzarioVoce.prezzo,
+          deltaPercent,
+          similarita,
+          collegato: false,
+        });
+      }
+    }
+  }
+
+  return collegamenti.sort((a, b) => b.similarita - a.similarita);
+}
+
+/** Miglior collegamento per ogni voce di computo (evita duplicati in UI). */
+export function matchComputoConPrezzarioBest(
+  computoVoci: ComputoMetricoVoce[],
+  prezzario: Prezzario,
+  sogliaSimilarita = 60
+): ColllegamentoComputoPrezzario[] {
+  const all = matchComputoConPrezzario(computoVoci, prezzario, sogliaSimilarita);
+  const bestByComputo = new Map<string, ColllegamentoComputoPrezzario>();
+
+  for (const coll of all) {
+    const existing = bestByComputo.get(coll.computoVoceId);
+    if (!existing || coll.similarita > existing.similarita) {
+      bestByComputo.set(coll.computoVoceId, coll);
+    }
+  }
+
+  return Array.from(bestByComputo.values()).sort((a, b) => b.similarita - a.similarita);
+}
+
+export function applicaCollegamentiComputo(
+  computoVoci: ComputoMetricoVoce[],
+  collegamenti: ColllegamentoComputoPrezzario[],
+  prezzario: Prezzario
+): ComputoMetricoVoce[] {
+  const collegatiMap = new Map(
+    collegamenti.filter((c) => c.collegato).map((c) => [c.computoVoceId, c.prezzarioVoceId])
+  );
+
+  return computoVoci.map((voce) => {
+    const prezzarioVoceId = collegatiMap.get(voce.id);
+    if (!prezzarioVoceId) return voce;
+
+    const prezzarioVoce = prezzario.voci.find((v) => v.id === prezzarioVoceId);
+    if (!prezzarioVoce) return voce;
+
+    return {
+      ...voce,
+      prezzoUnitarioStimato: prezzarioVoce.prezzo,
+    };
+  });
+}
+
+export function buildComputoFromTender(tender: TenderDocument): ComputoMetricoVoce[] {
+  return tender.sections.slice(0, 12).map((section, i) => ({
+    id: `computo-${tender.id}-${i}`,
+    codice: `CM.${String(i + 1).padStart(3, "0")}`,
+    descrizione: section.title,
+    um: "cad",
+    quantita: 1,
+    prezzoUnitarioStimato: 0,
+  }));
 }

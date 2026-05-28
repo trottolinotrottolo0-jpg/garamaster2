@@ -13,6 +13,7 @@ import { generateGaraRoi } from "./garaRoi";
 import type { GaraRoiRequestBody } from "./garaRoiTypes";
 import { transcribeAudio } from "./transcribeAudio";
 import { parseDisciplinarePdf } from "./parseDisciplinare";
+import { parsePrezzarioPdf } from "./parsePrezzario";
 import { generatePostGaraForensics } from "./postGaraForensics";
 import { generateSoaGapForecast } from "./soaGapForecast";
 import type { SoaGapForecastRequestBody } from "./soaGapForecastTypes";
@@ -240,6 +241,35 @@ async function createApp() {
       const message =
         error instanceof Error ? error.message : "Errore parser disciplinare.";
       console.error("[/api/parse-disciplinare]", message);
+      res.status(503).json({ error: message });
+    }
+  });
+
+  app.post("/api/parse-prezzario", async (req, res) => {
+    try {
+      const { pdfBase64, fileName, mimeType } = req.body as {
+        pdfBase64?: string;
+        fileName?: string;
+        mimeType?: string;
+      };
+
+      if (!pdfBase64?.trim()) {
+        res.status(400).json({ error: "PDF prezzario mancante." });
+        return;
+      }
+
+      const name = fileName?.trim() || "prezzario.pdf";
+      const result = await parsePrezzarioPdf({
+        pdfBase64,
+        fileName: name,
+        mimeType: mimeType ?? "application/pdf",
+      });
+
+      res.json(result);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Errore parser prezzario.";
+      console.error("[/api/parse-prezzario]", message);
       res.status(503).json({ error: message });
     }
   });
