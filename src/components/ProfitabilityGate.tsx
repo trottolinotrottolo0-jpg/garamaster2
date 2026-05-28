@@ -228,6 +228,99 @@ export function ProfitabilityGate({ tender, isOpen, onClose }: ProfitabilityGate
               </div>
 
               {/* Motivazione */}
+              {result.productivityImpact && (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5 space-y-3">
+                  <h3 className="text-[9px] font-extrabold uppercase tracking-widest text-slate-500">
+                    Impatto produttivita squadra
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="bg-black/30 border border-neutral-800 rounded-lg p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Efficienza rilevata</p>
+                      <p className="text-sm text-white font-bold mt-1">{result.productivityImpact.efficiencyLevel.replace("_", " ")}</p>
+                    </div>
+                    <div className="bg-black/30 border border-neutral-800 rounded-lg p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Impatto manodopera</p>
+                      <p className="text-sm text-white font-bold mt-1">{result.productivityImpact.laborCostAdjustmentPercentage.toFixed(1)}%</p>
+                    </div>
+                    <div className="bg-black/30 border border-neutral-800 rounded-lg p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Impatto rischio</p>
+                      <p className="text-sm text-white font-bold mt-1">{result.productivityImpact.riskAdjustment}</p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-300">{result.productivityImpact.explanation}</p>
+                  {result.productivityImpact.warning && (
+                    <div className="bg-amber-950/40 border border-amber-800 rounded-lg p-3 flex items-start gap-2">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                      <p className="text-xs text-amber-300">{result.productivityImpact.warning}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {result.estimatedTimeImpact && (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5 space-y-3">
+                  <h3 className="text-[9px] font-extrabold uppercase tracking-widest text-slate-500">
+                    Impatto tempi stimati
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="bg-black/30 border border-neutral-800 rounded-lg p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Durata rilevata</p>
+                      <p className="text-sm text-white font-bold mt-1">
+                        {result.estimatedTimeImpact.durationDays ? `${result.estimatedTimeImpact.durationDays} giorni` : "non configurata"}
+                      </p>
+                    </div>
+                    <div className="bg-black/30 border border-neutral-800 rounded-lg p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Classe durata</p>
+                      <p className="text-sm text-white font-bold mt-1">{result.estimatedTimeImpact.durationLabel.replace("_", " ")}</p>
+                    </div>
+                    <div className="bg-black/30 border border-neutral-800 rounded-lg p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Impatto su rischio</p>
+                      <p className="text-sm text-white font-bold mt-1">{result.estimatedTimeImpact.riskAdjustment}</p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-300">
+                    {result.estimatedTimeImpact.explanation} Impatto costo: {fmt(result.estimatedTimeImpact.costAdjustmentEuro)}.
+                  </p>
+                  {result.estimatedTimeImpact.warning && (
+                    <div className="bg-amber-950/40 border border-amber-800 rounded-lg p-3 flex items-start gap-2">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                      <p className="text-xs text-amber-300">{result.estimatedTimeImpact.warning}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {result.regionalPriceListReference && (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5 space-y-3">
+                  <h3 className="text-[9px] font-extrabold uppercase tracking-widest text-slate-500">
+                    Riferimento prezzario regionale
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="bg-black/30 border border-neutral-800 rounded-lg p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Riferimento</p>
+                      <p className="text-sm text-white font-bold mt-1">{result.regionalPriceListReference.reference ?? "non indicato"}</p>
+                    </div>
+                    <div className="bg-black/30 border border-neutral-800 rounded-lg p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Regione / anno</p>
+                      <p className="text-sm text-white font-bold mt-1">
+                        {(result.regionalPriceListReference.region ?? "n/d")} / {result.regionalPriceListReference.year ?? "n/d"}
+                      </p>
+                    </div>
+                    <div className="bg-black/30 border border-neutral-800 rounded-lg p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Confidenza stima</p>
+                      <p className="text-sm text-white font-bold mt-1">{result.regionalPriceListReference.confidenceImpact}</p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-300">{result.regionalPriceListReference.explanation}</p>
+                  {result.regionalPriceListReference.warning && (
+                    <div className="bg-amber-950/40 border border-amber-800 rounded-lg p-3 flex items-start gap-2">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                      <p className="text-xs text-amber-300">{result.regionalPriceListReference.warning}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div>
                 <h3 className="text-[9px] font-extrabold uppercase tracking-widest text-slate-500 mb-2">
                   Analisi economica
