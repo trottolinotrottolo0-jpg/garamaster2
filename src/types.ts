@@ -498,6 +498,56 @@ export interface FitStrategicProfile {
   dataUltimaModifica: string;
 }
 
+export type AwardCriterioTipo =
+  | "TECNICO"
+  | "ECONOMICO"
+  | "SOSTENIBILITA"
+  | "GESTIONALE"
+  | "ALTRO";
+
+export interface AwardCriterio {
+  id: string;
+  titolo: string;
+  descrizione: string;
+  puntiTotali: number;
+  peso: number;
+  tipoCriterio: AwardCriterioTipo;
+  sogliaMinima?: number;
+  confidenza: number;
+}
+
+export type ReverseMapTipologia =
+  | "CERTIFICAZIONE"
+  | "ESPERIENZA"
+  | "RISORSE"
+  | "PIANO"
+  | "ALTRA";
+
+export type ReverseMapImpatto = "CRITICO" | "IMPORTANTE" | "UTILE";
+
+export interface ReverseMapVoce {
+  id: string;
+  criterioId: string;
+  descrizione: string;
+  tipologia: ReverseMapTipologia;
+  obbligatorio: boolean;
+  impatto: ReverseMapImpatto;
+  note: string;
+}
+
+export interface AwardCriteriaAnalysis {
+  id: string;
+  tender: TenderDocument;
+  dataAnalisi: string;
+  criteri: AwardCriterio[];
+  /** Serializzabile JSON: criterioId → voci reverse mapping */
+  reverseMap: Record<string, ReverseMapVoce[]>;
+  puntiMassimiTotali: number;
+  complessitaValutazione: number;
+  fattoriDecisivi: string[];
+  note: string[];
+}
+
 export interface CompanyProfile {
   // Anagrafica
   companyName: string;

@@ -54,6 +54,7 @@ import { BidPricingEngine } from "./components/BidPricingEngine";
 import { PrezzariManager } from "./components/PrezzariManager";
 import { CapacitySaturationEngine } from "./components/CapacitySaturationEngine";
 import { ProfitabilityGate } from "./components/ProfitabilityGate";
+import { AwardCriteriaAnalyzer } from "./components/AwardCriteriaAnalyzer";
 import { AlertDailyFeed } from "./components/AlertDailyFeed";
 import { ScoutingGareApp } from "./components/ScoutingGareApp";
 import { GaraRoiCalculator } from "./components/GaraRoiCalculator";
@@ -68,7 +69,7 @@ import {
   Cpu, Layers, Network, BookOpen, MessageSquare, ShieldCheck, Info, Plus, Search, Sliders, LogOut, Settings, 
   Sparkles, HelpCircle, Briefcase, User, Database, ShieldAlert, Key, Download, Bell,
   Menu, ChevronDown, ChevronLeft, ChevronRight, PanelLeftOpen, PanelRightOpen,
-  FileText, Calculator, Scale, TrendingUp, Activity, BarChart3, Users, Home, Target
+  FileText, Calculator, Scale, TrendingUp, Activity, BarChart3, Users, Home, Target, ListChecks
 } from "lucide-react";
 
 const LOCALSTORAGE_PREZZARI_KEY = "gm_prezzari";
@@ -139,6 +140,7 @@ export default function App() {
   const [packets, setPackets] = useState<PacketLog[]>([]);
   const [isSimplifiedMode, setIsSimplifiedMode] = useState<boolean>(true);
   const [isVessatorieOpen, setIsVessatorieOpen] = useState<boolean>(false);
+  const [isAwardAnalyzerOpen, setIsAwardAnalyzerOpen] = useState(false);
   const [isBidNoBidOpen, setIsBidNoBidOpen] = useState(false);
   const [isBidPricingOpen, setIsBidPricingOpen] = useState(false);
   const [isCapacityOpen, setIsCapacityOpen] = useState(false);
@@ -1728,6 +1730,17 @@ export default function App() {
                       <li>
                         <button
                           type="button"
+                          onClick={() => setIsAwardAnalyzerOpen(true)}
+                          className="cursor-pointer text-slate-300 hover:text-brand-gold transition-colors text-left flex items-center gap-1.5"
+                          id="award-criteria-sidebar-btn"
+                        >
+                          <ListChecks className="w-3 h-3 text-brand-gold shrink-0" />
+                          Analizza criteri (reverse map)
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
                           onClick={() => setIsBidNoBidOpen(true)}
                           className="cursor-pointer text-slate-300 hover:text-brand-gold transition-colors text-left flex items-center gap-1.5"
                           id="bid-no-bid-sidebar-btn"
@@ -2137,6 +2150,12 @@ export default function App() {
         onClose={() => setIsVessatorieOpen(false)}
         tender={selectedTender}
         onInjectClarification={(text) => handleSendMessage(text)}
+      />
+
+      <AwardCriteriaAnalyzer
+        isOpen={isAwardAnalyzerOpen}
+        onClose={() => setIsAwardAnalyzerOpen(false)}
+        tender={selectedTender}
       />
 
     </div>
