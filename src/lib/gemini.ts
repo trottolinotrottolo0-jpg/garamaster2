@@ -10,16 +10,45 @@ import type {
   CapacityAnalysisResult,
   ProfitabilityGateResult,
   ExplainabilityData,
+  ParsePrezzarioPdfResponse,
+  VocePrezzario,
+  ScorporoResult,
   RedFlag,
   RedFlagCategory,
   RedFlagSourceReference,
 } from "../types";
+import { requestParsePrezzario } from "./parsePrezzarioApi";
+import { summarizePrezzarioVoci } from "./bidCalculations";
 
-function parseGeminiJson<T extends Record<string, unknown>>(
+/**
+ * Parser robusto per JSON da DeepSeek
+ * Estrae primo { } o [ ] anche se la risposta ha testo/markdown/fence
+ * Gestisce ```json, ```, spazi, prefissi vari
+ */
+function extractJsonFromLlmResponse(text: string): string {
+  let cleaned = text.trim();
+  if (cleaned.startsWith("```json")) cleaned = cleaned.slice(7);
+  else if (cleaned.startsWith("```")) cleaned = cleaned.slice(3);
+  if (cleaned.endsWith("```")) cleaned = cleaned.slice(0, -3);
+  cleaned = cleaned.trim();
+
+  const objectMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (objectMatch) return objectMatch[0];
+
+  const arrayMatch = cleaned.match(/\[[\s\S]*\]/);
+  if (arrayMatch) return arrayMatch[0];
+
+  return cleaned;
+}
+
+/**
+ * Parse JSON con fallback robusto
+ */
+export function parseGeminiJson<T extends Record<string, unknown>>(
   text: string
 ): T & { explainability?: ExplainabilityData } {
-  const cleaned = text.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
-  const parsed = JSON.parse(cleaned) as Record<string, unknown>;
+  const extracted = extractJsonFromLlmResponse(text);
+  const parsed = JSON.parse(extracted) as Record<string, unknown>;
   const explainability = normalizeExplainability(
     parsed.explainability as Partial<ExplainabilityData> | undefined
   ) ?? undefined;
@@ -254,7 +283,7 @@ DATI GARA:
 - Penali: ${tender.penalties.join(", ") || "nessuna"}
 - Storico gare passate: ${JSON.stringify(profile.historicalTenders || [], null, 2)}`;
 
-  const text = await callInternalLlm(prompt, { temperature: 0.35, maxTokens: 8000 });
+  const text = await callInternalLlm(prompt, { temperature: 0.35, maxTokens: 10000 });
 
   try {
     const parsed = parseGeminiJson<Omit<BidNoBidResult, "generatedAt" | "explainability">>(text);
@@ -279,14 +308,44 @@ function calcScenario(
   label: PricingScenario["label"]
 ): PricingScenario {
   const importoOfferto = importoGara * (1 - ribasso / 100);
-  const costiStimati =
-    importoOfferto * (1 - profile.avgMarginPercent / 100) +
-    importoOfferto * (profile.incidenzaSpeseGenerali / 100) +
-    importoOfferto * (profile.incidenzaRischioMedio / 100);
-  const margineEuro = importoOfferto - costiStimati;
+
+  const fattoreProduttivita = (profile.rendimentoSquadrePercent || 100) / 100;
+  const incidenzaManodopera = 0.35;
+
+  const costoManodoperaBase = importoOfferto * incidenzaManodopera;
+  const costoManodoperaStimato =
+    fattoreProduttivita > 0 ? costoManodoperaBase / fattoreProduttivita : costoManodoperaBase;
+
+  const altriCosti =
+    importoOfferto *
+    ((profile.incidenzaSpeseGenerali || 15) / 100 +
+      (profile.incidenzaRischioMedio || 3) / 100 +
+      (1 - incidenzaManodopera - (profile.avgMarginPercent || 10) / 100));
+
+  const costoTotale = costoManodoperaStimato + altriCosti;
+  const margineCorrettoEuro = importoOfferto - costoTotale;
+  const margineCorrettoPercent =
+    importoOfferto > 0 ? (margineCorrettoEuro / importoOfferto) * 100 : 0;
+
+  const costiBase =
+    importoOfferto * (1 - (profile.avgMarginPercent || 10) / 100) +
+    importoOfferto * ((profile.incidenzaSpeseGenerali || 15) / 100) +
+    importoOfferto * ((profile.incidenzaRischioMedio || 3) / 100);
+  const margineEuro = importoOfferto - costiBase;
   const margineStimato = importoOfferto > 0 ? (margineEuro / importoOfferto) * 100 : 0;
-  const rischioAlert = margineStimato < profile.minMargineAccettabile;
-  return { ribasso, importoOfferto, margineStimato, margineEuro, label, rischioAlert };
+
+  return {
+    ribasso,
+    importoOfferto,
+    margineStimato,
+    margineEuro,
+    label,
+    rischioAlert: margineCorrettoPercent < (profile.minMargineAccettabile || 8),
+    fattoreProduttivita,
+    costoManodoperaStimato,
+    margineCorrettoPercent,
+    margineCorrettoEuro,
+  };
 }
 
 function safeNumber(value: unknown, fallback = 0): number {
@@ -704,6 +763,9 @@ Struttura JSON richiesta:
   "alertText": string (vuoto se alertMargine false, altrimenti descrivi il rischio concreto),
   "winRatePrudente": number (% stima prudente, NON ottimistica),
   "winRateMotivazione": string (2-3 frasi che spiegano la stima),
+  "impattoProduttivita": string (2-3 frasi su come il rendimento squadre impatta il ribasso sostenibile),
+  "fattoreProduttivitaGlobale": number (0-1, rendimentoSquadrePercent/100 del profilo),
+  "avvertenzaProduttivita": boolean (true se rendimento < 85% e comprime il margine di oltre 3 punti),
   ${EXPLAINABILITY_JSON_INLINE}
 }
 
@@ -714,8 +776,21 @@ Logica per il range:
 - alertMargine = true se anche ribassoOttimale porta margine vicino al limite (< minMargine + 2%)
 - winRatePrudente: considera storico impresa, fit gara, complessità — rimani prudente
 
+Logica produttività nel ribasso:
+- fattoreProduttivitaGlobale = profile.rendimentoSquadrePercent / 100
+- Se fattore < 0.85: la manodopera costa di più del teorico → il rangeMax si abbassa
+- Se fattore < 0.70: avvertenzaProduttivita = true, impatto significativo sul margine
+- Il rangeMin deve essere alzato di (1 - fattoreProduttivitaGlobale) * 5 punti percentuali se produttività bassa
+- Esempio: produttività 80% → manodopera costa 25% in più → rangeMin sale di ~2%
+- impattoProduttivita deve citare i valori reali del profilo (ore/giorno, rendimento %)
+
 PROFILO IMPRESA:
 ${JSON.stringify(profile, null, 2)}
+
+PRODUTTIVITÀ OPERATIVA:
+- Produttività squadre: ${profile.rendimentoSquadrePercent || 100}%
+- Ore/giorno per squadra: ${profile.oreGiornaliereSquadra || 8}
+- Giorni lavorativi/settimana: ${profile.giorniLavorativiSettimana || 5}
 
 DATI GARA:
 - Titolo: ${tender.title}
@@ -728,12 +803,30 @@ DATI GARA:
 SCENARI PRE-CALCOLATI (per contesto):
 ${JSON.stringify(scenari, null, 2)}`;
 
-  const text = await callInternalLlm(prompt, { temperature: 0.35, maxTokens: 8000 });
+  const text = await callInternalLlm(prompt, { temperature: 0.35, maxTokens: 10000 });
   try {
     const parsed = parseGeminiJson<Omit<BidPricingResult, "scenari" | "generatedAt" | "explainability">>(
       text
     );
-    return { ...parsed, scenari, generatedAt: new Date().toISOString() };
+    const fattoreProduttivitaGlobale =
+      parsed.fattoreProduttivitaGlobale ?? (profile.rendimentoSquadrePercent || 100) / 100;
+    const scenarioBilanciato = scenari.find((s) => s.label === "Bilanciato");
+    const compressioneMargine =
+      scenarioBilanciato != null
+        ? scenarioBilanciato.margineStimato - scenarioBilanciato.margineCorrettoPercent
+        : 0;
+
+    return {
+      ...parsed,
+      scenari,
+      generatedAt: new Date().toISOString(),
+      impattoProduttivita: parsed.impattoProduttivita ?? "",
+      fattoreProduttivitaGlobale,
+      avvertenzaProduttivita:
+        parsed.avvertenzaProduttivita ??
+        (fattoreProduttivitaGlobale < 0.7 ||
+          (fattoreProduttivitaGlobale < 0.85 && compressioneMargine > 3)),
+    };
   } catch {
     throw new Error("Risposta LLM non valida — riprova");
   }
@@ -850,7 +943,7 @@ DATI GARA:
 - Anomalie già rilevate: ${tender.anomalies.join(", ") || "nessuna"}
 - Penali già rilevate: ${tender.penalties.join(", ") || "nessuna"}
 - Sezioni disciplinare: ${JSON.stringify(tender.sections?.map((s) => ({ title: s.title, summary: s.summary })), null, 2)}`;
-  const text = await callInternalLlm(prompt, { temperature: 0.35, maxTokens: 8000 });
+  const text = await callInternalLlm(prompt, { temperature: 0.35, maxTokens: 10000 });
   try {
     const parsed = parseGeminiJson<Omit<RedFlagAnalysisResult, "generatedAt" | "explainability">>(
       text
@@ -955,7 +1048,7 @@ DATI GARA:
 - Regione: ${tender.region}
 - Durata stimata: da requisiti e sezioni disciplinare
 - Requisiti: ${JSON.stringify(tender.requirements)}`;
-  const text = await callInternalLlm(prompt, { temperature: 0.35, maxTokens: 8000 });
+  const text = await callInternalLlm(prompt, { temperature: 0.35, maxTokens: 10000 });
   try {
     const parsedCap = parseGeminiJson<
       Omit<CapacityAnalysisResult, "generatedAt" | "explainability">
@@ -966,10 +1059,206 @@ DATI GARA:
   }
 }
 
+export async function runParsePrezzarioPdf(
+  pdfBase64: string,
+  fileName: string
+): Promise<ParsePrezzarioPdfResponse> {
+  try {
+    return await requestParsePrezzario({ pdfBase64, fileName });
+  } catch {
+    throw new Error("Parsing PDF prezzario fallito — riprova");
+  }
+}
+
+function cleanLlmJsonText(text: string): string {
+  let cleaned = text.trim();
+  if (cleaned.startsWith("```json")) cleaned = cleaned.slice(7);
+  else if (cleaned.startsWith("```")) cleaned = cleaned.slice(3);
+  if (cleaned.endsWith("```")) cleaned = cleaned.slice(0, -3);
+  return cleaned.trim();
+}
+
+interface ScorporoLlmSuggestion {
+  voceId: string;
+  scorporo: string[];
+  ratio: number[];
+  confidenza: number;
+  motivazione: string;
+}
+
+export async function suggerisciAggiornamentoPrezzario(
+  voceAttuale: VocePrezzario,
+  nuoviDati: {
+    prezzoGareRecenti: number[];
+    regioneRiferimento: string;
+    anno: number;
+  }
+): Promise<{
+  suggerimentoPrezzo: number;
+  motivazione: string;
+  confidenza: number;
+}> {
+  const media =
+    nuoviDati.prezzoGareRecenti.length > 0
+      ? nuoviDati.prezzoGareRecenti.reduce((a, b) => a + b, 0) / nuoviDati.prezzoGareRecenti.length
+      : voceAttuale.prezzo;
+
+  const prompt = `Sei un esperto di prezzari edili italiani.
+Analizza il prezzo attuale di una voce prezzario e i dati recenti da gare, suggerisci un aggiornamento.
+
+Voce prezzario:
+- Codice: ${voceAttuale.codice}
+- Descrizione: ${voceAttuale.descrizione}
+- UM: ${voceAttuale.um}
+- Prezzo attuale: €${voceAttuale.prezzo}
+
+Dati da gare recenti nella stessa regione:
+- Prezzo medio: €${media.toFixed(2)}
+- Prezzi individuali: ${nuoviDati.prezzoGareRecenti.map((p) => `€${p}`).join(", ") || "nessuno"}
+- Regione: ${nuoviDati.regioneRiferimento}
+- Anno: ${nuoviDati.anno}
+
+Rispondi SOLO con JSON valido, niente markdown, niente backtick:
+{
+  "suggerimentoPrezzo": number (prezzo suggerito, in €),
+  "motivazione": string (2-3 frasi spiega perché),
+  "confidenza": number (0-100, quanto sei sicuro)
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.3, maxTokens: 1000 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    return parseGeminiJson<{
+      suggerimentoPrezzo: number;
+      motivazione: string;
+      confidenza: number;
+    }>(cleaned);
+  } catch {
+    throw new Error("Suggerimento aggiornamento fallito");
+  }
+}
+
+export async function runScorporoIntelligente(voci: VocePrezzario[]): Promise<ScorporoResult[]> {
+  const prompt = `Sei un esperto di prezzari edili italiani.
+Analizza queste voci e identifica quali sono composite (combinano più lavorazioni).
+Per ogni voce composita, suggerisci come scorporarla in voci elementari.
+
+Rispondi SOLO con un JSON array valido, niente markdown, niente backtick, niente commenti.
+
+Esempi di voci composite:
+- "Scavo a mano e carico materiale" → splitta in "Scavo a mano" + "Carico materiale"
+- "Demolizione e rimozione macerie" → splitta in "Demolizione" + "Rimozione macerie"
+- "Preparazione terreno e compattazione" → splitta in "Preparazione" + "Compattazione"
+
+Per ogni voce in input, produci questo JSON:
+{
+  "voceId": id della voce originale,
+  "descrizioneOriginale": descrizione originale,
+  "isComposita": true se riconosci come composita, false altrimenti,
+  "scorporo": array di stringhe (nuove descrizioni se composita, array vuoto se no),
+  "ratio": array di numeri (rapporti percentuali 0-1 per ogni descrizione scorporata, somma deve = 1.0),
+  "confidenza": numero 0-100 (quanto sei sicuro dello scorporo),
+  "motivazione": stringa breve spiegazione
+}
+
+Ritorna un array JSON con una riga per ogni voce input.
+
+VOCI INPUT:
+${JSON.stringify(voci, null, 2)}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.5, maxTokens: 6000 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = JSON.parse(cleaned) as unknown;
+    const geminiSuggestions = (Array.isArray(parsed) ? parsed : []) as ScorporoLlmSuggestion[];
+
+    const results: ScorporoResult[] = [];
+    for (const suggestion of geminiSuggestions) {
+      const voceOriginale = voci.find((v) => v.id === suggestion.voceId);
+      if (!voceOriginale) continue;
+
+      const scorporo = Array.isArray(suggestion.scorporo) ? suggestion.scorporo : [];
+      const ratio = Array.isArray(suggestion.ratio) ? suggestion.ratio : [];
+
+      if (scorporo.length > 0 && ratio.length === scorporo.length) {
+        const ratioSum = ratio.reduce((acc, r) => acc + r, 0) || 1;
+        const vocieScorprate: VocePrezzario[] = scorporo.map((desc, idx) => ({
+          id: `${voceOriginale.id}-deepseek-${idx}`,
+          codice: `${voceOriginale.codice}-${String.fromCharCode(97 + idx)}`,
+          descrizione: desc,
+          um: voceOriginale.um,
+          prezzo: (voceOriginale.prezzo * ratio[idx]) / ratioSum,
+          categoria: voceOriginale.categoria,
+        }));
+
+        results.push({
+          voceOriginaleId: voceOriginale.id,
+          voceOriginale,
+          vocieScorprate,
+          successoScorporo: true,
+          motivazione: suggestion.motivazione || "Scorporo LLM",
+        });
+      } else {
+        results.push({
+          voceOriginaleId: voceOriginale.id,
+          voceOriginale,
+          vocieScorprate: [voceOriginale],
+          successoScorporo: false,
+          motivazione: suggestion.motivazione || "Non composita",
+        });
+      }
+    }
+
+    const handledIds = new Set(results.map((r) => r.voceOriginaleId));
+    for (const voce of voci) {
+      if (!handledIds.has(voce.id)) {
+        results.push({
+          voceOriginaleId: voce.id,
+          voceOriginale: voce,
+          vocieScorprate: [voce],
+          successoScorporo: false,
+          motivazione: "Nessuna risposta LLM per questa voce",
+        });
+      }
+    }
+
+    return results;
+  } catch (e) {
+    throw new Error(
+      `Analisi scorporo fallita: ${e instanceof Error ? e.message : "JSON non valido"}`
+    );
+  }
+}
+
 export async function runProfitabilityGate(
   tender: TenderDocument,
-  profile: CompanyProfile
+  profile: CompanyProfile,
+  vociPrezzario?: VocePrezzario[]
 ): Promise<ProfitabilityGateResult> {
+  const prezzarioSummary =
+    vociPrezzario && vociPrezzario.length > 0 ? summarizePrezzarioVoci(vociPrezzario) : null;
+
+  const prezzarioBlock =
+    prezzarioSummary != null
+      ? `
+VOCI PREZZARIO REGIONALE (${vociPrezzario!.length} voci — usa questi prezzi reali per il breakdown):
+${JSON.stringify(prezzarioSummary, null, 2)}
+
+Dettaglio voci (campione fino a 80 righe):
+${JSON.stringify(vociPrezzario!.slice(0, 80), null, 2)}
+
+Logica breakdown con prezzario:
+- Usa i prezzi dalle voci prezzario per stimare il calcolo costi materiali
+- Somma i prezzi delle voci per categoria "Materiali" per ottenere incidenza materiali reale
+- Incidenza manodopera: somma delle voci categoria "Manodopera"
+- Incidenza noli: somma delle voci categoria "Noli"
+- Scala proporzionalmente al rapporto importoGara / somma prezzi unitari se necessario
+- Questo fornisce breakdown più accurato rispetto a percentuali stimate`
+      : `
+Nessun prezzario regionale collegato — usa i valori storici dell'impresa (percentuali profilo) per il breakdown.`;
+
   const prompt = `Sei un esperto di analisi economica per imprese edili italiane.
 Analizza la profittabilità di questa gara d'appalto per l'impresa specifica.
 Rispondi SOLO con un oggetto JSON valido, senza markdown, senza backtick.
@@ -1090,9 +1379,11 @@ DATI GARA:
 - Regione: ${tender.region}
 - Penali: ${tender.penalties.join(", ") || "nessuna"}
 - Anomalie: ${tender.anomalies.join(", ") || "nessuna"}
-- Requisiti: ${JSON.stringify(tender.requirements)}`;
+- Requisiti: ${JSON.stringify(tender.requirements)}
 
-  const text = await callInternalLlm(prompt, { temperature: 0.35, maxTokens: 8000 });
+${prezzarioBlock}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.35, maxTokens: 10000 });
   try {
     const parsed = parseGeminiJson<
       Omit<ProfitabilityGateResult, "generatedAt" | "explainability">
