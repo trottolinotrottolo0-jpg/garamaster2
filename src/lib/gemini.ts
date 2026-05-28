@@ -18,6 +18,9 @@ import type {
   WinningPattern,
   PatternInsights,
   FitStrategicProfile,
+  AwardCriterio,
+  ReverseMapVoce,
+  CompanyProfile,
 } from "../types";
 import { parseTenderValue } from "./bidCalculations";
 import { requestParsePrezzario } from "./parsePrezzarioApi";
@@ -1621,6 +1624,78 @@ Rispondi SOLO con JSON valido, senza markdown, senza backtick:
       azioni: ["Valutare partnership o RTI", "Pianificare timeline e capacità produttiva"],
       spiegazione:
         "Analisi strategica automatica non disponibile — valutare manualmente l'allineamento con il profilo di crescita.",
+    };
+  }
+}
+
+export interface ProposalGuidedTextResult {
+  seczioneOfferta: string;
+  noteRedazione: string[];
+  wordCountTarget: number;
+}
+
+export async function generateProposalGuidedText(
+  criterio: AwardCriterio,
+  reverseMapVoci: ReverseMapVoce[],
+  companyProfile?: CompanyProfile | null
+): Promise<ProposalGuidedTextResult> {
+  const obbligatorie = reverseMapVoci.filter((v) => v.obbligatorio);
+  const critiche = reverseMapVoci.filter((v) => v.impatto === "CRITICO");
+
+  const settore =
+    companyProfile?.workSectors?.[0] ??
+    companyProfile?.operationalPreferences?.preferredCategories?.[0] ??
+    "Edilizia generale";
+  const anniEsperienza = companyProfile?.foundedYear
+    ? Math.max(1, new Date().getFullYear() - companyProfile.foundedYear)
+    : 15;
+  const companyName = companyProfile?.companyName?.trim() || "L'impresa";
+
+  const prompt = `Sei un esperto di redazione offerte tecniche per appalti pubblici italiani.
+Genera una sezione di offerta tecnica che massimizza i punti su un criterio di valutazione.
+
+CRITERIO:
+- Titolo: ${criterio.titolo}
+- Descrizione: ${criterio.descrizione}
+- Punti max: ${criterio.puntiTotali}
+
+REQUISITI OBBLIGATORI (MUST HAVE):
+${obbligatorie.length > 0 ? obbligatorie.map((v) => `- ${v.descrizione}`).join("\n") : "- Nessuno esplicito — coprire integralmente la descrizione del criterio"}
+
+FATTORI CRITICI (DIFFERENZIAMENTO):
+${critiche.length > 0 ? critiche.map((v) => `- ${v.descrizione}`).join("\n") : "- Evidenziare innovazione e track record"}
+
+IMPRESA:
+- Ragione sociale: ${companyName}
+- Settore: ${settore}
+- Anni di attività stimati: ${anniEsperienza}
+
+Rispondi SOLO con JSON valido, senza markdown, senza backtick:
+{
+  "seczioneOfferta": "testo 300-400 parole, professionale, strutturato",
+  "noteRedazione": ["nota 1", "nota 2", "nota 3"],
+  "wordCountTarget": 350
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.5, maxTokens: 2000 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = parseGeminiJson<ProposalGuidedTextResult>(cleaned);
+    return {
+      seczioneOfferta: parsed.sezioneOfferta || "",
+      noteRedazione: Array.isArray(parsed.noteRedazione) ? parsed.noteRedazione : [],
+      wordCountTarget: Number(parsed.wordCountTarget) || 350,
+    };
+  } catch {
+    return {
+      seczioneOfferta: `${companyName} presenta un'offerta tecnica strutturata su «${criterio.titolo}», coprendo i requisiti obbligatori e valorizzando elementi differenzianti coerenti con ${anniEsperienza} anni di esperienza nel settore.`,
+      noteRedazione: [
+        "Aggiungi certificazioni e referenze verificabili",
+        "Includi almeno due case study pertinenti",
+        "Allinea il testo ai paragrafi del bando",
+      ],
+      wordCountTarget: 350,
     };
   }
 }
