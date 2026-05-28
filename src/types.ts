@@ -80,6 +80,14 @@ export interface TenderDocument {
   value: string;
   category: string;
   deadline: string;
+  estimatedDurationDays?: number;
+  estimatedDurationMonths?: number;
+  estimatedStartDate?: string;
+  estimatedEndDate?: string;
+  timelineNotes?: string;
+  regionalPriceListReference?: string;
+  regionalPriceListYear?: number;
+  regionalPriceListRegion?: string;
   requirements: TenderRequirement[];
   sections: DocumentSection[];
   anomalies: string[];
@@ -275,6 +283,8 @@ export interface CompanyProfile {
   costoOraCaposquadra: number;
   incidenzaSpeseGenerali: number;
   incidenzaRischioMedio: number;
+  organizationalCostsEuro?: number;
+  administrativeCostsEuro?: number;
 
   // Storico libero
   historicalNotes: string;
@@ -311,16 +321,36 @@ export interface BidPricingResult {
 // ─── RED FLAG & CLAUSE RISK ENGINE ──────────────────────────────────────────
 
 export type RiskLevel = "high" | "medium" | "low";
+export type RedFlagCategory =
+  | "hyper_detailed_specs"
+  | "unbalanced_award_criteria"
+  | "anomalous_timeline"
+  | "restrictive_requirement_combination"
+  | "requisito_sproporzionato"
+  | "clausola_sensibile"
+  | "rischio_operativo"
+  | "rischio_esclusione"
+  | "altro";
+
+export interface RedFlagSourceReference {
+  documentName?: string;
+  pageNumber?: number;
+  article?: string;
+  clauseTitle?: string;
+  excerpt?: string;
+  anchorId?: string;
+}
 
 export interface RedFlag {
   title: string;
-  type: string;
+  type: RedFlagCategory | string;
   clause: string;
   articleRef: string;
   severity: RiskLevel;
   simpleExplanation: string;
   remedy: string;
   clarificationText: string;
+  sourceReference?: RedFlagSourceReference;
 }
 
 export interface RedFlagAnalysisResult {
@@ -372,6 +402,40 @@ export interface ProfitabilityGateResult {
   margineAttesoPercent: number;
   margineAttesoEuro: number;
   breakdownCosti: CostBreakdownItem[];
+  organizationalCosts?: {
+    amountEuro: number;
+    incidencePercentage: number;
+    explanation: string;
+  };
+  administrativeCosts?: {
+    amountEuro: number;
+    incidencePercentage: number;
+    explanation: string;
+  };
+  productivityImpact?: {
+    efficiencyLevel: "alta" | "media" | "bassa" | "non_configurata";
+    laborCostAdjustmentPercentage: number;
+    riskAdjustment: "riduzione" | "neutro" | "aumento";
+    warning: string | null;
+    explanation: string;
+  };
+  estimatedTimeImpact?: {
+    durationDays: number | null;
+    durationLabel: "breve" | "media" | "lunga" | "non_configurata";
+    costAdjustmentEuro: number;
+    riskAdjustment: "riduzione" | "neutro" | "aumento";
+    warning: string | null;
+    explanation: string;
+  };
+  regionalPriceListReference?: {
+    reference: string | null;
+    year: number | null;
+    region: string | null;
+    isConfigured: boolean;
+    confidenceImpact: "alta" | "media" | "bassa";
+    warning: string | null;
+    explanation: string;
+  };
   costoTotaleStimato: number;
   rischioEconomico: "basso" | "medio" | "alto";
   motivazione: string;

@@ -29,9 +29,13 @@ export function determineProfitabilityVerdict(
 }
 
 export function validateBreakdownSum(result: ProfitabilityGateResult, tolerance = 0.05): boolean {
-  const sum = result.breakdownCosti.reduce((acc, item) => acc + item.importoStimato, 0);
-  const importoOfferto = result.costoTotaleStimato;
-  return Math.abs(sum - importoOfferto) / importoOfferto <= tolerance;
+  const sum = result.breakdownCosti.reduce((acc, item) => {
+    const isUtile = item.categoria.toLowerCase().includes("utile");
+    return acc + (isUtile ? 0 : item.importoStimato);
+  }, 0);
+  const totalCosts = result.costoTotaleStimato;
+  if (totalCosts <= 0) return sum === 0;
+  return Math.abs(sum - totalCosts) / totalCosts <= tolerance;
 }
 
 export function parseTenderValue(valueStr: string): number {
