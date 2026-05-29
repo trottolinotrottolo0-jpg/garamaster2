@@ -161,24 +161,6 @@ function normalizeRequirements(raw: unknown, tender: TenderDocument): Qualificat
   });
 }
 
-const QUALIFICATION_PROMPT = `Sei un esperto di qualificazione per appalti pubblici italiani (D.Lgs. 36/2023).
-Analizza il disciplinare e identifica tutti i requisiti di qualificazione richiesti.
-Rispondi SOLO con un array JSON valido senza markdown.
-
-Struttura JSON:
-[
-  {
-    "id": "qr-001",
-    "tipo": "SOA" | "ISO" | "fatturato" | "referenze" | "personale" | "attrezzature" | "assicurazioni" | "antimafia" | "altro",
-    "descrizione": "Descrizione requisito",
-    "soglia": "valore soglia se presente",
-    "obbligatorio": true,
-    "articoloRiferimento": "Art. X"
-  }
-]
-
-DATI GARA:`;
-
 export async function parseQualificationRequirementsFromBando(
   bandoPdfBase64: string,
   fileName: string,

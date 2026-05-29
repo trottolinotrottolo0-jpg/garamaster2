@@ -157,28 +157,6 @@ function normalizeCAMRequirements(raw: unknown): CAMRequirement[] {
     };
   });
 }
-import type { TenderDocument, CAMRequirement } from "../src/types";
-import { deepseekChatCompletion, resolveOpenRouterModel } from "./deepseekChat";
-import { Buffer } from "node:buffer";
-
-const CAM_PROMPT = `Sei un esperto CAM (Criteri Ambientali Minimi) per appalti pubblici italiani (D.M. 11/10/2017 e D.M. 23/06/2022).
-Analizza il disciplinare di gara e identifica tutti i requisiti CAM presenti.
-Rispondi SOLO con un array JSON valido senza markdown.
-
-Struttura JSON:
-[
-  {
-    "id": "cam-001",
-    "categoria": "ambientale" | "energetica" | "sociale" | "qualita",
-    "titolo": "Titolo requisito",
-    "descrizione": "Descrizione dettagliata",
-    "obbligatorio": true,
-    "puntiPremiali": null,
-    "normaRiferimento": "D.M. ..."
-  }
-]
-
-DATI GARA:`;
 
 export async function parseCAMRequirementsFromBando(
   bandoPdfBase64: string,
