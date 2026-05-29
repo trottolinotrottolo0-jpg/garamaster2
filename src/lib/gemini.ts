@@ -26,6 +26,7 @@ import type {
   DelayPenaltyExposure,
   VariantRiskExposure,
   PreSubmissionComplianceAudit,
+  QualificationAssessment,
 } from "../types";
 import type {
   AntimafiaComplianceCheck,
@@ -2241,6 +2242,182 @@ Rispondi SOLO con JSON valido, senza markdown:
         "Completare tutti gli item MUST",
         "Verificare scadenze DURC e assicurazioni",
         audit.readyForSubmission ? "Procedere con invio" : "Non inviare finché BLOCCANTE/ROSSO",
+      ],
+    };
+  }
+}
+
+export type QualificationInsights = NonNullable<
+  QualificationAssessment["insightsDeepSeek"]
+>;
+
+export async function analyzeQualificationInsights(
+  assessment: QualificationAssessment
+): Promise<QualificationInsights> {
+  const gaps = assessment.gapsCritici
+    .slice(0, 6)
+    .map((g) => `${g.requirement}: ${g.gap}`)
+    .join("; ");
+  const nonConformi = assessment.matchingStatus
+    .filter((m) => m.status !== "CONFORME")
+    .map((m) => m.titolo)
+    .slice(0, 8)
+    .join(", ");
+
+  const prompt = `Sei un esperto di qualificazione impresa per appalti pubblici italiani.
+Analizza lo stato di idoneità alla gara.
+
+GARA: ${assessment.gara.title}
+Verdetto: ${assessment.qualificazioneVerdetto}
+Compliance: ${assessment.compliancePercent}%
+Obbligatori OK: ${assessment.conformiObbligatori}/${assessment.requirementsObbligatori}
+Esclusori OK: ${assessment.conformiEsclusori}/${assessment.requirementsEsclusori}
+RTI possibile: ${assessment.poteRTI ? "sì" : "no"}
+
+Gap: ${gaps || "nessuno"}
+Non conformi: ${nonConformi || "nessuno"}
+
+Rispondi SOLO con JSON valido, senza markdown:
+{
+  "analisi": "2-3 frasi executive",
+  "gapsPrincipali": ["gap 1", "gap 2"],
+  "pathToQualification": ["azione 1", "azione 2", "azione 3"]
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.4, maxTokens: 1500 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = parseGeminiJson<QualificationInsights>(cleaned);
+    return {
+      analisi: parsed.analisi || assessment.recommendation,
+      gapsPrincipali: parsed.gapsPrincipali?.length
+        ? parsed.gapsPrincipali
+        : assessment.gapsCritici.map((g) => g.requirement).slice(0, 5),
+      pathToQualification: parsed.pathToQualification?.length
+        ? parsed.pathToQualification
+        : assessment.requirementsPerRTI.slice(0, 3).map((r) => `RTI: ${r}`),
+    };
+  } catch {
+    return {
+      analisi: assessment.recommendation,
+      gapsPrincipali: assessment.gapsCritici.map((g) => g.requirement).slice(0, 5),
+      pathToQualification: [
+        assessment.poteRTI
+          ? "Valutare RTI per requisiti mancanti"
+          : "Regolarizzare requisiti esclusori prima di partecipare",
+        "Aggiornare profilo impresa con SOA e referenze",
+      ],
+    };
+  }
+}
+
+export type QualificationDeepInsights = {
+  analisi: string;
+  gapsPrincipali: string[];
+  pathToQualification: string[];
+  urgenzaImplementazione: "BASSA" | "MEDIA" | "ALTA" | "CRITICA";
+  raccomandazioni: string[];
+};
+
+export async function analyzeQualificationDeep(
+  assessment: QualificationAssessment
+): Promise<QualificationDeepInsights> {
+  const criticalGaps = assessment.gapsCritici
+    .filter((g) => g.effort === "ALTO")
+    .map((g) => g.requirement);
+  const totalGaps = assessment.gapsCritici.length;
+
+  const prompt = `Sei un esperto di procurement e qualification aziendale per appalti pubblici.
+Analizza questo profilo di qualificazione e genera pathway strategico.
+
+GARA:
+- Titolo: ${assessment.gara.title}
+- Valore: ${assessment.gara.value}
+
+ASSESSMENT:
+- Verdict: ${assessment.qualificazioneVerdetto}
+- Compliance: ${assessment.compliancePercent}%
+- Obbligatori coperti: ${assessment.conformiObbligatori} / ${assessment.requirementsObbligatori}
+- Esclusori coperti: ${assessment.conformiEsclusori} / ${assessment.requirementsEsclusori}
+- Total gaps: ${totalGaps}
+- Critical gaps (effort alto): ${criticalGaps.length}
+
+GAPS PRINCIPALI:
+${assessment.gapsCritici
+  .slice(0, 3)
+  .map((g) => `- ${g.requirement}: ${g.gap}`)
+  .join("\n")}
+
+Rispondi SOLO con JSON valido, senza markdown:
+{
+  "analisi": "paragrafo 4-5 frasi assessment qualification pathway",
+  "gapsPrincipali": ["gap principale 1", "gap principale 2"],
+  "pathToQualification": ["azione 1", "azione 2", "azione 3"],
+  "urgenzaImplementazione": "BASSA",
+  "raccomandazioni": ["raccomandazione 1", "raccomandazione 2", "raccomandazione 3"]
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.5, maxTokens: 2000 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = parseGeminiJson<QualificationDeepInsights>(cleaned);
+    const urgenza = parsed.urgenzaImplementazione;
+    const validUrgenza =
+      urgenza === "BASSA" ||
+      urgenza === "MEDIA" ||
+      urgenza === "ALTA" ||
+      urgenza === "CRITICA"
+        ? urgenza
+        : criticalGaps.length > 0
+          ? "ALTA"
+          : "MEDIA";
+
+    return {
+      analisi: parsed.analisi || assessment.recommendation,
+      gapsPrincipali: parsed.gapsPrincipali?.length
+        ? parsed.gapsPrincipali
+        : criticalGaps.slice(0, 3),
+      pathToQualification: parsed.pathToQualification?.length
+        ? parsed.pathToQualification
+        : [
+            "Identificare gap prioritario",
+            "Scegliere accelerazione vs RTI",
+            "Verificare compliance pre-invio",
+          ],
+      urgenzaImplementazione: validUrgenza,
+      raccomandazioni: parsed.raccomandazioni?.length
+        ? parsed.raccomandazioni
+        : [
+            assessment.poteRTI ? "Contattare partner RTI oggi" : "Regolarizzare esclusori",
+            "Aggiornare profilo impresa (SOA, referenze)",
+          ],
+    };
+  } catch {
+    return {
+      analisi:
+        assessment.recommendation ||
+        "Pathway di qualificazione dipende dal colmamento dei gap critici.",
+      gapsPrincipali: criticalGaps.length
+        ? criticalGaps
+        : assessment.gapsCritici.map((g) => g.requirement).slice(0, 3),
+      pathToQualification: [
+        "Identificare gap prioritario",
+        "Selezionare strategia (accelerazione vs RTI)",
+        "Implementare in parallelo",
+        "Verificare compliance finale prima invio offerta",
+      ],
+      urgenzaImplementazione:
+        assessment.qualificazioneVerdetto === "ESCLUSORIO"
+          ? "CRITICA"
+          : criticalGaps.length > 0
+            ? "ALTA"
+            : "MEDIA",
+      raccomandazioni: [
+        assessment.poteRTI ? "Contattare partner RTI oggi" : "Regolarizzare requisiti esclusori",
+        "Gap SOA: CCIAA fast-track o RTI",
+        "Gap RC: broker per ampliamento urgente",
       ],
     };
   }

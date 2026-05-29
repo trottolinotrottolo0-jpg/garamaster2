@@ -1047,6 +1047,95 @@ export interface AuditTrailEntry {
   note?: string;
 }
 
+export type QualificationRequirementCategoria =
+  | "SOA"
+  | "CERTIFICAZIONE"
+  | "ASSICURAZIONE"
+  | "ESPERIENZA"
+  | "CAPITALE"
+  | "ORGANIZZATIVA";
+
+export type QualificationRequirementTipo = "OBBLIGATORIO" | "PREFERENZIALE" | "ESCLUSORIO";
+
+export interface QualificationRequirement {
+  id: string;
+  titolo: string;
+  descrizione: string;
+  categoria: QualificationRequirementCategoria;
+  tipoRequisito: QualificationRequirementTipo;
+  soaCategoria?: string;
+  soaImportoMinimo?: number;
+  certificazioneRichiesta?: string;
+  importoAssicurazione?: number;
+  anniiEsperienza?: number;
+  numeroProgettSimilari?: number;
+  capitaleMinimoRichiesto?: number;
+  personaleMinimo?: number;
+  confidenza: number;
+  note: string;
+}
+
+export type QualificationMatchStatus = "CONFORME" | "NON_CONFORME" | "PARZIALE" | "VERIFICARE";
+
+export interface CompanyQualificationStatus {
+  requirementId: string;
+  titolo: string;
+  categoria: string;
+  status: QualificationMatchStatus;
+  evidenza?: string;
+  gap?: string;
+  azioni: string[];
+}
+
+export type QualificationVerdetto =
+  | "QUALIFICATO"
+  | "QUALIFICATO_PARZIALE"
+  | "NON_QUALIFICATO"
+  | "ESCLUSORIO";
+
+export interface QualificationGapCritico {
+  requirement: string;
+  gap: string;
+  timeline_colmamento?: string;
+  effort: "BASSO" | "MEDIO" | "ALTO";
+}
+
+export interface QualificationAssessment {
+  id: string;
+  gara: TenderDocument;
+  dataAnalisi: string;
+  requirements: QualificationRequirement[];
+  requirementsTotal: number;
+  requirementsObbligatori: number;
+  requirementsEsclusori: number;
+  matchingStatus: CompanyQualificationStatus[];
+  conformiObbligatori: number;
+  conformiEsclusori: number;
+  qualificazioneVerdetto: QualificationVerdetto;
+  compliancePercent: number;
+  gapsCritici: QualificationGapCritico[];
+  poteRTI: boolean;
+  requirementsPerRTI: string[];
+  recommendation: string;
+  insightsDeepSeek?: {
+    analisi: string;
+    gapsPrincipali: string[];
+    pathToQualification: string[];
+  };
+}
+
+export interface QualificationReadinessPath {
+  requirementId: string;
+  titolo: string;
+  gapAttuali: string;
+  azionePer_Colmare: string;
+  timeline: string;
+  effort: "BASSO" | "MEDIO" | "ALTO";
+  costo?: number;
+  partner_Necessario?: string;
+  priorita: "CRITICA" | "ALTA" | "MEDIA";
+}
+
 export interface CompanyProfile {
   // Anagrafica
   companyName: string;

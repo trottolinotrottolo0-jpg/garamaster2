@@ -16,6 +16,15 @@ import { WinningPatternViewer } from "./WinningPatternViewer";
 import { DelayPenaltyExposureAnalyzer } from "./DelayPenaltyExposureAnalyzer";
 import { VariantClaimsRiskAnalyzer } from "./VariantClaimsRiskAnalyzer";
 import { PreSubmissionComplianceAudit } from "./PreSubmissionComplianceAudit";
+import { QualificationReadinessHub } from "./QualificationReadinessHub";
+import {
+  assessQualification,
+  defaultQualificationRequirementsForTender,
+  QUALIFICATION_VERDICT_STYLES,
+  generateRTIRecommendations,
+  generateAccelerationStrategies,
+  daysUntilTenderDeadlineForQualification,
+} from "../lib/qualificationEngine";
 import {
   createPreSubmissionAudit,
   generateFinalSubmissionChecklist,
@@ -89,6 +98,12 @@ export function BidNoBidEngine({
   const [isVariantAnalyzerOpen, setIsVariantAnalyzerOpen] = useState(false);
   const [isComplianceAuditOpen, setIsComplianceAuditOpen] = useState(false);
   const [auditPassed, setAuditPassed] = useState(false);
+  const [isQualificationHubOpen, setIsQualificationHubOpen] = useState(false);
+  const [qualificationVerdict, setQualificationVerdict] = useState<string | null>(null);
+
+  useEffect(() => {
+    setQualificationVerdict(null);
+  }, [tender.id]);
 
   const delayExposure = useMemo(() => {
     if (!profile) return null;
@@ -128,6 +143,25 @@ export function BidNoBidEngine({
   }, [tender, variantExposure]);
 
   const variantTrap = variantExposure ? isVariantTrapGara(variantExposure) : false;
+
+  const qualificationPreview = useMemo(() => {
+    if (!profile) return null;
+    const requirements = defaultQualificationRequirementsForTender(tender);
+    return assessQualification(tender, requirements, profile);
+  }, [tender, profile]);
+
+  const qualificationRtiCount = useMemo(
+    () => (qualificationPreview ? generateRTIRecommendations(qualificationPreview).length : 0),
+    [qualificationPreview]
+  );
+
+  const qualificationAccelCount = useMemo(() => {
+    if (!qualificationPreview) return 0;
+    return generateAccelerationStrategies(
+      qualificationPreview,
+      daysUntilTenderDeadlineForQualification(tender)
+    ).length;
+  }, [qualificationPreview, tender]);
 
   const complianceAuditPreview = useMemo(() => {
     if (!profile) return null;
@@ -310,6 +344,103 @@ export function BidNoBidEngine({
                   Riprova
                 </button>
               )}
+            </div>
+          )}
+
+          {profile && !loading && (
+            <div className="space-y-2">
+              {!qualificationVerdict ? (
+                <button
+                  type="button"
+                  onClick={() => setIsQualificationHubOpen(true)}
+                  className="cursor-pointer flex items-center gap-2 text-[11px] font-bold px-3 py-2 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-600 hover:bg-blue-600/30 transition-colors w-full justify-center"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  Check qualificazione PRIMA
+                </button>
+              ) : (
+                <div
+                  className={`text-[10px] font-bold px-3 py-2 rounded-lg text-center border ${
+                    qualificationVerdict === "QUALIFICATO"
+                      ? "bg-emerald-600/20 text-emerald-400 border-emerald-600"
+                      : qualificationVerdict === "ESCLUSORIO"
+                        ? "bg-red-600/20 text-red-400 border-red-600"
+                        : "bg-amber-600/20 text-amber-400 border-amber-600"
+                  }`}
+                >
+                  Qualificazione: {qualificationVerdict.replace(/_/g, " ")}
+                  <button
+                    type="button"
+                    onClick={() => setIsQualificationHubOpen(true)}
+                    className="cursor-pointer block mx-auto mt-1 text-[8px] text-slate-400 hover:text-white underline"
+                  >
+                    Rivedi hub
+                  </button>
+                </div>
+              )}
+              {qualificationPreview && !qualificationVerdict && (
+                <p className="text-[8px] text-slate-500 text-center">
+                  Anteprima:{" "}
+                  <span
+                    className={
+                      QUALIFICATION_VERDICT_STYLES[qualificationPreview.qualificazioneVerdetto]
+                        .text
+                    }
+                  >
+                    {qualificationPreview.qualificazioneVerdetto.replace(/_/g, " ")}
+                  </span>
+                  {" · "}
+                  {qualificationPreview.compliancePercent}% conformi
+                </p>
+              )}
+
+              {qualificationPreview &&
+                qualificationPreview.gapsCritici.length > 0 &&
+                qualificationPreview.qualificazioneVerdetto !== "QUALIFICATO" && (
+                  <div
+                    className={`rounded-xl p-3 border space-y-2 ${
+                      qualificationPreview.qualificazioneVerdetto === "ESCLUSORIO"
+                        ? "bg-red-950/30 border-red-800/60"
+                        : "bg-amber-950/20 border-amber-800/50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className={`text-[9px] font-bold uppercase flex items-center gap-1 ${
+                          qualificationPreview.qualificazioneVerdetto === "ESCLUSORIO"
+                            ? "text-red-400"
+                            : "text-amber-400"
+                        }`}
+                      >
+                        <AlertTriangle className="w-3 h-3 shrink-0" />
+                        Qualification warning
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setIsQualificationHubOpen(true)}
+                        className="cursor-pointer text-[8px] font-bold text-blue-400 hover:text-blue-300"
+                      >
+                        Hub →
+                      </button>
+                    </div>
+                    <p className="text-[8px] text-slate-300">
+                      {qualificationPreview.gapsCritici.length} gap ·{" "}
+                      {qualificationRtiCount > 0
+                        ? `${qualificationRtiCount} opzioni RTI`
+                        : "RTI non applicabile"}
+                      {qualificationAccelCount > 0 &&
+                        ` · ${qualificationAccelCount} strategie accelerate`}
+                    </p>
+                    <p className="text-[8px] text-red-300/90 line-clamp-2">
+                      {qualificationPreview.gapsCritici[0]?.gap}
+                    </p>
+                    {qualificationPreview.qualificazioneVerdetto === "ESCLUSORIO" && (
+                      <p className="text-[8px] text-red-400 font-bold">
+                        Blocco partecipazione finché non regolarizzi requisiti esclusori.
+                      </p>
+                    )}
+                  </div>
+                )}
             </div>
           )}
 
@@ -1315,6 +1446,14 @@ export function BidNoBidEngine({
         isOpen={isComplianceAuditOpen}
         onClose={() => setIsComplianceAuditOpen(false)}
         onReadyToSubmit={() => setAuditPassed(true)}
+        tender={tender}
+        companyProfile={profile}
+      />
+
+      <QualificationReadinessHub
+        isOpen={isQualificationHubOpen}
+        onClose={() => setIsQualificationHubOpen(false)}
+        onQualificationCheck={(verdict) => setQualificationVerdict(verdict)}
         tender={tender}
         companyProfile={profile}
       />

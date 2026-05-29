@@ -62,6 +62,7 @@ import { CAMComplianceChecker } from "./components/CAMComplianceChecker";
 import { DelayPenaltyExposureAnalyzer } from "./components/DelayPenaltyExposureAnalyzer";
 import { VariantClaimsRiskAnalyzer } from "./components/VariantClaimsRiskAnalyzer";
 import { PreSubmissionComplianceAudit } from "./components/PreSubmissionComplianceAudit";
+import { QualificationReadinessHub } from "./components/QualificationReadinessHub";
 import { fetchHistoricalGareData } from "./lib/marketIntelligenceApi";
 import { buildHistoricalFromCompanyProfile, mergeHistoricalSources } from "./lib/marketIntelligenceEngine";
 import { AlertDailyFeed } from "./components/AlertDailyFeed";
@@ -156,6 +157,7 @@ export default function App() {
   const [isDelayPenaltyOpen, setIsDelayPenaltyOpen] = useState(false);
   const [isVariantClaimsOpen, setIsVariantClaimsOpen] = useState(false);
   const [isPreSubmissionAuditOpen, setIsPreSubmissionAuditOpen] = useState(false);
+  const [isQualificationHubOpen, setIsQualificationHubOpen] = useState(false);
   const [historicalGareData, setHistoricalGareData] = useState<GaraSimilareHistorica[]>([]);
   const [isBidNoBidOpen, setIsBidNoBidOpen] = useState(false);
   const [isBidPricingOpen, setIsBidPricingOpen] = useState(false);
@@ -1844,6 +1846,17 @@ export default function App() {
                       <li>
                         <button
                           type="button"
+                          onClick={() => setIsQualificationHubOpen(true)}
+                          className="cursor-pointer text-slate-300 hover:text-blue-400 transition-colors text-left flex items-center gap-1.5"
+                          id="qualification-hub-sidebar-btn"
+                        >
+                          <CheckCircle2 className="w-3 h-3 text-blue-400 shrink-0" />
+                          Qualification Hub
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
                           onClick={() => setIsBidNoBidOpen(true)}
                           className="cursor-pointer text-slate-300 hover:text-brand-gold transition-colors text-left flex items-center gap-1.5"
                           id="bid-no-bid-sidebar-btn"
@@ -2301,6 +2314,15 @@ export default function App() {
         tender={selectedTender}
         companyProfile={companyProfile}
       />
+
+      {selectedTender && (
+        <QualificationReadinessHub
+          isOpen={isQualificationHubOpen}
+          onClose={() => setIsQualificationHubOpen(false)}
+          tender={selectedTender}
+          companyProfile={companyProfile}
+        />
+      )}
 
     </div>
   );
