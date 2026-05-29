@@ -23,6 +23,7 @@ import type {
   MarketIntelligenceSnapshot,
   RiskComplianceProfile,
   CAMComplianceProfile,
+  DelayPenaltyExposure,
 } from "../types";
 import type {
   AntimafiaComplianceCheck,
@@ -1931,6 +1932,147 @@ Rispondi SOLO con JSON valido, senza markdown:
         "Completare documentazione EPD e piani rifiuti",
         "Attivare CAM opzionali per bonus punteggio",
         "Allineare offerta tecnica ai criteri premianti green",
+      ],
+    };
+  }
+}
+
+export type DelayPenaltyInsights = NonNullable<DelayPenaltyExposure["insightsDeepSeek"]>;
+
+export interface DelayRiskDeepInsights {
+  analisi: string;
+  fattoriRischio: string[];
+  fattoriMitigazione: string[];
+  probabilitaRealistica: number;
+  raccomandazioni: string[];
+}
+
+export async function analyzeDelayRiskDeep(
+  exposure: DelayPenaltyExposure,
+  timelineAnalysis?: import("./delayPenaltyEngine").TimelineRiskAnalysis
+): Promise<DelayRiskDeepInsights> {
+  const importo = parseTenderValue(exposure.gara.value);
+  const importoLabel =
+    importo > 0 ? `€${importo.toLocaleString("it-IT")}` : exposure.gara.value;
+
+  const pericoliFasi = timelineAnalysis?.faseRischiosa
+    ? `Fase più rischiosa: ${timelineAnalysis.faseRischiosa.nome} (+${Math.round(timelineAnalysis.faseRischiosa.deltaPercent * 100)}% overrun)`
+    : "Timeline non analizzata";
+
+  const prompt = `Sei un esperto di rischi costruttivi e penalty management per appalti pubblici italiani.
+Analizza il profilo di rischio ritardo.
+
+GARA: ${exposure.gara.title}
+Valore: ${importoLabel}
+Durata: ${exposure.durationGiorni} giorni (~${Math.round(exposure.durationGiorni / 30)} mesi)
+
+COMPANY:
+- Ritardi storici: ${exposure.companyProfile.percentualeRitardiStorici}%
+- Ritardo medio: ${exposure.companyProfile.giorninMedioRitardo} gg
+- Peggiore: ${exposure.companyProfile.peggioreRitardo} gg
+- Fattori: ${exposure.companyProfile.fattoriRischio.join(", ")}
+
+PENALITÀ:
+- P(ritardo): ${exposure.probabilitaRitardo}%
+- Penalità attesa: €${exposure.penalitaAttesa.toLocaleString("it-IT")}
+- Worst: €${exposure.penalitaWorstCase.toLocaleString("it-IT")}
+- Margine residuo: €${exposure.margineDopoRitardo.toLocaleString("it-IT")}
+- ${pericoliFasi}
+
+Rispondi SOLO con JSON valido, senza markdown:
+{
+  "analisi": "4-5 frasi assessment",
+  "fattoriRischio": ["fattore 1", "fattore 2"],
+  "fattoriMitigazione": ["mitigazione 1", "mitigazione 2"],
+  "probabilitaRealistica": 45,
+  "raccomandazioni": ["azione 1", "azione 2", "azione 3"]
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.5, maxTokens: 2000 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = parseGeminiJson<DelayRiskDeepInsights>(cleaned);
+    return {
+      analisi: parsed.analisi || "",
+      fattoriRischio: Array.isArray(parsed.fattoriRischio) ? parsed.fattoriRischio : [],
+      fattoriMitigazione: Array.isArray(parsed.fattoriMitigazione)
+        ? parsed.fattoriMitigazione
+        : [],
+      probabilitaRealistica: Math.min(
+        100,
+        Math.max(0, Number(parsed.probabilitaRealistica ?? exposure.probabilitaRitardo))
+      ),
+      raccomandazioni: Array.isArray(parsed.raccomandazioni) ? parsed.raccomandazioni : [],
+    };
+  } catch {
+    return {
+      analisi: `Rischio ${exposure.riskClasse}: penalità attesa €${exposure.penalitaAttesa.toLocaleString("it-IT")} su margine €${exposure.margineStimato.toLocaleString("it-IT")}.`,
+      fattoriRischio: exposure.companyProfile.fattoriRischio,
+      fattoriMitigazione: ["Extension clause", "Cap penalità 5%", "Subappalti garantiti"],
+      probabilitaRealistica: exposure.probabilitaRitardo,
+      raccomandazioni: [
+        "Negoziare buffer temporale in contratto",
+        "Formalizzare cap penalità",
+        exposure.riskClasse === "CRITICO" ? "Valutare no-bid" : "Monitorare SAL critici",
+      ],
+    };
+  }
+}
+
+export async function analyzeDelayPenaltyInsights(
+  exposure: DelayPenaltyExposure
+): Promise<DelayPenaltyInsights> {
+  const clausesSummary = exposure.penaltyClauses
+    .map(
+      (c) =>
+        `${c.tipo}: €${c.importoGiornaliero}/gg, tolleranza ${c.giorniToleranza}gg — ${c.descrizione.slice(0, 80)}`
+    )
+    .join("\n");
+
+  const prompt = `Sei un esperto di risk management per appalti pubblici italiani (ritardi e penalità).
+Analizza l'esposizione a penalità per ritardo di questa gara.
+
+GARA: ${exposure.gara.title}
+Durata stimata: ${exposure.durationGiorni} giorni
+Probabilità ritardo: ${exposure.probabilitaRitardo}%
+Giorni ritardo attesi: ${exposure.giorniRitardoAttesi}
+Penalità attesa: €${exposure.penalitaAttesa.toLocaleString("it-IT")}
+Worst case: €${exposure.penalitaWorstCase.toLocaleString("it-IT")}
+Margine stimato: €${exposure.margineStimato.toLocaleString("it-IT")}
+Margine dopo ritardo: €${exposure.margineDopoRitardo.toLocaleString("it-IT")}
+Risk classe: ${exposure.riskClasse}
+
+CLAUSOLE:
+${clausesSummary}
+
+Fattori rischio azienda: ${exposure.companyProfile.fattoriRischio.join(", ")}
+
+Rispondi SOLO con JSON valido, senza markdown:
+{
+  "analisi": "2-3 frasi executive",
+  "fattoriRischio": ["fattore 1", "fattore 2"],
+  "azioni": ["azione 1", "azione 2", "azione 3"]
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.4, maxTokens: 1500 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = parseGeminiJson<DelayPenaltyInsights>(cleaned);
+    return {
+      analisi: parsed.analisi || "",
+      fattoriRischio: Array.isArray(parsed.fattoriRischio) ? parsed.fattoriRischio : [],
+      azioni: Array.isArray(parsed.azioni) ? parsed.azioni : [],
+    };
+  } catch {
+    return {
+      analisi: `Esposizione ${exposure.riskClasse}: penalità attesa €${exposure.penalitaAttesa.toLocaleString("it-IT")} su margine €${exposure.margineStimato.toLocaleString("it-IT")}.`,
+      fattoriRischio: exposure.companyProfile.fattoriRischio,
+      azioni: [
+        "Negoziare cap penalità e giorni di tolleranza",
+        "Buffer operativo su timeline critica",
+        exposure.riskClasse === "CRITICO" ? "Valutare no-bid" : "Monitorare SAL e subappalti",
       ],
     };
   }

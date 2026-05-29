@@ -18,6 +18,7 @@ import { parseSOAFile } from "./parseSOA";
 import { parseAwardCriteriaFromBando } from "./parseAwardCriteria";
 import { parseRiskComplianceFromBando } from "./parseComplianceRequirements";
 import { parseCAMRequirementsFromBando } from "./parseCAMRequirements";
+import { parseDelayPenaltiesFromBando } from "./parseDelayPenalties";
 import {
   fetchHistoricalGareData,
   saveMarketIntelligenceSnapshot,
@@ -391,6 +392,34 @@ async function createApp() {
       const message =
         error instanceof Error ? error.message : "Errore parsing requisiti CAM.";
       console.error("[/api/parse-cam-requirements]", message);
+      res.status(503).json({ error: message });
+    }
+  });
+
+  app.post("/api/parse-delay-penalties", async (req, res) => {
+    try {
+      const { fileBase64, fileName, tender } = req.body as {
+        fileBase64?: string;
+        fileName?: string;
+        tender?: import("../src/types").TenderDocument;
+      };
+
+      if (!fileBase64?.trim()) {
+        res.status(400).json({ error: "PDF bando mancante." });
+        return;
+      }
+      if (!tender?.id) {
+        res.status(400).json({ error: "Gara (tender) non specificata." });
+        return;
+      }
+
+      const name = fileName?.trim() || "bando.pdf";
+      const penaltyClauses = await parseDelayPenaltiesFromBando(fileBase64, name, tender);
+      res.json({ penaltyClauses });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Errore parsing penalità ritardo.";
+      console.error("[/api/parse-delay-penalties]", message);
       res.status(503).json({ error: message });
     }
   });

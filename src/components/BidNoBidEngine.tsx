@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { X, RefreshCw, CheckCircle, XCircle, AlertTriangle, Loader2 } from "lucide-react";
+import { X, RefreshCw, CheckCircle, XCircle, AlertTriangle, Loader2, Clock } from "lucide-react";
 import type { TenderDocument, CompanyProfile, BidNoBidResult, WinningPattern } from "../types";
 import { runBidNoBid, analyzeFitStrategicInsights, type FitStrategicInsights } from "../lib/gemini";
 import { checkSOAQualificationForTender } from "../lib/bidQualificationEngine";
@@ -13,6 +13,17 @@ import {
 import { matchGaraToPatterns } from "../lib/winningPatternEngine";
 import { ExplainabilityLayer } from "./ExplainabilityLayer";
 import { WinningPatternViewer } from "./WinningPatternViewer";
+import { DelayPenaltyExposureAnalyzer } from "./DelayPenaltyExposureAnalyzer";
+import {
+  createDelayPenaltyExposure,
+  defaultPenaltyClausesForTender,
+  defaultCompanyDelayProfile,
+  estimateMargineForTender,
+  DELAY_RISK_STYLES,
+  TIMELINE_CRITICITA_STYLES,
+  analyzeTimelineRisk,
+  isDelayTrapGara,
+} from "../lib/delayPenaltyEngine";
 
 interface BidNoBidEngineProps {
   tender: TenderDocument;
@@ -54,6 +65,26 @@ export function BidNoBidEngine({
   const [error, setError] = useState<string | null>(null);
   const [fitInsights, setFitInsights] = useState<FitStrategicInsights | null>(null);
   const [fitInsightsLoading, setFitInsightsLoading] = useState(false);
+  const [isDelayAnalyzerOpen, setIsDelayAnalyzerOpen] = useState(false);
+
+  const delayExposure = useMemo(() => {
+    if (!profile) return null;
+    const penalties = defaultPenaltyClausesForTender(tender);
+    const delayProf = defaultCompanyDelayProfile(profile, tender);
+    const margine = estimateMargineForTender(tender, profile);
+    return createDelayPenaltyExposure(tender, penalties, delayProf, margine);
+  }, [tender, profile]);
+
+  const delayTimeline = useMemo(() => {
+    if (!delayExposure) return null;
+    return analyzeTimelineRisk(
+      tender,
+      delayExposure.durationGiorni,
+      delayExposure.companyProfile
+    );
+  }, [tender, delayExposure]);
+
+  const delayTrap = delayExposure ? isDelayTrapGara(delayExposure) : false;
 
   const strategicFit = useMemo(
     () =>
@@ -232,6 +263,84 @@ export function BidNoBidEngine({
               similarityScores={similarityScores}
               isLoading={isAnalyzingPatterns}
             />
+          )}
+
+          {delayExposure && !loading && profile && (
+            <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[9px] font-bold text-amber-400 uppercase flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  Esposizione ritardo &amp; penalità
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsDelayAnalyzerOpen(true)}
+                  className="cursor-pointer text-[8px] font-bold text-amber-400 hover:text-amber-300"
+                >
+                  Analisi completa →
+                </button>
+              </div>
+
+              {delayTrap && (
+                <div className="bg-red-950/30 border border-red-800/60 rounded-lg p-2 flex items-start gap-2">
+                  <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
+                  <div className="text-[8px] text-red-300">
+                    <span className="font-bold text-red-400">Delay trap:</span> penalità attesa o
+                    margine residuo rendono la gara ad alto rischio. Valuta no-bid o negoziazione
+                    clausole prima dell&apos;offerta.
+                  </div>
+                </div>
+              )}
+
+              <div
+                className={`text-[9px] rounded-lg p-2 border ${
+                  DELAY_RISK_STYLES[delayExposure.riskClasse].box
+                }`}
+              >
+                <div className="flex justify-between items-center mb-1">
+                  <span
+                    className={`font-bold ${DELAY_RISK_STYLES[delayExposure.riskClasse].text}`}
+                  >
+                    {delayExposure.riskClasse}
+                  </span>
+                  <span className="text-white font-mono text-[10px]">
+                    €{delayExposure.penalitaAttesa.toLocaleString("it-IT")} pen.
+                  </span>
+                </div>
+                <div className="text-[8px] text-slate-400">
+                  Margine dopo ritardo: €
+                  {delayExposure.margineDopoRitardo.toLocaleString("it-IT")} · P(ritardo){" "}
+                  {delayExposure.probabilitaRitardo}%
+                </div>
+              </div>
+
+              {delayTimeline && (
+                <div
+                  className={`text-[8px] rounded-lg p-2 border ${
+                    TIMELINE_CRITICITA_STYLES[delayTimeline.critica].box
+                  }`}
+                >
+                  <div className="flex justify-between items-center mb-1">
+                    <span
+                      className={`font-bold uppercase ${
+                        TIMELINE_CRITICITA_STYLES[delayTimeline.critica].text
+                      }`}
+                    >
+                      Timeline {delayTimeline.critica}
+                    </span>
+                    <span className="text-blue-400 font-mono">
+                      +{delayTimeline.bufferSuggerito} gg buffer
+                    </span>
+                  </div>
+                  {delayTimeline.faseRischiosa && (
+                    <div className="text-slate-400">
+                      Fase critica: {delayTimeline.faseRischiosa.nome} (+
+                      {Math.round(delayTimeline.faseRischiosa.deltaPercent * 100)}% storico)
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           )}
 
           {profile?.soaAttuale && !loading && (
@@ -989,6 +1098,14 @@ export function BidNoBidEngine({
           )}
         </div>
       </div>
+
+      <DelayPenaltyExposureAnalyzer
+        isOpen={isDelayAnalyzerOpen}
+        onClose={() => setIsDelayAnalyzerOpen(false)}
+        tender={tender}
+        margineStimato={delayExposure?.margineStimato}
+        companyProfile={profile}
+      />
     </div>
   );
 }

@@ -59,6 +59,7 @@ import { AwardCriteriaAnalyzer } from "./components/AwardCriteriaAnalyzer";
 import { MarketIntelligenceDashboard } from "./components/MarketIntelligenceDashboard";
 import { RiskComplianceProfiler } from "./components/RiskComplianceProfiler";
 import { CAMComplianceChecker } from "./components/CAMComplianceChecker";
+import { DelayPenaltyExposureAnalyzer } from "./components/DelayPenaltyExposureAnalyzer";
 import { fetchHistoricalGareData } from "./lib/marketIntelligenceApi";
 import { buildHistoricalFromCompanyProfile, mergeHistoricalSources } from "./lib/marketIntelligenceEngine";
 import { AlertDailyFeed } from "./components/AlertDailyFeed";
@@ -75,7 +76,7 @@ import {
   Cpu, Layers, Network, BookOpen, MessageSquare, ShieldCheck, Info, Plus, Search, Sliders, LogOut, Settings, 
   Sparkles, HelpCircle, Briefcase, User, Database, ShieldAlert, Key, Download, Bell,
   Menu, ChevronDown, ChevronLeft, ChevronRight, PanelLeftOpen, PanelRightOpen,
-  FileText, Calculator, Scale, TrendingUp, Activity, BarChart3, Users, Home, Target, ListChecks, AlertTriangle, Leaf
+  FileText, Calculator, Scale, TrendingUp, Activity, BarChart3, Users, Home, Target, ListChecks, AlertTriangle, Leaf, Clock
 } from "lucide-react";
 
 const LOCALSTORAGE_PREZZARI_KEY = "gm_prezzari";
@@ -150,6 +151,7 @@ export default function App() {
   const [isMarketIntelligenceOpen, setIsMarketIntelligenceOpen] = useState(false);
   const [isRiskComplianceOpen, setIsRiskComplianceOpen] = useState(false);
   const [isCAMComplianceOpen, setIsCAMComplianceOpen] = useState(false);
+  const [isDelayPenaltyOpen, setIsDelayPenaltyOpen] = useState(false);
   const [historicalGareData, setHistoricalGareData] = useState<GaraSimilareHistorica[]>([]);
   const [isBidNoBidOpen, setIsBidNoBidOpen] = useState(false);
   const [isBidPricingOpen, setIsBidPricingOpen] = useState(false);
@@ -1805,6 +1807,17 @@ export default function App() {
                       <li>
                         <button
                           type="button"
+                          onClick={() => setIsDelayPenaltyOpen(true)}
+                          className="cursor-pointer text-slate-300 hover:text-amber-400 transition-colors text-left flex items-center gap-1.5"
+                          id="delay-penalty-sidebar-btn"
+                        >
+                          <Clock className="w-3 h-3 text-amber-400 shrink-0" />
+                          Delay &amp; Penalty
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
                           onClick={() => setIsBidNoBidOpen(true)}
                           className="cursor-pointer text-slate-300 hover:text-brand-gold transition-colors text-left flex items-center gap-1.5"
                           id="bid-no-bid-sidebar-btn"
@@ -2240,6 +2253,12 @@ export default function App() {
       <CAMComplianceChecker
         isOpen={isCAMComplianceOpen}
         onClose={() => setIsCAMComplianceOpen(false)}
+        tender={selectedTender}
+      />
+
+      <DelayPenaltyExposureAnalyzer
+        isOpen={isDelayPenaltyOpen}
+        onClose={() => setIsDelayPenaltyOpen(false)}
         tender={selectedTender}
       />
 

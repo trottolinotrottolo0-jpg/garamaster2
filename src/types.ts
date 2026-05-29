@@ -795,6 +795,69 @@ export interface CAMComplianceProfile {
   }>;
 }
 
+export type PenaltyClauseTipo =
+  | "GIORNALIERA"
+  | "RAGGUAGLIATA"
+  | "DECURTAZIONE_IMPORTO"
+  | "RISOLUZIONE";
+
+export interface PenaltyClause {
+  id: string;
+  tipo: PenaltyClauseTipo;
+  importoGiornaliero: number;
+  importoMassimo?: number;
+  percentuale?: number;
+  giorniToleranza: number;
+  descrizione: string;
+  note: string;
+}
+
+export interface CompanyDelayProfile {
+  id: string;
+  settore?: string;
+  categoria?: string;
+  percentualeRitardiStorici: number;
+  giorninMedioRitardo: number;
+  peggioreRitardo: number;
+  confidenzaStima: number;
+  fattoriRischio: string[];
+}
+
+export type DelayRiskClasse = "BASSO" | "MEDIO" | "ALTO" | "CRITICO";
+
+export interface DelayPenaltyExposure {
+  id: string;
+  gara: TenderDocument;
+  dataAnalisi: string;
+  penaltyClauses: PenaltyClause[];
+  companyProfile: CompanyDelayProfile;
+  durationGiorni: number;
+  giorniToleranzaTotale: number;
+  probabilitaRitardo: number;
+  giorniRitardoAttesi: number;
+  penalitaAttesa: number;
+  penalitaWorstCase: number;
+  penalitaBestCase: number;
+  margineStimato: number;
+  margineDopoRitardo: number;
+  margineDeltaPercent: number;
+  riskClasse: DelayRiskClasse;
+  recommendation: string;
+  insightsDeepSeek?: {
+    analisi: string;
+    fattoriRischio: string[];
+    azioni: string[];
+  };
+}
+
+export interface DelayRiskIndicator {
+  categoria: string;
+  regione: string;
+  delayRateStorico: number;
+  gioriniMedioRitardo: number;
+  dataRilevamento: string;
+}
+
 export interface CompanyProfile {
   // Anagrafica
   companyName: string;
