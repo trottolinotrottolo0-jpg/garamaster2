@@ -466,7 +466,7 @@ export function buildFitParticipationHistory(
       tender,
       fit: calculateStrategicFit(tender, fitProfile),
       anno: h.anno,
-      marginRealized: h.margineRealizzato ?? h.marginRealePercent,
+      marginRealized: h.margineRealizzato,
     });
   }
 

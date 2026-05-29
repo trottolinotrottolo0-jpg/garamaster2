@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, type ChangeEvent } from "react";
 import { X, FileText, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import { requestParseSOA, readFileAsBase64 } from "../lib/parseSOAApi";
 import { mapSOACategoriesToANCE } from "../lib/gemini";
@@ -58,7 +58,7 @@ export function SoaParserModal({
         )
       : null;
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.currentTarget.files?.[0];
     if (!file) return;
 

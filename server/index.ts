@@ -17,6 +17,10 @@ import { parsePrezzarioPdf } from "./parsePrezzario";
 import { parseSOAFile } from "./parseSOA";
 import { parseAwardCriteriaFromBando } from "./parseAwardCriteria";
 import { parseRiskComplianceFromBando } from "./parseComplianceRequirements";
+import { parseCAMRequirementsFromBando } from "./parseCAMRequirements";
+import { parseDelayPenaltiesFromBando } from "./parseDelayPenalties";
+import { parseVariantsClausesFromBando } from "./parseVariantsClauses";
+import { parseQualificationRequirementsFromBando } from "./parseQualificationRequirements";
 import {
   fetchHistoricalGareData,
   saveMarketIntelligenceSnapshot,
@@ -363,6 +367,70 @@ async function createApp() {
         error instanceof Error ? error.message : "Errore analisi risk & compliance.";
       console.error("[/api/parse-risk-compliance]", message);
       res.status(503).json({ error: message });
+    }
+  });
+
+  app.post("/api/parse-cam-requirements", async (req, res) => {
+    try {
+      const { bandoPdfBase64, fileName, tender } = req.body as {
+        bandoPdfBase64?: string;
+        fileName?: string;
+        tender?: import("../src/types").TenderDocument;
+      };
+      if (!tender?.id) { res.status(400).json({ error: "Gara non specificata." }); return; }
+      const data = await parseCAMRequirementsFromBando(bandoPdfBase64 ?? "", fileName ?? "bando.pdf", tender);
+      res.json({ success: true, data });
+    } catch (error) {
+      console.error("[/api/parse-cam-requirements]", error);
+      res.status(503).json({ success: false, error: String(error) });
+    }
+  });
+
+  app.post("/api/parse-delay-penalties", async (req, res) => {
+    try {
+      const { bandoPdfBase64, fileName, tender } = req.body as {
+        bandoPdfBase64?: string;
+        fileName?: string;
+        tender?: import("../src/types").TenderDocument;
+      };
+      if (!tender?.id) { res.status(400).json({ error: "Gara non specificata." }); return; }
+      const data = await parseDelayPenaltiesFromBando(bandoPdfBase64 ?? "", fileName ?? "bando.pdf", tender);
+      res.json({ success: true, data });
+    } catch (error) {
+      console.error("[/api/parse-delay-penalties]", error);
+      res.status(503).json({ success: false, error: String(error) });
+    }
+  });
+
+  app.post("/api/parse-variants-clauses", async (req, res) => {
+    try {
+      const { bandoPdfBase64, fileName, tender } = req.body as {
+        bandoPdfBase64?: string;
+        fileName?: string;
+        tender?: import("../src/types").TenderDocument;
+      };
+      if (!tender?.id) { res.status(400).json({ error: "Gara non specificata." }); return; }
+      const data = await parseVariantsClausesFromBando(bandoPdfBase64 ?? "", fileName ?? "bando.pdf", tender);
+      res.json({ success: true, data });
+    } catch (error) {
+      console.error("[/api/parse-variants-clauses]", error);
+      res.status(503).json({ success: false, error: String(error) });
+    }
+  });
+
+  app.post("/api/parse-qualification-requirements", async (req, res) => {
+    try {
+      const { bandoPdfBase64, fileName, tender } = req.body as {
+        bandoPdfBase64?: string;
+        fileName?: string;
+        tender?: import("../src/types").TenderDocument;
+      };
+      if (!tender?.id) { res.status(400).json({ error: "Gara non specificata." }); return; }
+      const data = await parseQualificationRequirementsFromBando(bandoPdfBase64 ?? "", fileName ?? "bando.pdf", tender);
+      res.json({ success: true, data });
+    } catch (error) {
+      console.error("[/api/parse-qualification-requirements]", error);
+      res.status(503).json({ success: false, error: String(error) });
     }
   });
 

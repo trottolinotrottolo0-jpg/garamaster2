@@ -29,7 +29,7 @@ export function FitStrategicProfileModal({
   historicalTenders = [],
   tenderHistory = [],
 }: FitStrategicProfileModalProps) {
-  const [nicchie, setNicchie] = useState<NicciaStrategica[]>([]);
+  const [nicchie, setNicchie] = useState<NicchiaStrategica[]>([]);
   const [aree, setAree] = useState<AreaGeografica[]>([]);
   const [importoTarget, setImportoTarget] = useState(5_000_000);
   const [margineTarget, setMargineTarget] = useState(8);
