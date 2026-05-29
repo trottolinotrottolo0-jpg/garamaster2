@@ -22,6 +22,11 @@ import type {
   ReverseMapVoce,
   MarketIntelligenceSnapshot,
   RiskComplianceProfile,
+  CAMComplianceProfile,
+  DelayPenaltyExposure,
+  VariantRiskExposure,
+  PreSubmissionComplianceAudit,
+  QualificationAssessment,
 } from "../types";
 import type {
   AntimafiaComplianceCheck,
@@ -1854,6 +1859,800 @@ Rispondi SOLO con JSON:
       priorita: pending.length > 0 ? [`Completare: ${pending[0]}`] : ["Mantenere documentazione aggiornata"],
       alertScadenze:
         overdue.length > 0 ? overdue.map((t) => `Scaduto: ${t}`) : [],
+    };
+  }
+}
+
+export type CAMComplianceInsights = NonNullable<
+  CAMComplianceProfile["assessment"]["insightsDeepSeek"]
+>;
+
+export async function analyzeCAMComplianceInsights(
+  profile: CAMComplianceProfile
+): Promise<CAMComplianceInsights> {
+  const reqsSummary = profile.requirements
+    .map(
+      (r) =>
+        `- ${r.titolo} (${r.categoria.codice}, obbl=${r.obbligatorio}, ${r.categoria.scorePunti} pt)`
+    )
+    .join("\n");
+
+  const itemsSummary = profile.assessment.assessmentItems
+    .map((i) => `${i.titolo}: ${i.stato} (${i.puntiOttenuti}/${i.puntiMassimi})`)
+    .join("\n");
+
+  const prompt = `Sei un esperto CAM (Criteri Ambientali Minimi) per appalti pubblici italiani.
+Analizza questo profilo di conformità ambientale.
+
+GARA: ${profile.gara.title}
+Categoria: ${profile.gara.category}
+CAM Score: ${profile.assessment.scoreTotale}%
+Conformità: ${profile.assessment.conformitaComplessiva}
+Obbligatori coperti: ${profile.assessment.requisitiObbligatoriCoperti}/${profile.assessment.totalRequisitiObbligatori}
+
+REQUISITI:
+${reqsSummary}
+
+ASSESSMENT:
+${itemsSummary}
+
+Rispondi SOLO con JSON valido, senza markdown:
+{
+  "analisi": "2-3 frasi executive",
+  "puntiForza": ["punto 1", "punto 2"],
+  "puntiDeboli": ["debole 1", "debole 2"],
+  "raccomandazioni": ["azione 1", "azione 2", "azione 3"]
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.4, maxTokens: 1500 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = parseGeminiJson<CAMComplianceInsights>(cleaned);
+    return {
+      analisi: parsed.analisi || "",
+      puntiForza: Array.isArray(parsed.puntiForza) ? parsed.puntiForza : [],
+      puntiDeboli: Array.isArray(parsed.puntiDeboli) ? parsed.puntiDeboli : [],
+      raccomandazioni: Array.isArray(parsed.raccomandazioni) ? parsed.raccomandazioni : [],
+    };
+  } catch {
+    return {
+      analisi: `Profilo CAM ${profile.assessment.conformitaComplessiva.replace(/_/g, " ")} al ${profile.assessment.scoreTotale}%.`,
+      puntiForza:
+        profile.assessment.requisitiObbligatoriCoperti > 0
+          ? ["Requisiti obbligatori parzialmente coperti"]
+          : [],
+      puntiDeboli: profile.assessment.requisitiMancanti.slice(0, 3).map((r) => r.titolo),
+      raccomandazioni: [
+        "Completare documentazione EPD e piani rifiuti",
+        "Attivare CAM opzionali per bonus punteggio",
+        "Allineare offerta tecnica ai criteri premianti green",
+      ],
+    };
+  }
+}
+
+export type DelayPenaltyInsights = NonNullable<DelayPenaltyExposure["insightsDeepSeek"]>;
+
+export interface DelayRiskDeepInsights {
+  analisi: string;
+  fattoriRischio: string[];
+  fattoriMitigazione: string[];
+  probabilitaRealistica: number;
+  raccomandazioni: string[];
+}
+
+export async function analyzeDelayRiskDeep(
+  exposure: DelayPenaltyExposure,
+  timelineAnalysis?: import("./delayPenaltyEngine").TimelineRiskAnalysis
+): Promise<DelayRiskDeepInsights> {
+  const importo = parseTenderValue(exposure.gara.value);
+  const importoLabel =
+    importo > 0 ? `€${importo.toLocaleString("it-IT")}` : exposure.gara.value;
+
+  const pericoliFasi = timelineAnalysis?.faseRischiosa
+    ? `Fase più rischiosa: ${timelineAnalysis.faseRischiosa.nome} (+${Math.round(timelineAnalysis.faseRischiosa.deltaPercent * 100)}% overrun)`
+    : "Timeline non analizzata";
+
+  const prompt = `Sei un esperto di rischi costruttivi e penalty management per appalti pubblici italiani.
+Analizza il profilo di rischio ritardo.
+
+GARA: ${exposure.gara.title}
+Valore: ${importoLabel}
+Durata: ${exposure.durationGiorni} giorni (~${Math.round(exposure.durationGiorni / 30)} mesi)
+
+COMPANY:
+- Ritardi storici: ${exposure.companyProfile.percentualeRitardiStorici}%
+- Ritardo medio: ${exposure.companyProfile.giorninMedioRitardo} gg
+- Peggiore: ${exposure.companyProfile.peggioreRitardo} gg
+- Fattori: ${exposure.companyProfile.fattoriRischio.join(", ")}
+
+PENALITÀ:
+- P(ritardo): ${exposure.probabilitaRitardo}%
+- Penalità attesa: €${exposure.penalitaAttesa.toLocaleString("it-IT")}
+- Worst: €${exposure.penalitaWorstCase.toLocaleString("it-IT")}
+- Margine residuo: €${exposure.margineDopoRitardo.toLocaleString("it-IT")}
+- ${pericoliFasi}
+
+Rispondi SOLO con JSON valido, senza markdown:
+{
+  "analisi": "4-5 frasi assessment",
+  "fattoriRischio": ["fattore 1", "fattore 2"],
+  "fattoriMitigazione": ["mitigazione 1", "mitigazione 2"],
+  "probabilitaRealistica": 45,
+  "raccomandazioni": ["azione 1", "azione 2", "azione 3"]
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.5, maxTokens: 2000 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = parseGeminiJson<DelayRiskDeepInsights>(cleaned);
+    return {
+      analisi: parsed.analisi || "",
+      fattoriRischio: Array.isArray(parsed.fattoriRischio) ? parsed.fattoriRischio : [],
+      fattoriMitigazione: Array.isArray(parsed.fattoriMitigazione)
+        ? parsed.fattoriMitigazione
+        : [],
+      probabilitaRealistica: Math.min(
+        100,
+        Math.max(0, Number(parsed.probabilitaRealistica ?? exposure.probabilitaRitardo))
+      ),
+      raccomandazioni: Array.isArray(parsed.raccomandazioni) ? parsed.raccomandazioni : [],
+    };
+  } catch {
+    return {
+      analisi: `Rischio ${exposure.riskClasse}: penalità attesa €${exposure.penalitaAttesa.toLocaleString("it-IT")} su margine €${exposure.margineStimato.toLocaleString("it-IT")}.`,
+      fattoriRischio: exposure.companyProfile.fattoriRischio,
+      fattoriMitigazione: ["Extension clause", "Cap penalità 5%", "Subappalti garantiti"],
+      probabilitaRealistica: exposure.probabilitaRitardo,
+      raccomandazioni: [
+        "Negoziare buffer temporale in contratto",
+        "Formalizzare cap penalità",
+        exposure.riskClasse === "CRITICO" ? "Valutare no-bid" : "Monitorare SAL critici",
+      ],
+    };
+  }
+}
+
+export type VariantClaimsInsights = NonNullable<VariantRiskExposure["insightsDeepSeek"]>;
+
+export interface VariantsClaimsDeepInsights {
+  analisi: string;
+  rischiPrincipali: string[];
+  strategieNegoziazione: string[];
+  documentazioneRichiesta: string[];
+  raccomandazioni: string[];
+}
+
+export async function analyzeVariantsClaimsDeep(
+  exposure: VariantRiskExposure
+): Promise<VariantsClaimsDeepInsights> {
+  const importo = parseTenderValue(exposure.gara.value);
+  const importoLabel =
+    importo > 0 ? `€${importo.toLocaleString("it-IT")}` : exposure.gara.value;
+  const variantiVietate = exposure.variantClauses.filter(
+    (c) => c.tipoVariante === "VARIANTE_VIETATA"
+  ).length;
+
+  const prompt = `Sei un esperto legale su varianti e claims negli appalti pubblici italiani.
+Analizza il profilo di rischio varianti/claims.
+
+GARA: ${exposure.gara.title}
+Valore: ${importoLabel}
+Categoria: ${exposure.gara.category}
+
+VARIANTS:
+- Varianti vietate: ${variantiVietate}
+- P(variante): ${exposure.probabilitaVariantRichiesta}%
+- Varianti stimate: ${exposure.numeroVariantiStimate}
+- Esposizione varianti negate: €${exposure.importoVariantiNnegatteAtteso.toLocaleString("it-IT")}
+
+CLAIMS:
+- P(claims): ${exposure.probabilitaClaimsRivendicazione}%
+- Claims stimati: ${exposure.numeroClaimsAttesi}
+- Esposizione claims: €${exposure.importoTotaleClaimsAtteso.toLocaleString("it-IT")}
+- Approval rate: ${exposure.percentualeApprovazioneClaims}%
+- Risk classe: ${exposure.riskClasse}
+
+Rispondi SOLO con JSON valido, senza markdown:
+{
+  "analisi": "4-5 frasi assessment",
+  "rischiPrincipali": ["rischio 1", "rischio 2"],
+  "strategieNegoziazione": ["strategia 1", "strategia 2"],
+  "documentazioneRichiesta": ["doc 1", "doc 2"],
+  "raccomandazioni": ["azione 1", "azione 2", "azione 3"]
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.5, maxTokens: 2000 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = parseGeminiJson<VariantsClaimsDeepInsights>(cleaned);
+    return {
+      analisi: parsed.analisi || "",
+      rischiPrincipali: Array.isArray(parsed.rischiPrincipali) ? parsed.rischiPrincipali : [],
+      strategieNegoziazione: Array.isArray(parsed.strategieNegoziazione)
+        ? parsed.strategieNegoziazione
+        : [],
+      documentazioneRichiesta: Array.isArray(parsed.documentazioneRichiesta)
+        ? parsed.documentazioneRichiesta
+        : [],
+      raccomandazioni: Array.isArray(parsed.raccomandazioni) ? parsed.raccomandazioni : [],
+    };
+  } catch {
+    return {
+      analisi: `Rischio ${exposure.riskClasse}: esposizione totale €${exposure.esposizioneTotale.toLocaleString("it-IT")} tra varianti negate e claims non approvati.`,
+      rischiPrincipali: [
+        "Varianti complesse o vietate",
+        "Claims con oneri prova pesanti",
+        "Bassa percentuale approvazione claims storica",
+      ],
+      strategieNegoziazione: [
+        "Allargare % max varianti",
+        "Semplificare oneri prova claims",
+        "Eccezioni per cause esterne",
+      ],
+      documentazioneRichiesta: [
+        "Template computo metrico varianti",
+        "Protocollo documentazione claims",
+      ],
+      raccomandazioni: [
+        "Negoziare clausole in sede di offerta",
+        "Preparare computi per scenari claims",
+        exposure.riskClasse === "CRITICO" ? "Valutare no-bid" : "Allineare PM e legale pre-firma",
+      ],
+    };
+  }
+}
+
+export type PreSubmissionComplianceInsights = NonNullable<
+  PreSubmissionComplianceAudit["insightsDeepSeek"]
+>;
+
+export interface ComplianceAuditDeepInsights {
+  analisi: string;
+  itemsCritici: string[];
+  itemsAttenzione: string[];
+  raccomandazioni: string[];
+  priorityActions: Array<{ azione: string; timeline: string; impact: string }>;
+}
+
+export async function analyzeComplianceAuditDeep(
+  audit: PreSubmissionComplianceAudit
+): Promise<ComplianceAuditDeepInsights> {
+  const importo = parseTenderValue(audit.gara.value);
+  const importoLabel =
+    importo > 0 ? `€${importo.toLocaleString("it-IT")}` : audit.gara.value;
+
+  const blockingItems = audit.checklistItems.filter(
+    (i) => i.obbligatorio && i.stato !== "COMPLETATO" && i.stato !== "NON_APPLICABILE"
+  );
+  const warningItems = audit.checklistItems.filter(
+    (i) =>
+      i.giorniRimanenti != null && i.giorniRimanenti < 30 && i.giorniRimanenti >= 0
+  );
+
+  const prompt = `Sei un esperto di compliance per appalti pubblici italiani.
+Analizza questo pre-submission audit.
+
+GARA: ${audit.gara.title}
+Valore: ${importoLabel}
+Risk: ${audit.complianceRisk} | Completion: ${audit.completamentoPercent}%
+Blocchi: ${blockingItems.length} | Scadenze <30gg: ${warningItems.length}
+
+ITEMS BLOCCANTI:
+${blockingItems.map((i) => `- ${i.titolo}`).join("\n") || "nessuno"}
+
+Rispondi SOLO con JSON valido, senza markdown:
+{
+  "analisi": "4-5 frasi assessment",
+  "itemsCritici": ["item 1"],
+  "itemsAttenzione": ["item 1"],
+  "raccomandazioni": ["rac 1"],
+  "priorityActions": [{ "azione": "...", "timeline": "...", "impact": "high" }]
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.5, maxTokens: 2000 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = parseGeminiJson<ComplianceAuditDeepInsights>(cleaned);
+    return {
+      analisi: parsed.analisi || "",
+      itemsCritici: Array.isArray(parsed.itemsCritici) ? parsed.itemsCritici : [],
+      itemsAttenzione: Array.isArray(parsed.itemsAttenzione) ? parsed.itemsAttenzione : [],
+      raccomandazioni: Array.isArray(parsed.raccomandazioni) ? parsed.raccomandazioni : [],
+      priorityActions: Array.isArray(parsed.priorityActions) ? parsed.priorityActions : [],
+    };
+  } catch {
+    return {
+      analisi: `Audit ${audit.complianceRisk}: ${audit.completamentoPercent}% completato, ${audit.itemsObbligatoriBlocchi} obbligatori aperti.`,
+      itemsCritici: blockingItems.map((i) => i.titolo),
+      itemsAttenzione: warningItems.map((i) => i.titolo),
+      raccomandazioni: [
+        "Completare items obbligatori bloccanti",
+        "Rinnovare certificazioni in scadenza",
+        "Caricare evidenze documentali",
+      ],
+      priorityActions: [
+        { azione: "Chiudere obbligatori", timeline: "3-5 giorni", impact: "high" },
+        { azione: "Rinnovare scadenze critiche", timeline: "7 giorni", impact: "high" },
+        { azione: "Revisione offerta tecnica", timeline: "2 settimane", impact: "medium" },
+      ],
+    };
+  }
+}
+
+export async function analyzePreSubmissionComplianceInsights(
+  audit: PreSubmissionComplianceAudit
+): Promise<PreSubmissionComplianceInsights> {
+  const blocking = audit.blockingIssues.slice(0, 5).join("; ") || "nessuno";
+  const pending = audit.checklistItems
+    .filter((i) => i.obbligatorio && i.stato !== "COMPLETATO" && i.stato !== "NON_APPLICABILE")
+    .map((i) => i.titolo)
+    .slice(0, 8)
+    .join(", ");
+
+  const prompt = `Sei un esperto di compliance documentale per offerte in appalti pubblici italiani.
+Analizza lo stato pre-invio di questa gara.
+
+GARA: ${audit.gara.title}
+Risk: ${audit.complianceRisk}
+Completion: ${audit.completamentoPercent}%
+Obbligatori mancanti: ${audit.itemsObbligatoriBlocchi}
+Pronto invio: ${audit.readyForSubmission ? "sì" : "no"}
+
+Blocchi: ${blocking}
+Item obbligatori pendenti: ${pending || "nessuno"}
+
+Rispondi SOLO con JSON valido, senza markdown:
+{
+  "analisi": "2-3 frasi executive",
+  "itemsCritici": ["item 1", "item 2"],
+  "azioni": ["azione 1", "azione 2", "azione 3"]
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.4, maxTokens: 1500 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = parseGeminiJson<PreSubmissionComplianceInsights>(cleaned);
+    return {
+      analisi: parsed.analisi || "",
+      itemsCritici: Array.isArray(parsed.itemsCritici) ? parsed.itemsCritici : [],
+      azioni: Array.isArray(parsed.azioni) ? parsed.azioni : [],
+    };
+  } catch {
+    return {
+      analisi: `Audit ${audit.complianceRisk}: ${audit.completamentoPercent}% completato, ${audit.itemsObbligatoriBlocchi} obbligatori da chiudere.`,
+      itemsCritici: audit.checklistItems
+        .filter((i) => i.obbligatorio && i.stato !== "COMPLETATO")
+        .map((i) => i.titolo)
+        .slice(0, 5),
+      azioni: [
+        "Completare tutti gli item MUST",
+        "Verificare scadenze DURC e assicurazioni",
+        audit.readyForSubmission ? "Procedere con invio" : "Non inviare finché BLOCCANTE/ROSSO",
+      ],
+    };
+  }
+}
+
+export type QualificationInsights = NonNullable<
+  QualificationAssessment["insightsDeepSeek"]
+>;
+
+export async function analyzeQualificationInsights(
+  assessment: QualificationAssessment
+): Promise<QualificationInsights> {
+  const gaps = assessment.gapsCritici
+    .slice(0, 6)
+    .map((g) => `${g.requirement}: ${g.gap}`)
+    .join("; ");
+  const nonConformi = assessment.matchingStatus
+    .filter((m) => m.status !== "CONFORME")
+    .map((m) => m.titolo)
+    .slice(0, 8)
+    .join(", ");
+
+  const prompt = `Sei un esperto di qualificazione impresa per appalti pubblici italiani.
+Analizza lo stato di idoneità alla gara.
+
+GARA: ${assessment.gara.title}
+Verdetto: ${assessment.qualificazioneVerdetto}
+Compliance: ${assessment.compliancePercent}%
+Obbligatori OK: ${assessment.conformiObbligatori}/${assessment.requirementsObbligatori}
+Esclusori OK: ${assessment.conformiEsclusori}/${assessment.requirementsEsclusori}
+RTI possibile: ${assessment.poteRTI ? "sì" : "no"}
+
+Gap: ${gaps || "nessuno"}
+Non conformi: ${nonConformi || "nessuno"}
+
+Rispondi SOLO con JSON valido, senza markdown:
+{
+  "analisi": "2-3 frasi executive",
+  "gapsPrincipali": ["gap 1", "gap 2"],
+  "pathToQualification": ["azione 1", "azione 2", "azione 3"]
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.4, maxTokens: 1500 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = parseGeminiJson<QualificationInsights>(cleaned);
+    return {
+      analisi: parsed.analisi || assessment.recommendation,
+      gapsPrincipali: parsed.gapsPrincipali?.length
+        ? parsed.gapsPrincipali
+        : assessment.gapsCritici.map((g) => g.requirement).slice(0, 5),
+      pathToQualification: parsed.pathToQualification?.length
+        ? parsed.pathToQualification
+        : assessment.requirementsPerRTI.slice(0, 3).map((r) => `RTI: ${r}`),
+    };
+  } catch {
+    return {
+      analisi: assessment.recommendation,
+      gapsPrincipali: assessment.gapsCritici.map((g) => g.requirement).slice(0, 5),
+      pathToQualification: [
+        assessment.poteRTI
+          ? "Valutare RTI per requisiti mancanti"
+          : "Regolarizzare requisiti esclusori prima di partecipare",
+        "Aggiornare profilo impresa con SOA e referenze",
+      ],
+    };
+  }
+}
+
+export type QualificationDeepInsights = {
+  analisi: string;
+  gapsPrincipali: string[];
+  pathToQualification: string[];
+  urgenzaImplementazione: "BASSA" | "MEDIA" | "ALTA" | "CRITICA";
+  raccomandazioni: string[];
+};
+
+export async function analyzeQualificationDeep(
+  assessment: QualificationAssessment
+): Promise<QualificationDeepInsights> {
+  const criticalGaps = assessment.gapsCritici
+    .filter((g) => g.effort === "ALTO")
+    .map((g) => g.requirement);
+  const totalGaps = assessment.gapsCritici.length;
+
+  const prompt = `Sei un esperto di procurement e qualification aziendale per appalti pubblici.
+Analizza questo profilo di qualificazione e genera pathway strategico.
+
+GARA:
+- Titolo: ${assessment.gara.title}
+- Valore: ${assessment.gara.value}
+
+ASSESSMENT:
+- Verdict: ${assessment.qualificazioneVerdetto}
+- Compliance: ${assessment.compliancePercent}%
+- Obbligatori coperti: ${assessment.conformiObbligatori} / ${assessment.requirementsObbligatori}
+- Esclusori coperti: ${assessment.conformiEsclusori} / ${assessment.requirementsEsclusori}
+- Total gaps: ${totalGaps}
+- Critical gaps (effort alto): ${criticalGaps.length}
+
+GAPS PRINCIPALI:
+${assessment.gapsCritici
+  .slice(0, 3)
+  .map((g) => `- ${g.requirement}: ${g.gap}`)
+  .join("\n")}
+
+Rispondi SOLO con JSON valido, senza markdown:
+{
+  "analisi": "paragrafo 4-5 frasi assessment qualification pathway",
+  "gapsPrincipali": ["gap principale 1", "gap principale 2"],
+  "pathToQualification": ["azione 1", "azione 2", "azione 3"],
+  "urgenzaImplementazione": "BASSA",
+  "raccomandazioni": ["raccomandazione 1", "raccomandazione 2", "raccomandazione 3"]
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.5, maxTokens: 2000 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = parseGeminiJson<QualificationDeepInsights>(cleaned);
+    const urgenza = parsed.urgenzaImplementazione;
+    const validUrgenza =
+      urgenza === "BASSA" ||
+      urgenza === "MEDIA" ||
+      urgenza === "ALTA" ||
+      urgenza === "CRITICA"
+        ? urgenza
+        : criticalGaps.length > 0
+          ? "ALTA"
+          : "MEDIA";
+
+    return {
+      analisi: parsed.analisi || assessment.recommendation,
+      gapsPrincipali: parsed.gapsPrincipali?.length
+        ? parsed.gapsPrincipali
+        : criticalGaps.slice(0, 3),
+      pathToQualification: parsed.pathToQualification?.length
+        ? parsed.pathToQualification
+        : [
+            "Identificare gap prioritario",
+            "Scegliere accelerazione vs RTI",
+            "Verificare compliance pre-invio",
+          ],
+      urgenzaImplementazione: validUrgenza,
+      raccomandazioni: parsed.raccomandazioni?.length
+        ? parsed.raccomandazioni
+        : [
+            assessment.poteRTI ? "Contattare partner RTI oggi" : "Regolarizzare esclusori",
+            "Aggiornare profilo impresa (SOA, referenze)",
+          ],
+    };
+  } catch {
+    return {
+      analisi:
+        assessment.recommendation ||
+        "Pathway di qualificazione dipende dal colmamento dei gap critici.",
+      gapsPrincipali: criticalGaps.length
+        ? criticalGaps
+        : assessment.gapsCritici.map((g) => g.requirement).slice(0, 3),
+      pathToQualification: [
+        "Identificare gap prioritario",
+        "Selezionare strategia (accelerazione vs RTI)",
+        "Implementare in parallelo",
+        "Verificare compliance finale prima invio offerta",
+      ],
+      urgenzaImplementazione:
+        assessment.qualificazioneVerdetto === "ESCLUSORIO"
+          ? "CRITICA"
+          : criticalGaps.length > 0
+            ? "ALTA"
+            : "MEDIA",
+      raccomandazioni: [
+        assessment.poteRTI ? "Contattare partner RTI oggi" : "Regolarizzare requisiti esclusori",
+        "Gap SOA: CCIAA fast-track o RTI",
+        "Gap RC: broker per ampliamento urgente",
+      ],
+    };
+  }
+}
+
+export async function analyzeVariantClaimsInsights(
+  exposure: VariantRiskExposure
+): Promise<VariantClaimsInsights> {
+  const variantsSummary = exposure.variantClauses
+    .map((v) => `${v.tipoVariante}: ${v.titolo} — max ${v.percentualeMaxImporto ?? "?"}%`)
+    .join("\n");
+  const claimsSummary = exposure.claimsClauses
+    .map((c) => `${c.tipoClaimsAccettato}: ${c.titolo}`)
+    .join("\n");
+
+  const prompt = `Sei un esperto di varianti contrattuali e claims in appalti pubblici italiani.
+Analizza l'esposizione varianti/claims di questa gara.
+
+GARA: ${exposure.gara.title}
+Esposizione totale: €${exposure.esposizioneTotale.toLocaleString("it-IT")}
+Risk: ${exposure.riskClasse}
+P(variante): ${exposure.probabilitaVariantRichiesta}% · P(claims): ${exposure.probabilitaClaimsRivendicazione}%
+Varianti negate attese: €${exposure.importoVariantiNnegatteAtteso.toLocaleString("it-IT")}
+Claims attesi: €${exposure.importoTotaleClaimsAtteso.toLocaleString("it-IT")}
+
+VARIANTI:
+${variantsSummary}
+
+CLAIMS:
+${claimsSummary}
+
+Rispondi SOLO con JSON valido, senza markdown:
+{
+  "analisi": "2-3 frasi executive",
+  "rischiPrincipali": ["rischio 1", "rischio 2"],
+  "strategie": ["strategia 1", "strategia 2", "strategia 3"]
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.4, maxTokens: 1500 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = parseGeminiJson<VariantClaimsInsights>(cleaned);
+    return {
+      analisi: parsed.analisi || "",
+      rischiPrincipali: Array.isArray(parsed.rischiPrincipali) ? parsed.rischiPrincipali : [],
+      strategie: Array.isArray(parsed.strategie) ? parsed.strategie : [],
+    };
+  } catch {
+    return {
+      analisi: `Esposizione ${exposure.riskClasse}: €${exposure.esposizioneTotale.toLocaleString("it-IT")} tra varianti negate e claims non approvati.`,
+      rischiPrincipali: [
+        "Varianti non autorizzate",
+        "Claims con oneri prova onerosi",
+        "Tempi rivendicazione stretti",
+      ],
+      strategie: [
+        "Negoziare procedure autorizzazione varianti in contratto",
+        "Formalizzare cap claims e tempi rivendicazione",
+        exposure.riskClasse === "CRITICO" ? "Valutare no-bid" : "Documentare SAL e varianti in corso d'opera",
+      ],
+    };
+  }
+}
+
+export async function analyzeDelayPenaltyInsights(
+  exposure: DelayPenaltyExposure
+): Promise<DelayPenaltyInsights> {
+  const clausesSummary = exposure.penaltyClauses
+    .map(
+      (c) =>
+        `${c.tipo}: €${c.importoGiornaliero}/gg, tolleranza ${c.giorniToleranza}gg — ${c.descrizione.slice(0, 80)}`
+    )
+    .join("\n");
+
+  const prompt = `Sei un esperto di risk management per appalti pubblici italiani (ritardi e penalità).
+Analizza l'esposizione a penalità per ritardo di questa gara.
+
+GARA: ${exposure.gara.title}
+Durata stimata: ${exposure.durationGiorni} giorni
+Probabilità ritardo: ${exposure.probabilitaRitardo}%
+Giorni ritardo attesi: ${exposure.giorniRitardoAttesi}
+Penalità attesa: €${exposure.penalitaAttesa.toLocaleString("it-IT")}
+Worst case: €${exposure.penalitaWorstCase.toLocaleString("it-IT")}
+Margine stimato: €${exposure.margineStimato.toLocaleString("it-IT")}
+Margine dopo ritardo: €${exposure.margineDopoRitardo.toLocaleString("it-IT")}
+Risk classe: ${exposure.riskClasse}
+
+CLAUSOLE:
+${clausesSummary}
+
+Fattori rischio azienda: ${exposure.companyProfile.fattoriRischio.join(", ")}
+
+Rispondi SOLO con JSON valido, senza markdown:
+{
+  "analisi": "2-3 frasi executive",
+  "fattoriRischio": ["fattore 1", "fattore 2"],
+  "azioni": ["azione 1", "azione 2", "azione 3"]
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.4, maxTokens: 1500 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = parseGeminiJson<DelayPenaltyInsights>(cleaned);
+    return {
+      analisi: parsed.analisi || "",
+      fattoriRischio: Array.isArray(parsed.fattoriRischio) ? parsed.fattoriRischio : [],
+      azioni: Array.isArray(parsed.azioni) ? parsed.azioni : [],
+    };
+  } catch {
+    return {
+      analisi: `Esposizione ${exposure.riskClasse}: penalità attesa €${exposure.penalitaAttesa.toLocaleString("it-IT")} su margine €${exposure.margineStimato.toLocaleString("it-IT")}.`,
+      fattoriRischio: exposure.companyProfile.fattoriRischio,
+      azioni: [
+        "Negoziare cap penalità e giorni di tolleranza",
+        "Buffer operativo su timeline critica",
+        exposure.riskClasse === "CRITICO" ? "Valutare no-bid" : "Monitorare SAL e subappalti",
+      ],
+    };
+  }
+}
+
+export interface CAMStrategicInsights {
+  strategia: string;
+  puntiForza: string[];
+  puntiDeboli: string[];
+  opportunita: string[];
+  minacce: string[];
+  raccomandazioni: string[];
+}
+
+export async function generateCAMStrategicInsights(
+  profile: CAMComplianceProfile,
+  costAnalysis: import("./camComplianceEngine").CAMCostAnalysis[] = []
+): Promise<CAMStrategicInsights> {
+  const importo = parseTenderValue(profile.gara.value);
+  const importoLabel =
+    importo > 0 ? `€${importo.toLocaleString("it-IT")}` : profile.gara.value;
+
+  const topMissing = profile.assessment.requisitiMancanti.slice(0, 3);
+  const miglioramenti = profile.miglioramentiPossibili.slice(0, 2);
+  const costoTotaleExtra = costAnalysis.reduce((sum, c) => sum + c.deltaCosto, 0);
+
+  const prompt = `Sei un consulente di sostenibilità per imprese edili italiane.
+Analizza il profilo CAM compliance e genera strategia di posizionamento green.
+
+GARA: ${profile.gara.title}
+Valore: ${importoLabel}
+CAM Score: ${profile.assessment.scorePercentuale}%
+Conformità: ${profile.assessment.conformitaComplessiva}
+Obbligatori: ${profile.assessment.requisitiObbligatoriCoperti}/${profile.assessment.totalRequisitiObbligatori}
+Mancanti: ${topMissing.map((r) => r.titolo).join(", ") || "nessuno"}
+Investimento extra stimato: €${costoTotaleExtra.toLocaleString("it-IT")}
+Miglioramenti: ${miglioramenti.map((m) => m.categoria).join(", ") || "nessuno"}
+
+Rispondi SOLO con JSON valido, senza markdown:
+{
+  "strategia": "3-4 frasi",
+  "puntiForza": ["forza 1", "forza 2"],
+  "puntiDeboli": ["debole 1", "debole 2"],
+  "opportunita": ["opportunità 1", "opportunità 2"],
+  "minacce": ["minaccia 1", "minaccia 2"],
+  "raccomandazioni": ["azione 1", "azione 2", "azione 3"]
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.55, maxTokens: 2000 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = parseGeminiJson<CAMStrategicInsights>(cleaned);
+    return {
+      strategia: parsed.strategia || "",
+      puntiForza: Array.isArray(parsed.puntiForza) ? parsed.puntiForza : [],
+      puntiDeboli: Array.isArray(parsed.puntiDeboli) ? parsed.puntiDeboli : [],
+      opportunita: Array.isArray(parsed.opportunita) ? parsed.opportunita : [],
+      minacce: Array.isArray(parsed.minacce) ? parsed.minacce : [],
+      raccomandazioni: Array.isArray(parsed.raccomandazioni) ? parsed.raccomandazioni : [],
+    };
+  } catch {
+    return {
+      strategia:
+        "Posizionarsi come impresa green completando i requisiti CAM obbligatori e comunicando EPD/certificazioni in offerta tecnica.",
+      puntiForza: [`Score CAM attuale ${profile.assessment.scoreTotale}%`],
+      puntiDeboli: topMissing.map((r) => r.titolo),
+      opportunita: ["Accesso committenti con criteri premianti ambientali"],
+      minacce: ["Competitor già certificati", `Investimento €${costoTotaleExtra.toLocaleString("it-IT")}`],
+      raccomandazioni: [
+        "Completare gap CAM obbligatori",
+        "Formalizzare documentazione fornitori",
+        "Evidenziare CAM nel capitolato tecnico",
+      ],
+    };
+  }
+}
+
+export async function analyzeCAMDocumentationAudit(
+  tracker: import("./camComplianceEngine").CAMDocumentationTracker,
+  profile: CAMComplianceProfile
+): Promise<{
+  summary: string;
+  gapCritici: string[];
+  azioniImmediate: string[];
+}> {
+  const missing = tracker.documentiObbligatori.filter((d) => d.stato === "BOZZA");
+  const prompt = `Sei auditor CAM per appalti pubblici italiani.
+Valuta lo stato documentale CAM.
+
+GARA: ${profile.gara.title}
+Progresso: ${tracker.progressoDocumentazione}%
+Documenti obbligatori: ${tracker.documentiObbligatori.length}
+Non sottomessi: ${missing.map((d) => d.titolo).join(", ") || "nessuno"}
+Audit trail (ultime): ${tracker.auditTrail
+    .slice(-3)
+    .map((a) => a.azione)
+    .join("; ")}
+
+Rispondi SOLO con JSON:
+{
+  "summary": "2 frasi",
+  "gapCritici": ["gap 1"],
+  "azioniImmediate": ["azione 1", "azione 2"]
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.35, maxTokens: 1000 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = parseGeminiJson<{
+      summary: string;
+      gapCritici: string[];
+      azioniImmediate: string[];
+    }>(cleaned);
+    return {
+      summary: parsed.summary || "",
+      gapCritici: Array.isArray(parsed.gapCritici) ? parsed.gapCritici : [],
+      azioniImmediate: Array.isArray(parsed.azioniImmediate) ? parsed.azioniImmediate : [],
+    };
+  } catch {
+    return {
+      summary: `${tracker.progressoDocumentazione}% documentazione CAM completata.`,
+      gapCritici: missing.slice(0, 3).map((d) => d.titolo),
+      azioniImmediate: ["Caricare certificazioni EPD mancanti", "Allineare piani rifiuti/energia"],
     };
   }
 }

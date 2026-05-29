@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { X, RefreshCw, CheckCircle, XCircle, AlertTriangle, Loader2 } from "lucide-react";
+import { X, RefreshCw, CheckCircle, XCircle, AlertTriangle, Loader2, Clock, Zap, CheckCircle2 } from "lucide-react";
 import type { TenderDocument, CompanyProfile, BidNoBidResult, WinningPattern } from "../types";
 import { runBidNoBid, analyzeFitStrategicInsights, type FitStrategicInsights } from "../lib/gemini";
 import { checkSOAQualificationForTender } from "../lib/bidQualificationEngine";
@@ -13,6 +13,46 @@ import {
 import { matchGaraToPatterns } from "../lib/winningPatternEngine";
 import { ExplainabilityLayer } from "./ExplainabilityLayer";
 import { WinningPatternViewer } from "./WinningPatternViewer";
+import { DelayPenaltyExposureAnalyzer } from "./DelayPenaltyExposureAnalyzer";
+import { VariantClaimsRiskAnalyzer } from "./VariantClaimsRiskAnalyzer";
+import { PreSubmissionComplianceAudit } from "./PreSubmissionComplianceAudit";
+import { QualificationReadinessHub } from "./QualificationReadinessHub";
+import {
+  assessQualification,
+  defaultQualificationRequirementsForTender,
+  QUALIFICATION_VERDICT_STYLES,
+  generateRTIRecommendations,
+  generateAccelerationStrategies,
+  daysUntilTenderDeadlineForQualification,
+} from "../lib/qualificationEngine";
+import {
+  createPreSubmissionAudit,
+  generateFinalSubmissionChecklist,
+  generateExpiryReminders,
+  FINAL_VERDICT_STYLES,
+} from "../lib/preSubmissionAuditEngine";
+import { parseTenderValue } from "../lib/bidCalculations";
+import {
+  createDelayPenaltyExposure,
+  defaultPenaltyClausesForTender,
+  defaultCompanyDelayProfile,
+  estimateMargineForTender,
+  DELAY_RISK_STYLES,
+  TIMELINE_CRITICITA_STYLES,
+  analyzeTimelineRisk,
+  isDelayTrapGara,
+} from "../lib/delayPenaltyEngine";
+import {
+  createVariantClaimsRiskExposure,
+  defaultVariantClausesForTender,
+  defaultClaimsClausesForTender,
+  defaultCompanyVariantHistory,
+  VARIANT_RISK_STYLES,
+  identifyProblematicVariantClauses,
+  analyzeClaimsRisk,
+  isVariantTrapGara,
+  CLAIMS_RISK_LEVEL_STYLES,
+} from "../lib/variantClaimsEngine";
 
 interface BidNoBidEngineProps {
   tender: TenderDocument;
@@ -54,6 +94,84 @@ export function BidNoBidEngine({
   const [error, setError] = useState<string | null>(null);
   const [fitInsights, setFitInsights] = useState<FitStrategicInsights | null>(null);
   const [fitInsightsLoading, setFitInsightsLoading] = useState(false);
+  const [isDelayAnalyzerOpen, setIsDelayAnalyzerOpen] = useState(false);
+  const [isVariantAnalyzerOpen, setIsVariantAnalyzerOpen] = useState(false);
+  const [isComplianceAuditOpen, setIsComplianceAuditOpen] = useState(false);
+  const [auditPassed, setAuditPassed] = useState(false);
+  const [isQualificationHubOpen, setIsQualificationHubOpen] = useState(false);
+  const [qualificationVerdict, setQualificationVerdict] = useState<string | null>(null);
+
+  useEffect(() => {
+    setQualificationVerdict(null);
+  }, [tender.id]);
+
+  const delayExposure = useMemo(() => {
+    if (!profile) return null;
+    const penalties = defaultPenaltyClausesForTender(tender);
+    const delayProf = defaultCompanyDelayProfile(profile, tender);
+    const margine = estimateMargineForTender(tender, profile);
+    return createDelayPenaltyExposure(tender, penalties, delayProf, margine);
+  }, [tender, profile]);
+
+  const delayTimeline = useMemo(() => {
+    if (!delayExposure) return null;
+    return analyzeTimelineRisk(
+      tender,
+      delayExposure.durationGiorni,
+      delayExposure.companyProfile
+    );
+  }, [tender, delayExposure]);
+
+  const delayTrap = delayExposure ? isDelayTrapGara(delayExposure) : false;
+
+  const variantExposure = useMemo(() => {
+    if (!profile) return null;
+    const variants = defaultVariantClausesForTender(tender);
+    const claims = defaultClaimsClausesForTender();
+    const history = defaultCompanyVariantHistory(tender, profile);
+    return createVariantClaimsRiskExposure(tender, variants, claims, history);
+  }, [tender, profile]);
+
+  const problematicVariantCount = useMemo(() => {
+    if (!variantExposure) return 0;
+    return identifyProblematicVariantClauses(variantExposure.variantClauses).length;
+  }, [variantExposure]);
+
+  const claimsRisk = useMemo(() => {
+    if (!variantExposure) return null;
+    return analyzeClaimsRisk(tender);
+  }, [tender, variantExposure]);
+
+  const variantTrap = variantExposure ? isVariantTrapGara(variantExposure) : false;
+
+  const qualificationPreview = useMemo(() => {
+    if (!profile) return null;
+    const requirements = defaultQualificationRequirementsForTender(tender);
+    return assessQualification(tender, requirements, profile);
+  }, [tender, profile]);
+
+  const qualificationRtiCount = useMemo(
+    () => (qualificationPreview ? generateRTIRecommendations(qualificationPreview).length : 0),
+    [qualificationPreview]
+  );
+
+  const qualificationAccelCount = useMemo(() => {
+    if (!qualificationPreview) return 0;
+    return generateAccelerationStrategies(
+      qualificationPreview,
+      daysUntilTenderDeadlineForQualification(tender)
+    ).length;
+  }, [qualificationPreview, tender]);
+
+  const complianceAuditPreview = useMemo(() => {
+    if (!profile) return null;
+    const audit = createPreSubmissionAudit(tender, profile);
+    const importo = parseTenderValue(tender.value);
+    const margine = estimateMargineForTender(tender, profile);
+    const finalCheck = generateFinalSubmissionChecklist(audit, importo, margine);
+    const reminders = generateExpiryReminders(audit.checklistItems);
+    return { audit, finalCheck, reminders };
+  }, [tender, profile]);
 
   const strategicFit = useMemo(
     () =>
@@ -119,6 +237,10 @@ export function BidNoBidEngine({
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    setAuditPassed(false);
+  }, [tender.id]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -225,6 +347,103 @@ export function BidNoBidEngine({
             </div>
           )}
 
+          {profile && !loading && (
+            <div className="space-y-2">
+              {!qualificationVerdict ? (
+                <button
+                  type="button"
+                  onClick={() => setIsQualificationHubOpen(true)}
+                  className="cursor-pointer flex items-center gap-2 text-[11px] font-bold px-3 py-2 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-600 hover:bg-blue-600/30 transition-colors w-full justify-center"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  Check qualificazione PRIMA
+                </button>
+              ) : (
+                <div
+                  className={`text-[10px] font-bold px-3 py-2 rounded-lg text-center border ${
+                    qualificationVerdict === "QUALIFICATO"
+                      ? "bg-emerald-600/20 text-emerald-400 border-emerald-600"
+                      : qualificationVerdict === "ESCLUSORIO"
+                        ? "bg-red-600/20 text-red-400 border-red-600"
+                        : "bg-amber-600/20 text-amber-400 border-amber-600"
+                  }`}
+                >
+                  Qualificazione: {qualificationVerdict.replace(/_/g, " ")}
+                  <button
+                    type="button"
+                    onClick={() => setIsQualificationHubOpen(true)}
+                    className="cursor-pointer block mx-auto mt-1 text-[8px] text-slate-400 hover:text-white underline"
+                  >
+                    Rivedi hub
+                  </button>
+                </div>
+              )}
+              {qualificationPreview && !qualificationVerdict && (
+                <p className="text-[8px] text-slate-500 text-center">
+                  Anteprima:{" "}
+                  <span
+                    className={
+                      QUALIFICATION_VERDICT_STYLES[qualificationPreview.qualificazioneVerdetto]
+                        .text
+                    }
+                  >
+                    {qualificationPreview.qualificazioneVerdetto.replace(/_/g, " ")}
+                  </span>
+                  {" · "}
+                  {qualificationPreview.compliancePercent}% conformi
+                </p>
+              )}
+
+              {qualificationPreview &&
+                qualificationPreview.gapsCritici.length > 0 &&
+                qualificationPreview.qualificazioneVerdetto !== "QUALIFICATO" && (
+                  <div
+                    className={`rounded-xl p-3 border space-y-2 ${
+                      qualificationPreview.qualificazioneVerdetto === "ESCLUSORIO"
+                        ? "bg-red-950/30 border-red-800/60"
+                        : "bg-amber-950/20 border-amber-800/50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className={`text-[9px] font-bold uppercase flex items-center gap-1 ${
+                          qualificationPreview.qualificazioneVerdetto === "ESCLUSORIO"
+                            ? "text-red-400"
+                            : "text-amber-400"
+                        }`}
+                      >
+                        <AlertTriangle className="w-3 h-3 shrink-0" />
+                        Qualification warning
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setIsQualificationHubOpen(true)}
+                        className="cursor-pointer text-[8px] font-bold text-blue-400 hover:text-blue-300"
+                      >
+                        Hub →
+                      </button>
+                    </div>
+                    <p className="text-[8px] text-slate-300">
+                      {qualificationPreview.gapsCritici.length} gap ·{" "}
+                      {qualificationRtiCount > 0
+                        ? `${qualificationRtiCount} opzioni RTI`
+                        : "RTI non applicabile"}
+                      {qualificationAccelCount > 0 &&
+                        ` · ${qualificationAccelCount} strategie accelerate`}
+                    </p>
+                    <p className="text-[8px] text-red-300/90 line-clamp-2">
+                      {qualificationPreview.gapsCritici[0]?.gap}
+                    </p>
+                    {qualificationPreview.qualificazioneVerdetto === "ESCLUSORIO" && (
+                      <p className="text-[8px] text-red-400 font-bold">
+                        Blocco partecipazione finché non regolarizzi requisiti esclusori.
+                      </p>
+                    )}
+                  </div>
+                )}
+            </div>
+          )}
+
           {/* Winning patterns */}
           {(winningPatterns.length > 0 || isAnalyzingPatterns) && !loading && profile && (
             <WinningPatternViewer
@@ -232,6 +451,165 @@ export function BidNoBidEngine({
               similarityScores={similarityScores}
               isLoading={isAnalyzingPatterns}
             />
+          )}
+
+          {delayExposure && !loading && profile && (
+            <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[9px] font-bold text-amber-400 uppercase flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  Esposizione ritardo &amp; penalità
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsDelayAnalyzerOpen(true)}
+                  className="cursor-pointer text-[8px] font-bold text-amber-400 hover:text-amber-300"
+                >
+                  Analisi completa →
+                </button>
+              </div>
+
+              {delayTrap && (
+                <div className="bg-red-950/30 border border-red-800/60 rounded-lg p-2 flex items-start gap-2">
+                  <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
+                  <div className="text-[8px] text-red-300">
+                    <span className="font-bold text-red-400">Delay trap:</span> penalità attesa o
+                    margine residuo rendono la gara ad alto rischio. Valuta no-bid o negoziazione
+                    clausole prima dell&apos;offerta.
+                  </div>
+                </div>
+              )}
+
+              <div
+                className={`text-[9px] rounded-lg p-2 border ${
+                  DELAY_RISK_STYLES[delayExposure.riskClasse].box
+                }`}
+              >
+                <div className="flex justify-between items-center mb-1">
+                  <span
+                    className={`font-bold ${DELAY_RISK_STYLES[delayExposure.riskClasse].text}`}
+                  >
+                    {delayExposure.riskClasse}
+                  </span>
+                  <span className="text-white font-mono text-[10px]">
+                    €{delayExposure.penalitaAttesa.toLocaleString("it-IT")} pen.
+                  </span>
+                </div>
+                <div className="text-[8px] text-slate-400">
+                  Margine dopo ritardo: €
+                  {delayExposure.margineDopoRitardo.toLocaleString("it-IT")} · P(ritardo){" "}
+                  {delayExposure.probabilitaRitardo}%
+                </div>
+              </div>
+
+              {delayTimeline && (
+                <div
+                  className={`text-[8px] rounded-lg p-2 border ${
+                    TIMELINE_CRITICITA_STYLES[delayTimeline.critica].box
+                  }`}
+                >
+                  <div className="flex justify-between items-center mb-1">
+                    <span
+                      className={`font-bold uppercase ${
+                        TIMELINE_CRITICITA_STYLES[delayTimeline.critica].text
+                      }`}
+                    >
+                      Timeline {delayTimeline.critica}
+                    </span>
+                    <span className="text-blue-400 font-mono">
+                      +{delayTimeline.bufferSuggerito} gg buffer
+                    </span>
+                  </div>
+                  {delayTimeline.faseRischiosa && (
+                    <div className="text-slate-400">
+                      Fase critica: {delayTimeline.faseRischiosa.nome} (+
+                      {Math.round(delayTimeline.faseRischiosa.deltaPercent * 100)}% storico)
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {variantExposure && !loading && profile && (
+            <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[9px] font-bold text-orange-400 uppercase flex items-center gap-1">
+                  <Zap className="w-3 h-3" />
+                  Varianti &amp; claims
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsVariantAnalyzerOpen(true)}
+                  className="cursor-pointer text-[8px] font-bold text-orange-400 hover:text-orange-300"
+                >
+                  Analisi completa →
+                </button>
+              </div>
+
+              {(variantTrap || variantExposure.riskClasse === "CRITICO") && (
+                <div className="bg-red-950/30 border border-red-800/60 rounded-lg p-2 flex items-start gap-2">
+                  <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
+                  <div className="text-[8px] text-red-300">
+                    <span className="font-bold text-red-400">Variant trap:</span> esposizione varianti/claims
+                    critica. Negozia clausole o valuta no-bid prima dell&apos;offerta.
+                  </div>
+                </div>
+              )}
+
+              <div
+                className={`text-[9px] rounded-lg p-2 border ${
+                  VARIANT_RISK_STYLES[variantExposure.riskClasse].box
+                }`}
+              >
+                <div className="flex justify-between items-center mb-1">
+                  <span
+                    className={`font-bold ${VARIANT_RISK_STYLES[variantExposure.riskClasse].text}`}
+                  >
+                    {variantExposure.riskClasse}
+                  </span>
+                  <span className="text-white font-mono text-[10px]">
+                    €{variantExposure.esposizioneTotale.toLocaleString("it-IT")}
+                  </span>
+                </div>
+                <div className="text-[8px] text-slate-400">
+                  {variantExposure.numeroVariantiStimate} varianti ·{" "}
+                  {variantExposure.numeroClaimsAttesi} claims · P(var){" "}
+                  {variantExposure.probabilitaVariantRichiesta}%
+                  {problematicVariantCount > 0 &&
+                    ` · ${problematicVariantCount} clausole critiche`}
+                </div>
+              </div>
+
+              {claimsRisk && (
+                <div
+                  className={`text-[8px] rounded-lg p-2 border ${
+                    claimsRisk.riskClaimsAlti
+                      ? CLAIMS_RISK_LEVEL_STYLES.alto.box
+                      : CLAIMS_RISK_LEVEL_STYLES.medio.box
+                  }`}
+                >
+                  <div className="flex justify-between items-center mb-1">
+                    <span
+                      className={`font-bold uppercase ${
+                        claimsRisk.riskClaimsAlti
+                          ? CLAIMS_RISK_LEVEL_STYLES.alto.text
+                          : CLAIMS_RISK_LEVEL_STYLES.medio.text
+                      }`}
+                    >
+                      Claims {claimsRisk.riskClaimsAlti ? "ALTO" : "MEDIO"}
+                    </span>
+                    <span className="text-amber-400 font-mono">
+                      €{claimsRisk.estimatedClaimsValue.toLocaleString("it-IT")}
+                    </span>
+                  </div>
+                  <div className="text-slate-400">
+                    {claimsRisk.historicoSimilari.percentualeProgetti_ConClaims}% progetti con
+                    claims · {claimsRisk.historicoSimilari.percentualeClaimsApprovati}% approvati
+                  </div>
+                </div>
+              )}
+            </div>
           )}
 
           {profile?.soaAttuale && !loading && (
@@ -966,6 +1344,65 @@ export function BidNoBidEngine({
                 </div>
               )}
 
+              {/* Pre-submission gate */}
+              {profile && complianceAuditPreview && (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-3 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="text-[9px] font-bold text-blue-400 uppercase">
+                      Pre-submission compliance
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsComplianceAuditOpen(true)}
+                      className={`cursor-pointer flex items-center gap-2 text-[11px] font-bold px-3 py-1.5 rounded transition-colors ${
+                        auditPassed
+                          ? "bg-emerald-600/20 text-emerald-400 border border-emerald-600"
+                          : "bg-blue-600/20 text-blue-400 border border-blue-600 hover:bg-blue-600/30"
+                      }`}
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      {auditPassed ? "Audit superato" : "Apri audit"}
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-neutral-900 rounded-lg p-2">
+                      <div className="text-[12px] font-bold text-white">
+                        {complianceAuditPreview.audit.completamentoPercent}%
+                      </div>
+                      <div className="text-[8px] text-slate-500">Completion</div>
+                    </div>
+                    <div className="bg-neutral-900 rounded-lg p-2">
+                      <div
+                        className={`text-[12px] font-bold ${
+                          FINAL_VERDICT_STYLES[complianceAuditPreview.finalCheck.verdictFinal]
+                            .text
+                        }`}
+                      >
+                        {complianceAuditPreview.finalCheck.verdictFinal}
+                      </div>
+                      <div className="text-[8px] text-slate-500">Final check</div>
+                    </div>
+                    <div className="bg-neutral-900 rounded-lg p-2">
+                      <div className="text-[12px] font-bold text-amber-400">
+                        {complianceAuditPreview.audit.itemsObbligatoriBlocchi}
+                      </div>
+                      <div className="text-[8px] text-slate-500">Blocchi</div>
+                    </div>
+                  </div>
+                  {complianceAuditPreview.reminders.prossimoCritical && (
+                    <div className="text-[8px] text-red-300 border border-red-900/50 rounded p-2 bg-red-950/20">
+                      {complianceAuditPreview.reminders.prossimoCritical.messaggio}
+                    </div>
+                  )}
+                  {!auditPassed &&
+                    complianceAuditPreview.finalCheck.verdictFinal !== "GO" && (
+                      <div className="text-[8px] text-amber-400">
+                        Invio consentito solo con Final Check = GO e audit senza blocchi.
+                      </div>
+                    )}
+                </div>
+              )}
+
               {/* Rigenera */}
               {profile && (
                 <button
@@ -989,6 +1426,37 @@ export function BidNoBidEngine({
           )}
         </div>
       </div>
+
+      <DelayPenaltyExposureAnalyzer
+        isOpen={isDelayAnalyzerOpen}
+        onClose={() => setIsDelayAnalyzerOpen(false)}
+        tender={tender}
+        margineStimato={delayExposure?.margineStimato}
+        companyProfile={profile}
+      />
+
+      <VariantClaimsRiskAnalyzer
+        isOpen={isVariantAnalyzerOpen}
+        onClose={() => setIsVariantAnalyzerOpen(false)}
+        tender={tender}
+        companyProfile={profile}
+      />
+
+      <PreSubmissionComplianceAudit
+        isOpen={isComplianceAuditOpen}
+        onClose={() => setIsComplianceAuditOpen(false)}
+        onReadyToSubmit={() => setAuditPassed(true)}
+        tender={tender}
+        companyProfile={profile}
+      />
+
+      <QualificationReadinessHub
+        isOpen={isQualificationHubOpen}
+        onClose={() => setIsQualificationHubOpen(false)}
+        onQualificationCheck={(verdict) => setQualificationVerdict(verdict)}
+        tender={tender}
+        companyProfile={profile}
+      />
     </div>
   );
 }

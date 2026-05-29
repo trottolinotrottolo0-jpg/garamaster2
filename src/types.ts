@@ -701,6 +701,441 @@ export interface RiskComplianceProfile {
   };
 }
 
+export type CAMCategoriaTipologia =
+  | "MATERIALE"
+  | "PROCESSO"
+  | "ENERGIA"
+  | "RIFIUTI"
+  | "TRASPORTO"
+  | "ALTRO";
+
+export interface CAMCategoria {
+  id: string;
+  codice: string;
+  nome: string;
+  descrizione: string;
+  tipologia: CAMCategoriaTipologia;
+  obbligatorio: boolean;
+  percentualeMinimaApplicazione?: number;
+  scorePunti: number;
+  documentazionerichiesta: string[];
+  note: string;
+}
+
+export interface CAMRequirement {
+  id: string;
+  titolo: string;
+  descrizione: string;
+  categoria: CAMCategoria;
+  obbligatorio: boolean;
+  deadline?: string;
+  confidenza: number;
+}
+
+export type CAMAssessmentStato =
+  | "NON_INIZIATO"
+  | "IN_VALUTAZIONE"
+  | "CONFORME"
+  | "NON_CONFORME";
+
+export interface CAMAssessmentItem {
+  requirementId: string;
+  titolo: string;
+  puntiMassimi: number;
+  puntiOttenuti: number;
+  stato: CAMAssessmentStato;
+  evidenza?: string;
+  dataValutazione?: string;
+}
+
+export type CAMConformitaComplessiva =
+  | "PIENAMENTE_CONFORME"
+  | "CONFORME"
+  | "PARZIALMENTE_CONFORME"
+  | "NON_CONFORME";
+
+export interface CAMComplianceScore {
+  id: string;
+  gara: TenderDocument;
+  dataValutazione: string;
+  assessmentItems: CAMAssessmentItem[];
+  scoreTotale: number;
+  scorePercentuale: number;
+  conformitaComplessiva: CAMConformitaComplessiva;
+  requisitiObbligatoriCoperti: number;
+  totalRequisitiObbligatori: number;
+  requisitiMancanti: CAMRequirement[];
+  azioniCorrettive: Array<{
+    requirementId: string;
+    azione: string;
+    timeline: string;
+    responsabile: string;
+  }>;
+  insightsDeepSeek?: {
+    analisi: string;
+    puntiForza: string[];
+    puntiDeboli: string[];
+    raccomandazioni: string[];
+  };
+}
+
+export type CAMMiglioramentoEffort = "BASSO" | "MEDIO" | "ALTO";
+
+export interface CAMComplianceProfile {
+  id: string;
+  gara: TenderDocument;
+  dataCreazione: string;
+  requirements: CAMRequirement[];
+  assessment: CAMComplianceScore;
+  miglioramentiPossibili: Array<{
+    categoria: string;
+    descrizione: string;
+    puntiAggiuntivi: number;
+    effort: CAMMiglioramentoEffort;
+  }>;
+}
+
+export type PenaltyClauseTipo =
+  | "GIORNALIERA"
+  | "RAGGUAGLIATA"
+  | "DECURTAZIONE_IMPORTO"
+  | "RISOLUZIONE";
+
+export interface PenaltyClause {
+  id: string;
+  tipo: PenaltyClauseTipo;
+  importoGiornaliero: number;
+  importoMassimo?: number;
+  percentuale?: number;
+  giorniToleranza: number;
+  descrizione: string;
+  note: string;
+}
+
+export interface CompanyDelayProfile {
+  id: string;
+  settore?: string;
+  categoria?: string;
+  percentualeRitardiStorici: number;
+  giorninMedioRitardo: number;
+  peggioreRitardo: number;
+  confidenzaStima: number;
+  fattoriRischio: string[];
+}
+
+export type DelayRiskClasse = "BASSO" | "MEDIO" | "ALTO" | "CRITICO";
+
+export interface DelayPenaltyExposure {
+  id: string;
+  gara: TenderDocument;
+  dataAnalisi: string;
+  penaltyClauses: PenaltyClause[];
+  companyProfile: CompanyDelayProfile;
+  durationGiorni: number;
+  giorniToleranzaTotale: number;
+  probabilitaRitardo: number;
+  giorniRitardoAttesi: number;
+  penalitaAttesa: number;
+  penalitaWorstCase: number;
+  penalitaBestCase: number;
+  margineStimato: number;
+  margineDopoRitardo: number;
+  margineDeltaPercent: number;
+  riskClasse: DelayRiskClasse;
+  recommendation: string;
+  insightsDeepSeek?: {
+    analisi: string;
+    fattoriRischio: string[];
+    azioni: string[];
+  };
+}
+
+export interface DelayRiskIndicator {
+  categoria: string;
+  regione: string;
+  delayRateStorico: number;
+  gioriniMedioRitardo: number;
+  dataRilevamento: string;
+}
+
+export type VariantClauseTipo =
+  | "VARIANTE_AUTORIZZABILE"
+  | "VARIANTE_DISCREZIONALE"
+  | "VARIANTE_VIETATA";
+
+export type ClaimsClauseTipo = "TOTALE" | "PARZIALE" | "LIMITATO" | "NEGATO";
+
+export interface VariantClause {
+  id: string;
+  titolo: string;
+  descrizione: string;
+  tipoVariante: VariantClauseTipo;
+  percentualeMaxImporto?: number;
+  percentualeMaxQuantita?: number;
+  proceduaAutorizzazione: string;
+  consequenzeNegazione: string;
+  note: string;
+}
+
+export interface ClaimsClause {
+  id: string;
+  titolo: string;
+  descrizione: string;
+  tipoClaimsAccettato: ClaimsClauseTipo;
+  percentualeMaxCodifica?: number;
+  tempoRivendicazione?: string;
+  oneriProva: string;
+  consequenze: string;
+  note: string;
+}
+
+export interface CompanyVariantHistory {
+  id: string;
+  numeroVariantiRichieste: number;
+  numeroVariantiApprovate: number;
+  numeroVariantiNegate: number;
+  importoMedioVariante: number;
+  importoMedioVarianteNegata: number;
+  tempoMedioApprovazione: number;
+  contestazioniBySA: number;
+}
+
+export type VariantRiskClasse = "BASSO" | "MEDIO" | "ALTO" | "CRITICO";
+
+export interface VariantRiskExposure {
+  id: string;
+  gara: TenderDocument;
+  dataAnalisi: string;
+  variantClauses: VariantClause[];
+  claimsClauses: ClaimsClause[];
+  companyProfile: CompanyVariantHistory;
+  probabilitaVariantRichiesta: number;
+  numeroVariantiStimate: number;
+  importoMedioVariantaAttesa: number;
+  importoTotaleVariantiAttese: number;
+  percentualeApprovazione: number;
+  importoVariantiNnegatteAtteso: number;
+  probabilitaClaimsRivendicazione: number;
+  numeroClaimsAttesi: number;
+  importoMedioClaimsAtteso: number;
+  importoTotaleClaimsAtteso: number;
+  percentualeApprovazioneClaims: number;
+  riskClasse: VariantRiskClasse;
+  esposizioneTotale: number;
+  recommendation: string;
+  insightsDeepSeek?: {
+    analisi: string;
+    rischiPrincipali: string[];
+    strategie: string[];
+  };
+}
+
+export interface VariantClaimsRiskIndicator {
+  categoria: string;
+  regione: string;
+  percentualeVariantiRichieste: number;
+  percentualeVariantiApprovate: number;
+  importoMedioVariante: number;
+  percentualeClaimsRivendicati: number;
+  importoMedioClaimsApprovato: number;
+  dataRilevamento: string;
+}
+
+export type ComplianceChecklistCategoria =
+  | "DOCUMENTALE"
+  | "ASSICURATIVA"
+  | "CERTIFICAZIONE"
+  | "TECNICA"
+  | "ORGANIZZATIVA";
+
+export type ComplianceChecklistStato =
+  | "NON_INIZIATO"
+  | "IN_CORSO"
+  | "COMPLETATO"
+  | "NON_APPLICABILE";
+
+export interface ComplianceChecklistItem {
+  id: string;
+  categoria: ComplianceChecklistCategoria;
+  titolo: string;
+  descrizione: string;
+  obbligatorio: boolean;
+  stato: ComplianceChecklistStato;
+  scadenza?: string;
+  giorniRimanenti?: number;
+  evidenza?: {
+    fileName: string;
+    dataUpload: string;
+    versione: number;
+    note?: string;
+    checksum?: string;
+    fileSize?: number;
+  };
+  note: string;
+}
+
+export interface ComplianceCategory {
+  nome: string;
+  itemsTotal: number;
+  itemsCompletati: number;
+  progressoPercent: number;
+  itemsCritici: ComplianceChecklistItem[];
+}
+
+export type PreSubmissionComplianceRisk = "VERDE" | "GIALLO" | "ROSSO" | "BLOCCANTE";
+
+export type ComplianceIssueSeverity = "INFO" | "WARNING" | "CRITICAL" | "BLOCKING";
+
+export interface ComplianceAuditIssue {
+  severity: ComplianceIssueSeverity;
+  categoria: string;
+  messaggio: string;
+  azione: string;
+  deadline?: string;
+}
+
+export interface PreSubmissionComplianceAudit {
+  id: string;
+  gara: TenderDocument;
+  dataCreazione: string;
+  dataUltimaModifica: string;
+  checklistItems: ComplianceChecklistItem[];
+  categorieBreakdown: ComplianceCategory[];
+  completamentoPercent: number;
+  itemsObbligatori: number;
+  itemsObbligatoriBlocchi: number;
+  complianceRisk: PreSubmissionComplianceRisk;
+  issuesFound: ComplianceAuditIssue[];
+  readyForSubmission: boolean;
+  blockingIssues: string[];
+  warningIssues: string[];
+  insightsDeepSeek?: {
+    analisi: string;
+    itemsCritici: string[];
+    azioni: string[];
+  };
+}
+
+export type ComplianceDocumentoTipo =
+  | "CERTIFICATO"
+  | "ASSICURAZIONE"
+  | "CV"
+  | "PROGETTO"
+  | "DICHIARAZIONE"
+  | "ALTRO";
+
+export interface ComplianceDocumentation {
+  id: string;
+  tipoDocumento: ComplianceDocumentoTipo;
+  titolo: string;
+  descrizione: string;
+  fileName: string;
+  dataUpload: string;
+  scadenza?: string;
+  versione: number;
+  checksum: string;
+  note: string;
+}
+
+export interface AuditTrailEntry {
+  dataOra: string;
+  azione: string;
+  utente: string;
+  elementoModificato: string;
+  statoPrecedente: string;
+  statoNuovo: string;
+  note?: string;
+}
+
+export type QualificationRequirementCategoria =
+  | "SOA"
+  | "CERTIFICAZIONE"
+  | "ASSICURAZIONE"
+  | "ESPERIENZA"
+  | "CAPITALE"
+  | "ORGANIZZATIVA";
+
+export type QualificationRequirementTipo = "OBBLIGATORIO" | "PREFERENZIALE" | "ESCLUSORIO";
+
+export interface QualificationRequirement {
+  id: string;
+  titolo: string;
+  descrizione: string;
+  categoria: QualificationRequirementCategoria;
+  tipoRequisito: QualificationRequirementTipo;
+  soaCategoria?: string;
+  soaImportoMinimo?: number;
+  certificazioneRichiesta?: string;
+  importoAssicurazione?: number;
+  anniiEsperienza?: number;
+  numeroProgettSimilari?: number;
+  capitaleMinimoRichiesto?: number;
+  personaleMinimo?: number;
+  confidenza: number;
+  note: string;
+}
+
+export type QualificationMatchStatus = "CONFORME" | "NON_CONFORME" | "PARZIALE" | "VERIFICARE";
+
+export interface CompanyQualificationStatus {
+  requirementId: string;
+  titolo: string;
+  categoria: string;
+  status: QualificationMatchStatus;
+  evidenza?: string;
+  gap?: string;
+  azioni: string[];
+}
+
+export type QualificationVerdetto =
+  | "QUALIFICATO"
+  | "QUALIFICATO_PARZIALE"
+  | "NON_QUALIFICATO"
+  | "ESCLUSORIO";
+
+export interface QualificationGapCritico {
+  requirement: string;
+  gap: string;
+  timeline_colmamento?: string;
+  effort: "BASSO" | "MEDIO" | "ALTO";
+}
+
+export interface QualificationAssessment {
+  id: string;
+  gara: TenderDocument;
+  dataAnalisi: string;
+  requirements: QualificationRequirement[];
+  requirementsTotal: number;
+  requirementsObbligatori: number;
+  requirementsEsclusori: number;
+  matchingStatus: CompanyQualificationStatus[];
+  conformiObbligatori: number;
+  conformiEsclusori: number;
+  qualificazioneVerdetto: QualificationVerdetto;
+  compliancePercent: number;
+  gapsCritici: QualificationGapCritico[];
+  poteRTI: boolean;
+  requirementsPerRTI: string[];
+  recommendation: string;
+  insightsDeepSeek?: {
+    analisi: string;
+    gapsPrincipali: string[];
+    pathToQualification: string[];
+  };
+}
+
+export interface QualificationReadinessPath {
+  requirementId: string;
+  titolo: string;
+  gapAttuali: string;
+  azionePer_Colmare: string;
+  timeline: string;
+  effort: "BASSO" | "MEDIO" | "ALTO";
+  costo?: number;
+  partner_Necessario?: string;
+  priorita: "CRITICA" | "ALTA" | "MEDIA";
+}
+
 export interface CompanyProfile {
   // Anagrafica
   companyName: string;
