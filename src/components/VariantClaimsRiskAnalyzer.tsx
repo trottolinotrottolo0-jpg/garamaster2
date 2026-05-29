@@ -37,9 +37,6 @@ interface VariantClaimsRiskAnalyzerProps {
 
 type AnalyzerTab = "summary" | "negotiation" | "claims" | "insights" | "pricing";
 
-const formatEuro = (n: number) =>
-  new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
-
 export function VariantClaimsRiskAnalyzer({
   isOpen,
   onClose,
@@ -627,8 +624,22 @@ export function VariantClaimsRiskAnalyzer({
               )}
 
               <div className={`rounded-lg p-3 border ${riskStyle.box}`}>
+                <div className={`text-[9px] font-bold uppercase mb-2 ${riskStyle.text}`}>
+                  Raccomandazione
+                </div>
                 <div className="text-[9px] text-slate-300">{exposure.recommendation}</div>
               </div>
+
+              {exposure.insightsDeepSeek && exposure.insightsDeepSeek.strategie.length > 0 && (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-lg p-3 text-[9px]">
+                  <div className="font-bold text-orange-400 mb-1">Strategie suggerite</div>
+                  {exposure.insightsDeepSeek.strategie.map((s, i) => (
+                    <div key={i} className="text-slate-400">
+                      → {s}
+                    </div>
+                  ))}
+                </div>
+              )}
             </>
           )}
         </div>

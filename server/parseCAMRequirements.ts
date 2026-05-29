@@ -323,22 +323,3 @@ export function validateCAMRequirements(
 }
 
 export { CAM_CATEGORIE_STANDARD };
-  const model = resolveOpenRouterModel();
-  const pdfContent = Buffer.from(bandoPdfBase64, "base64").toString("utf-8").slice(0, 6000);
-
-  const prompt = `${CAM_PROMPT}
-Titolo: ${tender.title}
-Categoria: ${tender.category}
-Testo estratto: ${pdfContent}`;
-
-  try {
-    const { text } = await deepseekChatCompletion({ model, prompt, maxTokens: 2000 });
-    const cleaned = text.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
-    const arr = JSON.parse(cleaned);
-    if (!Array.isArray(arr)) return [];
-    return arr as CAMRequirement[];
-  } catch (err) {
-    console.error("[parseCAMRequirements] error:", err);
-    return [];
-  }
-}

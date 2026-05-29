@@ -34,10 +34,6 @@ const EFFORT_CLASS: Record<string, string> = {
   MEDIO: "text-amber-400",
   ALTO: "text-red-400",
 };
-
-const formatEuro = (n: number) =>
-  new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
-
 export function DelayPenaltyExposureAnalyzer({
   isOpen,
   onClose,
@@ -641,7 +637,7 @@ export function DelayPenaltyExposureAnalyzer({
             type="button"
             onClick={exportReport}
             disabled={!exposure}
-            className="cursor-pointer flex-1 text-[10px] font-bold px-3 py-1.5 bg-amber-600 text-white rounded hover:bg-amber-700 transition-colors disabled:opacity-50"
+            className="cursor-pointer flex-1 text-[10px] font-bold px-3 py-1.5 bg-amber-600 text-white rounded hover:border-amber-700 transition-colors disabled:opacity-50"
           >
             Export report
           </button>

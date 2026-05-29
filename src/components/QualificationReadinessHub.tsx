@@ -9,6 +9,8 @@ import {
 import type {
   TenderDocument,
   QualificationAssessment,
+  QualificationReadinessPath,
+  QualificationRequirement,
   CompanyProfile,
 } from "../types";
 import {
@@ -39,8 +41,6 @@ interface QualificationReadinessHubProps {
   onQualificationCheck?: (verdict: string) => void;
   tender: TenderDocument;
   companyProfile?: CompanyProfile | null;
-  /** Gate mode: user must confirm before proceeding (calls onQualificationCheck on footer). */
-  gateMode?: boolean;
 }
 
 type HubTab = "summary" | "rti" | "acceleration" | "insights" | "progress";
@@ -59,13 +59,19 @@ const TAB_LABELS: Record<HubTab, string> = {
   progress: "Progress",
 };
 
+const VERDICT_LABEL: Record<QualificationAssessment["raccomandazioneFinale"], string> = {
+  PARTECIPA: "✓ Partecipa",
+  PARTECIPA_CON_RTI: "~ Partecipa con RTI",
+  AVVALIMENTO: "⚠ Avvalimento necessario",
+  NON_PARTECIPARE: "✗ Non partecipare",
+};
+
 export function QualificationReadinessHub({
   isOpen,
   onClose,
   onQualificationCheck,
   tender,
   companyProfile: companyProfileProp,
-  gateMode = false,
 }: QualificationReadinessHubProps) {
   const [assessment, setAssessment] = useState<QualificationAssessment | null>(null);
   const [isParsing, setIsParsing] = useState(false);
@@ -688,12 +694,7 @@ export function QualificationReadinessHub({
           </button>
           <button
             type="button"
-            onClick={() => {
-              if (assessment) {
-                onQualificationCheck?.(assessment.qualificazioneVerdetto);
-              }
-              onClose();
-            }}
+            onClick={onClose}
             disabled={assessment?.qualificazioneVerdetto === "ESCLUSORIO"}
             className={`cursor-pointer flex-1 text-[10px] font-bold px-3 py-1.5 rounded-lg transition-colors ${
               assessment?.qualificazioneVerdetto === "ESCLUSORIO"
