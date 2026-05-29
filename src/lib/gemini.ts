@@ -20,8 +20,14 @@ import type {
   FitStrategicProfile,
   AwardCriterio,
   ReverseMapVoce,
-  CompanyProfile,
+  MarketIntelligenceSnapshot,
+  RiskComplianceProfile,
 } from "../types";
+import type {
+  AntimafiaComplianceCheck,
+  InsuranceFinancialRisk,
+  ComplianceDocumentationTracker,
+} from "./riskComplianceEngine";
 import { parseTenderValue } from "./bidCalculations";
 import { requestParsePrezzario } from "./parsePrezzarioApi";
 import {
@@ -1572,6 +1578,292 @@ export interface FitStrategicInsights {
   rischi: string[];
   azioni: string[];
   spiegazione: string;
+}
+
+export interface MarketIntelligenceInsights {
+  summary: string;
+  opportunita: string[];
+  minacce: string[];
+  raccomandazioni: string[];
+}
+
+export async function analyzeMarketIntelligenceInsights(
+  snapshot: MarketIntelligenceSnapshot,
+  selectedTender?: TenderDocument
+): Promise<MarketIntelligenceInsights> {
+  const trendsSummary = snapshot.trendsMercato
+    .slice(0, 5)
+    .map(
+      (t) =>
+        `${t.categoria}/${t.regione}: ${t.numeroGareEmesse} gare, trend ${t.trendDirezione} ${t.trendPercent}%`
+    )
+    .join("\n");
+
+  const competitorsSummary = snapshot.competitorsTop5
+    .map((c) => `${c.nome}: ${c.numeroGareVinte} vittorie, win rate ${c.winRate.toFixed(0)}%`)
+    .join("\n");
+
+  const garaBlock = selectedTender
+    ? `\nGARA IN ANALISI:\n- ${selectedTender.title}\n- Categoria: ${selectedTender.category}\n- Regione: ${selectedTender.region}\n- Importo: ${selectedTender.value}\n`
+    : "";
+
+  const prompt = `Sei un analista di market intelligence per appalti pubblici italiani.
+Interpreta questo snapshot di mercato e fornisci intelligence operativa.
+
+GARE MONITORATE: ${snapshot.numeroGareAttiveMonitorate}
+COMPETITOR TRACCIATI: ${snapshot.numeroCompetitorsTracciati}
+
+TREND MERCATO:
+${trendsSummary || "Nessun trend calcolato"}
+
+TOP COMPETITOR:
+${competitorsSummary || "Nessun competitor in storico"}
+${garaBlock}
+
+Rispondi SOLO con JSON valido, senza markdown:
+{
+  "summary": "2-3 frasi executive summary",
+  "opportunita": ["opportunità 1", "opportunità 2", "opportunità 3"],
+  "minacce": ["minaccia 1", "minaccia 2"],
+  "raccomandazioni": ["azione 1", "azione 2", "azione 3"]
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.4, maxTokens: 1500 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = parseGeminiJson<MarketIntelligenceInsights>(cleaned);
+    return {
+      summary: parsed.summary || "",
+      opportunita: Array.isArray(parsed.opportunita) ? parsed.opportunita : [],
+      minacce: Array.isArray(parsed.minacce) ? parsed.minacce : [],
+      raccomandazioni: Array.isArray(parsed.raccomandazioni) ? parsed.raccomandazioni : [],
+    };
+  } catch {
+    return {
+      summary:
+        "Mercato attivo con competitor consolidati nelle categorie monitorate. Valutare differenziazione tecnica e pricing.",
+      opportunita: ["Focus su nicchie con trend UP", "Partnership in regioni target"],
+      minacce: ["Concentrazione aggiudicazioni su top player", "Ribassi aggressivi"],
+      raccomandazioni: [
+        "Monitorare bandi simili ultimi 12 mesi",
+        "Allineare offerta tecnica ai criteri premianti",
+      ],
+    };
+  }
+}
+
+export type RiskComplianceInsights = NonNullable<RiskComplianceProfile["insightsDeepSeek"]>;
+
+export async function analyzeRiskComplianceInsights(
+  profile: RiskComplianceProfile
+): Promise<RiskComplianceInsights> {
+  const risksSummary = profile.riskFactori
+    .slice(0, 8)
+    .map((r) => `${r.nome} (score ${r.score}, ${r.categoria})`)
+    .join("\n");
+
+  const reqsSummary = profile.complianceRequirements
+    .filter((r) => r.obbligatorio)
+    .slice(0, 10)
+    .map((r) => `- ${r.titolo}`)
+    .join("\n");
+
+  const prompt = `Sei un consulente compliance e risk management per appalti pubblici italiani.
+Analizza questo profilo risk & compliance.
+
+GARA: ${profile.gara.title}
+RISK CLASSE: ${profile.riskClasse} (${profile.riskComplessivo}/100)
+PROGRESSO CHECKLIST: ${profile.checklist.progressoCompletamento}%
+
+RISCHI:
+${risksSummary || "Nessun rischio identificato"}
+
+REQUISITI OBBLIGATORI:
+${reqsSummary || "Nessun requisito"}
+
+Rispondi SOLO con JSON valido, senza markdown:
+{
+  "riepilogo": "2-3 frasi executive",
+  "principaliRischi": ["rischio 1", "rischio 2"],
+  "requisitiCritici": ["requisito 1", "requisito 2"],
+  "raccomandazioni": ["azione 1", "azione 2", "azione 3"]
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.35, maxTokens: 1500 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = parseGeminiJson<RiskComplianceInsights>(cleaned);
+    return {
+      riepilogo: parsed.riepilogo || "",
+      principaliRischi: Array.isArray(parsed.principaliRischi) ? parsed.principaliRischi : [],
+      requisitiCritici: Array.isArray(parsed.requisitiCritici) ? parsed.requisitiCritici : [],
+      raccomandazioni: Array.isArray(parsed.raccomandazioni) ? parsed.raccomandazioni : [],
+    };
+  } catch {
+    return {
+      riepilogo: `Profilo ${profile.riskClasse}: monitorare requisiti obbligatori e timeline submission.`,
+      principaliRischi: profile.riskFactori.slice(0, 3).map((r) => r.nome),
+      requisitiCritici: profile.complianceRequirements
+        .filter((r) => r.obbligatorio)
+        .slice(0, 3)
+        .map((r) => r.titolo),
+      raccomandazioni: [
+        "Completare checklist documentale",
+        "Verifica legale requisiti antimafia e SOA",
+        "Piano mitigation per rischi score ≥ 50",
+      ],
+    };
+  }
+}
+
+export interface DeepRiskAnalysisResult {
+  riepilogo: string;
+  principaliRischi: string[];
+  requisitiCritici: string[];
+  raccomandazioni: string[];
+  scoreRischioBest: number;
+  scoreRischioWorst: number;
+}
+
+export async function generateDeepRiskAnalysis(
+  profile: RiskComplianceProfile,
+  antimafiaCheck: AntimafiaComplianceCheck,
+  insuranceRisk: InsuranceFinancialRisk
+): Promise<DeepRiskAnalysisResult> {
+  const importo = parseTenderValue(profile.gara.value);
+  const importoLabel =
+    importo > 0 ? `€${importo.toLocaleString("it-IT")}` : profile.gara.value;
+
+  const topRisks = profile.riskFactori
+    .slice(0, 5)
+    .map((r) => `${r.nome} (score ${r.score})`);
+  const criticalCompliance = profile.complianceRequirements
+    .filter((c) => c.obbligatorio)
+    .slice(0, 5)
+    .map((c) => c.titolo);
+
+  const prompt = `Sei un esperto di risk management e compliance per appalti pubblici italiani.
+Analizza questo profilo e genera un assessment approfondito.
+
+GARA:
+- Titolo: ${profile.gara.title}
+- Valore: ${importoLabel}
+- Categoria: ${profile.gara.category}
+- Regione: ${profile.gara.region}
+
+RISK PROFILE:
+- Risk complessivo: ${profile.riskComplessivo}/100 (${profile.riskClasse})
+- Top rischi: ${topRisks.join(" | ") || "nessuno"}
+
+COMPLIANCE CRITICA:
+- Antimafia: SOF=${antimafiaCheck.requiresSOF}, DURC=${antimafiaCheck.requiresDURC}, tracciabilità=${antimafiaCheck.requiresTracciabilita}
+- Garanzia richiesta: €${insuranceRisk.importoGaranziaRichiesto.toLocaleString("it-IT")}
+- Capitale circolante stimato: €${insuranceRisk.stimaCapitaleCircolante.toLocaleString("it-IT")}
+- Risk finanziario: ${insuranceRisk.riskFinanziario}/100
+- Items critici: ${criticalCompliance.join(", ") || "nessuno"}
+
+Rispondi SOLO con JSON valido, senza markdown:
+{
+  "riepilogo": "paragrafo 3-4 frasi",
+  "principaliRischi": ["rischio 1", "rischio 2", "rischio 3"],
+  "requisitiCritici": ["requisito 1", "requisito 2"],
+  "raccomandazioni": ["azione 1", "azione 2", "azione 3"],
+  "scoreRischioBest": 25,
+  "scoreRischioWorst": 85
+}
+
+scoreRischioBest = scenario ottimistico con mitigazione completa (0-100).
+scoreRischioWorst = scenario pessimistico senza mitigazione (0-100).`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.5, maxTokens: 2000 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = parseGeminiJson<DeepRiskAnalysisResult>(cleaned);
+    const best = Math.min(100, Math.max(0, Number(parsed.scoreRischioBest ?? 25)));
+    const worst = Math.min(100, Math.max(0, Number(parsed.scoreRischioWorst ?? 85)));
+    return {
+      riepilogo: parsed.riepilogo || "",
+      principaliRischi: Array.isArray(parsed.principaliRischi) ? parsed.principaliRischi : [],
+      requisitiCritici: Array.isArray(parsed.requisitiCritici) ? parsed.requisitiCritici : [],
+      raccomandazioni: Array.isArray(parsed.raccomandazioni) ? parsed.raccomandazioni : [],
+      scoreRischioBest: best,
+      scoreRischioWorst: Math.max(best, worst),
+    };
+  } catch {
+    return {
+      riepilogo:
+        profile.insightsDeepSeek?.riepilogo ||
+        `Profilo ${profile.riskClasse}: attenzione a compliance antimafia e garanzie finanziarie.`,
+      principaliRischi:
+        profile.riskFactori.slice(0, 3).map((r) => r.nome) || ["Documentazione incompleta"],
+      requisitiCritici: ["SOF", "DURC", "Tracciabilità flussi"],
+      raccomandazioni: [
+        "Completare documentazione antimafia",
+        "Procurare garanzia e polizza RC",
+        "Piano mitigation per rischi score ≥ 50",
+      ],
+      scoreRischioBest: Math.max(0, profile.riskComplessivo - 20),
+      scoreRischioWorst: Math.min(100, profile.riskComplessivo + 25),
+    };
+  }
+}
+
+export interface ComplianceDocumentationInsights {
+  summary: string;
+  priorita: string[];
+  alertScadenze: string[];
+}
+
+export async function analyzeComplianceDocumentationInsights(
+  profile: RiskComplianceProfile,
+  trackers: ComplianceDocumentationTracker[],
+  docReport: { summary: string; overdueCount: number; notStartedCount: number }
+): Promise<ComplianceDocumentationInsights> {
+  const overdue = trackers
+    .filter((t) => t.stato === "OVERDUE")
+    .map((t) => t.requirementTitolo);
+  const pending = trackers
+    .filter((t) => t.stato === "NOT_STARTED" && profile.complianceRequirements.find((r) => r.id === t.requirementId)?.obbligatorio)
+    .slice(0, 5)
+    .map((t) => t.requirementTitolo);
+
+  const prompt = `Sei un compliance officer per appalti pubblici italiani.
+Sintetizza lo stato documentazione per questa gara.
+
+GARA: ${profile.gara.title}
+PROGRESSO CHECKLIST: ${profile.checklist.progressoCompletamento}%
+REPORT: ${docReport.summary}
+SCADUTI: ${overdue.join(", ") || "nessuno"}
+NON INIZIATI OBBLIGATORI: ${pending.join(", ") || "nessuno"}
+
+Rispondi SOLO con JSON:
+{
+  "summary": "2 frasi stato documentale",
+  "priorita": ["azione 1", "azione 2", "azione 3"],
+  "alertScadenze": ["alert 1"]
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.35, maxTokens: 1200 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = parseGeminiJson<ComplianceDocumentationInsights>(cleaned);
+    return {
+      summary: parsed.summary || docReport.summary,
+      priorita: Array.isArray(parsed.priorita) ? parsed.priorita : [],
+      alertScadenze: Array.isArray(parsed.alertScadenze) ? parsed.alertScadenze : [],
+    };
+  } catch {
+    return {
+      summary: docReport.summary,
+      priorita: pending.length > 0 ? [`Completare: ${pending[0]}`] : ["Mantenere documentazione aggiornata"],
+      alertScadenze:
+        overdue.length > 0 ? overdue.map((t) => `Scaduto: ${t}`) : [],
+    };
+  }
 }
 
 export async function analyzeFitStrategicInsights(

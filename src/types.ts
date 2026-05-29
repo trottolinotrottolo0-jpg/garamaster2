@@ -548,6 +548,159 @@ export interface AwardCriteriaAnalysis {
   note: string[];
 }
 
+export interface CompetitorProfile {
+  id: string;
+  nome: string;
+  ragioneSociale: string;
+  settoriOperativi: string[];
+  regioni: string[];
+  importoMedioGare: number;
+  winRate: number;
+  numeroGareVinte: number;
+  numeroGarePartecipate: number;
+  garaUltimaVittoria?: string;
+  dataUltimoRilevamento: string;
+  notaProfilazioneManuale?: string;
+}
+
+export interface MarketTrend {
+  id: string;
+  periodo: string;
+  categoria: string;
+  regione: string;
+  numeroGareEmesse: number;
+  importoMedioGara: number;
+  importoTotaleMercato: number;
+  trendDirezione: "UP" | "DOWN" | "STABILE";
+  trendPercent: number;
+  prezzomedioBanda: number;
+  ribassoMedioPercent: number;
+  concentrazioneWinner: number;
+}
+
+export type GaraSimilareAggiudicazione =
+  | "VINTA"
+  | "PERSA"
+  | "NON_PARTECIPATA"
+  | "SOSPESA";
+
+export interface GaraSimilareHistorica {
+  id: string;
+  gara: TenderDocument;
+  dataEmissione: string;
+  dataRisultato: string;
+  aggiudicazione: GaraSimilareAggiudicazione;
+  winnerName?: string;
+  offerteRicevute: number;
+  ribassoVincente: number;
+  puntiTecnici: number;
+  importoAggiudicato: number;
+  notaRisultato?: string;
+}
+
+export interface MarketIntelligenceSnapshot {
+  id: string;
+  dataSnapshot: string;
+  numeroGareAttiveMonitorate: number;
+  numeroCompetitorsTracciati: number;
+  trendsMercato: MarketTrend[];
+  competitorsTop5: CompetitorProfile[];
+  gareSimiliHistoriche: GaraSimilareHistorica[];
+  insightsDeepSeek?: {
+    summary: string;
+    opportunita: string[];
+    minacce: string[];
+    raccomandazioni: string[];
+  };
+}
+
+export interface MarketIntelligenceConfig {
+  monitoraCategorieTarget: string[];
+  regioniTarget: string[];
+  competitorsToTrack: string[];
+  frequenzaUpdateGiorni: number;
+  dataUltimoUpdate: string;
+}
+
+export type ComplianceRequirementCategoria =
+  | "DOCUMENTALE"
+  | "ASSICURATIVA"
+  | "CERTIFICAZIONE"
+  | "ORGANIZZATIVA"
+  | "ALTRO";
+
+export interface ComplianceRequirement {
+  id: string;
+  titolo: string;
+  descrizione: string;
+  categoria: ComplianceRequirementCategoria;
+  obbligatorio: boolean;
+  deadline?: string;
+  note: string;
+  confidenza: number;
+}
+
+export type RiskFattoreCategoria =
+  | "LEGALE"
+  | "REPUTAZIONALE"
+  | "OPERATIVO"
+  | "FINANZIARIO"
+  | "ALTRO";
+
+export interface RiskFattore {
+  id: string;
+  nome: string;
+  descrizione: string;
+  categoria: RiskFattoreCategoria;
+  probabilita: number;
+  impatto: number;
+  score: number;
+  mitigazione: string[];
+  confidenza: number;
+}
+
+export type ComplianceScadenzaStato = "OK" | "ATTENZIONE" | "CRITICA";
+
+export interface ComplianceChecklist {
+  id: string;
+  gara: TenderDocument;
+  dataCreazione: string;
+  requirements: ComplianceRequirement[];
+  progressoCompletamento: number;
+  itemsCompletati: string[];
+  scadenze: Array<{
+    requirementId: string;
+    dataScadenza: string;
+    giorni: number;
+    stato: ComplianceScadenzaStato;
+  }>;
+  documentazioneAllegata: Array<{
+    requirementId: string;
+    fileName: string;
+    dataUpload: string;
+    nota?: string;
+  }>;
+}
+
+export type RiskClasse = "BASSO" | "MEDIO" | "ALTO" | "CRITICO";
+
+export interface RiskComplianceProfile {
+  id: string;
+  gara: TenderDocument;
+  dataAnalisi: string;
+  riskFactori: RiskFattore[];
+  riskComplessivo: number;
+  riskClasse: RiskClasse;
+  complianceRequirements: ComplianceRequirement[];
+  checklist: ComplianceChecklist;
+  insightsDeepSeek?: {
+    riepilogo: string;
+    principaliRischi: string[];
+    requisitiCritici: string[];
+    raccomandazioni: string[];
+  };
+}
+
 export interface CompanyProfile {
   // Anagrafica
   companyName: string;

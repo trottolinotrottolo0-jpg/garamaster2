@@ -10,6 +10,7 @@ import {
   CompanyProfile,
   type ColllegamentoComputoPrezzario,
   type WinningPattern,
+  type GaraSimilareHistorica,
 } from "./types";
 import {
   generateWinningPatterns,
@@ -45,7 +46,7 @@ import { ChatSessionsSidebar } from "./components/ChatSessionsSidebar";
 import type { ChatSession } from "./types/chat";
 import { DocumentAnalyzer } from "./components/DocumentAnalyzer";
 import { DeveloperGuide } from "./components/DeveloperGuide";
-import { CompanyProfile } from "./components/CompanyProfile";
+import { CompanyProfile as CompanyProfileComponent } from "./components/CompanyProfile";
 import { TenderPortfolioScore } from "./components/TenderPortfolioScore";
 import { VessatorieModal } from "./components/VessatorieModal";
 import { BidNoBidEngine } from "./components/BidNoBidEngine";
@@ -55,6 +56,10 @@ import { PrezzariManager } from "./components/PrezzariManager";
 import { CapacitySaturationEngine } from "./components/CapacitySaturationEngine";
 import { ProfitabilityGate } from "./components/ProfitabilityGate";
 import { AwardCriteriaAnalyzer } from "./components/AwardCriteriaAnalyzer";
+import { MarketIntelligenceDashboard } from "./components/MarketIntelligenceDashboard";
+import { RiskComplianceProfiler } from "./components/RiskComplianceProfiler";
+import { fetchHistoricalGareData } from "./lib/marketIntelligenceApi";
+import { buildHistoricalFromCompanyProfile, mergeHistoricalSources } from "./lib/marketIntelligenceEngine";
 import { AlertDailyFeed } from "./components/AlertDailyFeed";
 import { ScoutingGareApp } from "./components/ScoutingGareApp";
 import { GaraRoiCalculator } from "./components/GaraRoiCalculator";
@@ -69,7 +74,7 @@ import {
   Cpu, Layers, Network, BookOpen, MessageSquare, ShieldCheck, Info, Plus, Search, Sliders, LogOut, Settings, 
   Sparkles, HelpCircle, Briefcase, User, Database, ShieldAlert, Key, Download, Bell,
   Menu, ChevronDown, ChevronLeft, ChevronRight, PanelLeftOpen, PanelRightOpen,
-  FileText, Calculator, Scale, TrendingUp, Activity, BarChart3, Users, Home, Target, ListChecks
+  FileText, Calculator, Scale, TrendingUp, Activity, BarChart3, Users, Home, Target, ListChecks, AlertTriangle
 } from "lucide-react";
 
 const LOCALSTORAGE_PREZZARI_KEY = "gm_prezzari";
@@ -141,6 +146,9 @@ export default function App() {
   const [isSimplifiedMode, setIsSimplifiedMode] = useState<boolean>(true);
   const [isVessatorieOpen, setIsVessatorieOpen] = useState<boolean>(false);
   const [isAwardAnalyzerOpen, setIsAwardAnalyzerOpen] = useState(false);
+  const [isMarketIntelligenceOpen, setIsMarketIntelligenceOpen] = useState(false);
+  const [isRiskComplianceOpen, setIsRiskComplianceOpen] = useState(false);
+  const [historicalGareData, setHistoricalGareData] = useState<GaraSimilareHistorica[]>([]);
   const [isBidNoBidOpen, setIsBidNoBidOpen] = useState(false);
   const [isBidPricingOpen, setIsBidPricingOpen] = useState(false);
   const [isCapacityOpen, setIsCapacityOpen] = useState(false);
@@ -210,6 +218,27 @@ export default function App() {
       setCompanyProfile(null);
     }
   }, [isBidPricingOpen, isPrezzariManagerOpen]);
+
+  useEffect(() => {
+    if (!isMarketIntelligenceOpen) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const fromApi = await fetchHistoricalGareData();
+        const fromProfile = buildHistoricalFromCompanyProfile(companyProfile);
+        if (!cancelled) {
+          setHistoricalGareData(mergeHistoricalSources(fromApi, fromProfile));
+        }
+      } catch {
+        if (!cancelled) {
+          setHistoricalGareData(buildHistoricalFromCompanyProfile(companyProfile));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isMarketIntelligenceOpen, companyProfile]);
 
   useEffect(() => {
     const storico = companyProfile?.historicalTenders;
@@ -1741,6 +1770,28 @@ export default function App() {
                       <li>
                         <button
                           type="button"
+                          onClick={() => setIsMarketIntelligenceOpen(true)}
+                          className="cursor-pointer text-slate-300 hover:text-brand-gold transition-colors text-left flex items-center gap-1.5"
+                          id="market-intelligence-sidebar-btn"
+                        >
+                          <BarChart3 className="w-3 h-3 text-brand-gold shrink-0" />
+                          Market Intelligence
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          onClick={() => setIsRiskComplianceOpen(true)}
+                          className="cursor-pointer text-slate-300 hover:text-brand-gold transition-colors text-left flex items-center gap-1.5"
+                          id="risk-compliance-sidebar-btn"
+                        >
+                          <AlertTriangle className="w-3 h-3 text-brand-gold shrink-0" />
+                          Risk &amp; Compliance
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
                           onClick={() => setIsBidNoBidOpen(true)}
                           className="cursor-pointer text-slate-300 hover:text-brand-gold transition-colors text-left flex items-center gap-1.5"
                           id="bid-no-bid-sidebar-btn"
@@ -1928,7 +1979,7 @@ export default function App() {
                 </div>
               )}
 
-              <CompanyProfile />
+              <CompanyProfileComponent />
             </div>
           )}
         </div>
@@ -2155,6 +2206,21 @@ export default function App() {
       <AwardCriteriaAnalyzer
         isOpen={isAwardAnalyzerOpen}
         onClose={() => setIsAwardAnalyzerOpen(false)}
+        tender={selectedTender}
+      />
+
+      <MarketIntelligenceDashboard
+        isOpen={isMarketIntelligenceOpen}
+        onClose={() => setIsMarketIntelligenceOpen(false)}
+        allTenders={allTenders}
+        selectedTender={selectedTender}
+        historicalData={historicalGareData}
+        yourWinRatePercent={companyProfile?.avgWinRatePercent}
+      />
+
+      <RiskComplianceProfiler
+        isOpen={isRiskComplianceOpen}
+        onClose={() => setIsRiskComplianceOpen(false)}
         tender={selectedTender}
       />
 
