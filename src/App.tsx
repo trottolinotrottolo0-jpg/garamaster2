@@ -61,6 +61,7 @@ import { RiskComplianceProfiler } from "./components/RiskComplianceProfiler";
 import { CAMComplianceChecker } from "./components/CAMComplianceChecker";
 import { DelayPenaltyExposureAnalyzer } from "./components/DelayPenaltyExposureAnalyzer";
 import { VariantClaimsRiskAnalyzer } from "./components/VariantClaimsRiskAnalyzer";
+import { PreSubmissionComplianceAudit } from "./components/PreSubmissionComplianceAudit";
 import { fetchHistoricalGareData } from "./lib/marketIntelligenceApi";
 import { buildHistoricalFromCompanyProfile, mergeHistoricalSources } from "./lib/marketIntelligenceEngine";
 import { AlertDailyFeed } from "./components/AlertDailyFeed";
@@ -77,7 +78,7 @@ import {
   Cpu, Layers, Network, BookOpen, MessageSquare, ShieldCheck, Info, Plus, Search, Sliders, LogOut, Settings, 
   Sparkles, HelpCircle, Briefcase, User, Database, ShieldAlert, Key, Download, Bell,
   Menu, ChevronDown, ChevronLeft, ChevronRight, PanelLeftOpen, PanelRightOpen,
-  FileText, Calculator, Scale, TrendingUp, Activity, BarChart3, Users, Home, Target, ListChecks, AlertTriangle, Leaf, Clock, Zap
+  FileText, Calculator, Scale, TrendingUp, Activity, BarChart3, Users, Home, Target, ListChecks, AlertTriangle, Leaf, Clock, Zap, CheckCircle2
 } from "lucide-react";
 
 const LOCALSTORAGE_PREZZARI_KEY = "gm_prezzari";
@@ -154,6 +155,7 @@ export default function App() {
   const [isCAMComplianceOpen, setIsCAMComplianceOpen] = useState(false);
   const [isDelayPenaltyOpen, setIsDelayPenaltyOpen] = useState(false);
   const [isVariantClaimsOpen, setIsVariantClaimsOpen] = useState(false);
+  const [isPreSubmissionAuditOpen, setIsPreSubmissionAuditOpen] = useState(false);
   const [historicalGareData, setHistoricalGareData] = useState<GaraSimilareHistorica[]>([]);
   const [isBidNoBidOpen, setIsBidNoBidOpen] = useState(false);
   const [isBidPricingOpen, setIsBidPricingOpen] = useState(false);
@@ -1831,6 +1833,17 @@ export default function App() {
                       <li>
                         <button
                           type="button"
+                          onClick={() => setIsPreSubmissionAuditOpen(true)}
+                          className="cursor-pointer text-slate-300 hover:text-blue-400 transition-colors text-left flex items-center gap-1.5"
+                          id="presubmission-audit-sidebar-btn"
+                        >
+                          <CheckCircle2 className="w-3 h-3 text-blue-400 shrink-0" />
+                          Pre-Submission Audit
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
                           onClick={() => setIsBidNoBidOpen(true)}
                           className="cursor-pointer text-slate-300 hover:text-brand-gold transition-colors text-left flex items-center gap-1.5"
                           id="bid-no-bid-sidebar-btn"
@@ -2278,6 +2291,13 @@ export default function App() {
       <VariantClaimsRiskAnalyzer
         isOpen={isVariantClaimsOpen}
         onClose={() => setIsVariantClaimsOpen(false)}
+        tender={selectedTender}
+        companyProfile={companyProfile}
+      />
+
+      <PreSubmissionComplianceAudit
+        isOpen={isPreSubmissionAuditOpen}
+        onClose={() => setIsPreSubmissionAuditOpen(false)}
         tender={selectedTender}
         companyProfile={companyProfile}
       />

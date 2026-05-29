@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { X, RefreshCw, CheckCircle, XCircle, AlertTriangle, Loader2, Clock, Zap } from "lucide-react";
+import { X, RefreshCw, CheckCircle, XCircle, AlertTriangle, Loader2, Clock, Zap, CheckCircle2 } from "lucide-react";
 import type { TenderDocument, CompanyProfile, BidNoBidResult, WinningPattern } from "../types";
 import { runBidNoBid, analyzeFitStrategicInsights, type FitStrategicInsights } from "../lib/gemini";
 import { checkSOAQualificationForTender } from "../lib/bidQualificationEngine";
@@ -15,6 +15,14 @@ import { ExplainabilityLayer } from "./ExplainabilityLayer";
 import { WinningPatternViewer } from "./WinningPatternViewer";
 import { DelayPenaltyExposureAnalyzer } from "./DelayPenaltyExposureAnalyzer";
 import { VariantClaimsRiskAnalyzer } from "./VariantClaimsRiskAnalyzer";
+import { PreSubmissionComplianceAudit } from "./PreSubmissionComplianceAudit";
+import {
+  createPreSubmissionAudit,
+  generateFinalSubmissionChecklist,
+  generateExpiryReminders,
+  FINAL_VERDICT_STYLES,
+} from "../lib/preSubmissionAuditEngine";
+import { parseTenderValue } from "../lib/bidCalculations";
 import {
   createDelayPenaltyExposure,
   defaultPenaltyClausesForTender,
@@ -79,6 +87,8 @@ export function BidNoBidEngine({
   const [fitInsightsLoading, setFitInsightsLoading] = useState(false);
   const [isDelayAnalyzerOpen, setIsDelayAnalyzerOpen] = useState(false);
   const [isVariantAnalyzerOpen, setIsVariantAnalyzerOpen] = useState(false);
+  const [isComplianceAuditOpen, setIsComplianceAuditOpen] = useState(false);
+  const [auditPassed, setAuditPassed] = useState(false);
 
   const delayExposure = useMemo(() => {
     if (!profile) return null;
@@ -118,6 +128,16 @@ export function BidNoBidEngine({
   }, [tender, variantExposure]);
 
   const variantTrap = variantExposure ? isVariantTrapGara(variantExposure) : false;
+
+  const complianceAuditPreview = useMemo(() => {
+    if (!profile) return null;
+    const audit = createPreSubmissionAudit(tender, profile);
+    const importo = parseTenderValue(tender.value);
+    const margine = estimateMargineForTender(tender, profile);
+    const finalCheck = generateFinalSubmissionChecklist(audit, importo, margine);
+    const reminders = generateExpiryReminders(audit.checklistItems);
+    return { audit, finalCheck, reminders };
+  }, [tender, profile]);
 
   const strategicFit = useMemo(
     () =>
@@ -183,6 +203,10 @@ export function BidNoBidEngine({
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    setAuditPassed(false);
+  }, [tender.id]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -1189,6 +1213,65 @@ export function BidNoBidEngine({
                 </div>
               )}
 
+              {/* Pre-submission gate */}
+              {profile && complianceAuditPreview && (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-3 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="text-[9px] font-bold text-blue-400 uppercase">
+                      Pre-submission compliance
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsComplianceAuditOpen(true)}
+                      className={`cursor-pointer flex items-center gap-2 text-[11px] font-bold px-3 py-1.5 rounded transition-colors ${
+                        auditPassed
+                          ? "bg-emerald-600/20 text-emerald-400 border border-emerald-600"
+                          : "bg-blue-600/20 text-blue-400 border border-blue-600 hover:bg-blue-600/30"
+                      }`}
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      {auditPassed ? "Audit superato" : "Apri audit"}
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-neutral-900 rounded-lg p-2">
+                      <div className="text-[12px] font-bold text-white">
+                        {complianceAuditPreview.audit.completamentoPercent}%
+                      </div>
+                      <div className="text-[8px] text-slate-500">Completion</div>
+                    </div>
+                    <div className="bg-neutral-900 rounded-lg p-2">
+                      <div
+                        className={`text-[12px] font-bold ${
+                          FINAL_VERDICT_STYLES[complianceAuditPreview.finalCheck.verdictFinal]
+                            .text
+                        }`}
+                      >
+                        {complianceAuditPreview.finalCheck.verdictFinal}
+                      </div>
+                      <div className="text-[8px] text-slate-500">Final check</div>
+                    </div>
+                    <div className="bg-neutral-900 rounded-lg p-2">
+                      <div className="text-[12px] font-bold text-amber-400">
+                        {complianceAuditPreview.audit.itemsObbligatoriBlocchi}
+                      </div>
+                      <div className="text-[8px] text-slate-500">Blocchi</div>
+                    </div>
+                  </div>
+                  {complianceAuditPreview.reminders.prossimoCritical && (
+                    <div className="text-[8px] text-red-300 border border-red-900/50 rounded p-2 bg-red-950/20">
+                      {complianceAuditPreview.reminders.prossimoCritical.messaggio}
+                    </div>
+                  )}
+                  {!auditPassed &&
+                    complianceAuditPreview.finalCheck.verdictFinal !== "GO" && (
+                      <div className="text-[8px] text-amber-400">
+                        Invio consentito solo con Final Check = GO e audit senza blocchi.
+                      </div>
+                    )}
+                </div>
+              )}
+
               {/* Rigenera */}
               {profile && (
                 <button
@@ -1224,6 +1307,14 @@ export function BidNoBidEngine({
       <VariantClaimsRiskAnalyzer
         isOpen={isVariantAnalyzerOpen}
         onClose={() => setIsVariantAnalyzerOpen(false)}
+        tender={tender}
+        companyProfile={profile}
+      />
+
+      <PreSubmissionComplianceAudit
+        isOpen={isComplianceAuditOpen}
+        onClose={() => setIsComplianceAuditOpen(false)}
+        onReadyToSubmit={() => setAuditPassed(true)}
         tender={tender}
         companyProfile={profile}
       />

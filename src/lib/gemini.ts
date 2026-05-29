@@ -25,6 +25,7 @@ import type {
   CAMComplianceProfile,
   DelayPenaltyExposure,
   VariantRiskExposure,
+  PreSubmissionComplianceAudit,
 } from "../types";
 import type {
   AntimafiaComplianceCheck,
@@ -2107,6 +2108,139 @@ Rispondi SOLO con JSON valido, senza markdown:
         "Negoziare clausole in sede di offerta",
         "Preparare computi per scenari claims",
         exposure.riskClasse === "CRITICO" ? "Valutare no-bid" : "Allineare PM e legale pre-firma",
+      ],
+    };
+  }
+}
+
+export type PreSubmissionComplianceInsights = NonNullable<
+  PreSubmissionComplianceAudit["insightsDeepSeek"]
+>;
+
+export interface ComplianceAuditDeepInsights {
+  analisi: string;
+  itemsCritici: string[];
+  itemsAttenzione: string[];
+  raccomandazioni: string[];
+  priorityActions: Array<{ azione: string; timeline: string; impact: string }>;
+}
+
+export async function analyzeComplianceAuditDeep(
+  audit: PreSubmissionComplianceAudit
+): Promise<ComplianceAuditDeepInsights> {
+  const importo = parseTenderValue(audit.gara.value);
+  const importoLabel =
+    importo > 0 ? `€${importo.toLocaleString("it-IT")}` : audit.gara.value;
+
+  const blockingItems = audit.checklistItems.filter(
+    (i) => i.obbligatorio && i.stato !== "COMPLETATO" && i.stato !== "NON_APPLICABILE"
+  );
+  const warningItems = audit.checklistItems.filter(
+    (i) =>
+      i.giorniRimanenti != null && i.giorniRimanenti < 30 && i.giorniRimanenti >= 0
+  );
+
+  const prompt = `Sei un esperto di compliance per appalti pubblici italiani.
+Analizza questo pre-submission audit.
+
+GARA: ${audit.gara.title}
+Valore: ${importoLabel}
+Risk: ${audit.complianceRisk} | Completion: ${audit.completamentoPercent}%
+Blocchi: ${blockingItems.length} | Scadenze <30gg: ${warningItems.length}
+
+ITEMS BLOCCANTI:
+${blockingItems.map((i) => `- ${i.titolo}`).join("\n") || "nessuno"}
+
+Rispondi SOLO con JSON valido, senza markdown:
+{
+  "analisi": "4-5 frasi assessment",
+  "itemsCritici": ["item 1"],
+  "itemsAttenzione": ["item 1"],
+  "raccomandazioni": ["rac 1"],
+  "priorityActions": [{ "azione": "...", "timeline": "...", "impact": "high" }]
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.5, maxTokens: 2000 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = parseGeminiJson<ComplianceAuditDeepInsights>(cleaned);
+    return {
+      analisi: parsed.analisi || "",
+      itemsCritici: Array.isArray(parsed.itemsCritici) ? parsed.itemsCritici : [],
+      itemsAttenzione: Array.isArray(parsed.itemsAttenzione) ? parsed.itemsAttenzione : [],
+      raccomandazioni: Array.isArray(parsed.raccomandazioni) ? parsed.raccomandazioni : [],
+      priorityActions: Array.isArray(parsed.priorityActions) ? parsed.priorityActions : [],
+    };
+  } catch {
+    return {
+      analisi: `Audit ${audit.complianceRisk}: ${audit.completamentoPercent}% completato, ${audit.itemsObbligatoriBlocchi} obbligatori aperti.`,
+      itemsCritici: blockingItems.map((i) => i.titolo),
+      itemsAttenzione: warningItems.map((i) => i.titolo),
+      raccomandazioni: [
+        "Completare items obbligatori bloccanti",
+        "Rinnovare certificazioni in scadenza",
+        "Caricare evidenze documentali",
+      ],
+      priorityActions: [
+        { azione: "Chiudere obbligatori", timeline: "3-5 giorni", impact: "high" },
+        { azione: "Rinnovare scadenze critiche", timeline: "7 giorni", impact: "high" },
+        { azione: "Revisione offerta tecnica", timeline: "2 settimane", impact: "medium" },
+      ],
+    };
+  }
+}
+
+export async function analyzePreSubmissionComplianceInsights(
+  audit: PreSubmissionComplianceAudit
+): Promise<PreSubmissionComplianceInsights> {
+  const blocking = audit.blockingIssues.slice(0, 5).join("; ") || "nessuno";
+  const pending = audit.checklistItems
+    .filter((i) => i.obbligatorio && i.stato !== "COMPLETATO" && i.stato !== "NON_APPLICABILE")
+    .map((i) => i.titolo)
+    .slice(0, 8)
+    .join(", ");
+
+  const prompt = `Sei un esperto di compliance documentale per offerte in appalti pubblici italiani.
+Analizza lo stato pre-invio di questa gara.
+
+GARA: ${audit.gara.title}
+Risk: ${audit.complianceRisk}
+Completion: ${audit.completamentoPercent}%
+Obbligatori mancanti: ${audit.itemsObbligatoriBlocchi}
+Pronto invio: ${audit.readyForSubmission ? "sì" : "no"}
+
+Blocchi: ${blocking}
+Item obbligatori pendenti: ${pending || "nessuno"}
+
+Rispondi SOLO con JSON valido, senza markdown:
+{
+  "analisi": "2-3 frasi executive",
+  "itemsCritici": ["item 1", "item 2"],
+  "azioni": ["azione 1", "azione 2", "azione 3"]
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.4, maxTokens: 1500 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = parseGeminiJson<PreSubmissionComplianceInsights>(cleaned);
+    return {
+      analisi: parsed.analisi || "",
+      itemsCritici: Array.isArray(parsed.itemsCritici) ? parsed.itemsCritici : [],
+      azioni: Array.isArray(parsed.azioni) ? parsed.azioni : [],
+    };
+  } catch {
+    return {
+      analisi: `Audit ${audit.complianceRisk}: ${audit.completamentoPercent}% completato, ${audit.itemsObbligatoriBlocchi} obbligatori da chiudere.`,
+      itemsCritici: audit.checklistItems
+        .filter((i) => i.obbligatorio && i.stato !== "COMPLETATO")
+        .map((i) => i.titolo)
+        .slice(0, 5),
+      azioni: [
+        "Completare tutti gli item MUST",
+        "Verificare scadenze DURC e assicurazioni",
+        audit.readyForSubmission ? "Procedere con invio" : "Non inviare finché BLOCCANTE/ROSSO",
       ],
     };
   }

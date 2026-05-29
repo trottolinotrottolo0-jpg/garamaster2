@@ -358,3 +358,6 @@ export async function parseRiskComplianceFromBando(
   const riskFactori = await identifyRiskFactori(tender, complianceRequirements);
   return { complianceRequirements, riskFactori };
 }
+
+/** Re-export per pre-submission audit (checklist da bando). */
+export { requirementsToChecklistItems } from "../src/lib/preSubmissionAuditEngine";

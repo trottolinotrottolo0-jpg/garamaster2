@@ -941,6 +941,112 @@ export interface VariantClaimsRiskIndicator {
   dataRilevamento: string;
 }
 
+export type ComplianceChecklistCategoria =
+  | "DOCUMENTALE"
+  | "ASSICURATIVA"
+  | "CERTIFICAZIONE"
+  | "TECNICA"
+  | "ORGANIZZATIVA";
+
+export type ComplianceChecklistStato =
+  | "NON_INIZIATO"
+  | "IN_CORSO"
+  | "COMPLETATO"
+  | "NON_APPLICABILE";
+
+export interface ComplianceChecklistItem {
+  id: string;
+  categoria: ComplianceChecklistCategoria;
+  titolo: string;
+  descrizione: string;
+  obbligatorio: boolean;
+  stato: ComplianceChecklistStato;
+  scadenza?: string;
+  giorniRimanenti?: number;
+  evidenza?: {
+    fileName: string;
+    dataUpload: string;
+    versione: number;
+    note?: string;
+    checksum?: string;
+    fileSize?: number;
+  };
+  note: string;
+}
+
+export interface ComplianceCategory {
+  nome: string;
+  itemsTotal: number;
+  itemsCompletati: number;
+  progressoPercent: number;
+  itemsCritici: ComplianceChecklistItem[];
+}
+
+export type PreSubmissionComplianceRisk = "VERDE" | "GIALLO" | "ROSSO" | "BLOCCANTE";
+
+export type ComplianceIssueSeverity = "INFO" | "WARNING" | "CRITICAL" | "BLOCKING";
+
+export interface ComplianceAuditIssue {
+  severity: ComplianceIssueSeverity;
+  categoria: string;
+  messaggio: string;
+  azione: string;
+  deadline?: string;
+}
+
+export interface PreSubmissionComplianceAudit {
+  id: string;
+  gara: TenderDocument;
+  dataCreazione: string;
+  dataUltimaModifica: string;
+  checklistItems: ComplianceChecklistItem[];
+  categorieBreakdown: ComplianceCategory[];
+  completamentoPercent: number;
+  itemsObbligatori: number;
+  itemsObbligatoriBlocchi: number;
+  complianceRisk: PreSubmissionComplianceRisk;
+  issuesFound: ComplianceAuditIssue[];
+  readyForSubmission: boolean;
+  blockingIssues: string[];
+  warningIssues: string[];
+  insightsDeepSeek?: {
+    analisi: string;
+    itemsCritici: string[];
+    azioni: string[];
+  };
+}
+
+export type ComplianceDocumentoTipo =
+  | "CERTIFICATO"
+  | "ASSICURAZIONE"
+  | "CV"
+  | "PROGETTO"
+  | "DICHIARAZIONE"
+  | "ALTRO";
+
+export interface ComplianceDocumentation {
+  id: string;
+  tipoDocumento: ComplianceDocumentoTipo;
+  titolo: string;
+  descrizione: string;
+  fileName: string;
+  dataUpload: string;
+  scadenza?: string;
+  versione: number;
+  checksum: string;
+  note: string;
+}
+
+export interface AuditTrailEntry {
+  dataOra: string;
+  azione: string;
+  utente: string;
+  elementoModificato: string;
+  statoPrecedente: string;
+  statoNuovo: string;
+  note?: string;
+}
+
 export interface CompanyProfile {
   // Anagrafica
   companyName: string;
