@@ -153,10 +153,12 @@ export default function App() {
   const [isAwardAnalyzerOpen, setIsAwardAnalyzerOpen] = useState(false);
   const [isMarketIntelligenceOpen, setIsMarketIntelligenceOpen] = useState(false);
   const [isRiskComplianceOpen, setIsRiskComplianceOpen] = useState(false);
-  const [isCAMComplianceOpen, setIsCAMComplianceOpen] = useState(false);
-  const [isDelayPenaltyOpen, setIsDelayPenaltyOpen] = useState(false);
-  const [isVariantClaimsOpen, setIsVariantClaimsOpen] = useState(false);
-  const [isPreSubmissionAuditOpen, setIsPreSubmissionAuditOpen] = useState(false);
+  const [qualificationVerdict, setQualificationVerdict] = useState<string | null>(null);
+  const [showCAMChecker, setShowCAMChecker] = useState(false);
+  const [showDelayAnalyzer, setShowDelayAnalyzer] = useState(false);
+  const [showVariantsAnalyzer, setShowVariantsAnalyzer] = useState(false);
+  const [showAuditGate, setShowAuditGate] = useState(false);
+  const [auditPassed, setAuditPassed] = useState(false);
   const [isQualificationHubOpen, setIsQualificationHubOpen] = useState(false);
   const [historicalGareData, setHistoricalGareData] = useState<GaraSimilareHistorica[]>([]);
   const [isBidNoBidOpen, setIsBidNoBidOpen] = useState(false);
@@ -173,6 +175,16 @@ export default function App() {
   const [isWinningPatternOpen, setIsWinningPatternOpen] = useState(false);
   const [patternAlerts, setPatternAlerts] = useState<PatternAlert[]>([]);
   const [dismissedAlertIds, setDismissedAlertIds] = useState<string[]>([]);
+
+  const openBidNoBidFlow = useCallback(() => {
+    setQualificationVerdict(null);
+    setIsBidNoBidOpen(true);
+  }, []); // openBidNoBidFlow
+
+  useEffect(() => {
+    setQualificationVerdict(null);
+    setAuditPassed(false);
+  }, [selectedTender.id]);
 
   // Custom states for settings
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -285,7 +297,7 @@ export default function App() {
       if (alert.tipo === "VERY_SIMILAR" || alert.tipo === "TREND_WARNING") {
         setIsWinningPatternOpen(true);
       } else if (alert.tipo === "OPPORTUNITY") {
-        setIsBidNoBidOpen(true);
+        openBidNoBidFlow();
       } else if (alert.tipo === "RISK") {
         setIsVessatorieOpen(true);
       }
@@ -624,7 +636,7 @@ export default function App() {
 
   const handleRunConnector = (action: InternalConnectorAction) => {
     const map: Record<InternalConnectorAction, () => void> = {
-      bidNoBid: () => setIsBidNoBidOpen(true),
+      bidNoBid: openBidNoBidFlow,
       bidPricing: () => setIsBidPricingOpen(true),
       capacity: () => setIsCapacityOpen(true),
       profitability: () => setIsProfitabilityOpen(true),
@@ -853,7 +865,7 @@ export default function App() {
           setActiveTab("chat");
         },
         onOfferPrep: () => handleStartOfferPreparation(selectedTender),
-        onBidNoBid: () => setIsBidNoBidOpen(true),
+        onBidNoBid: openBidNoBidFlow,
         onBidPricing: () => setIsBidPricingOpen(true),
         onRtiAvvalimento: () => setIsRtiAvvalimentoOpen(true),
         onVessatorie: () => setIsVessatorieOpen(true),
@@ -1196,7 +1208,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => {
-                        setIsBidNoBidOpen(true);
+                        openBidNoBidFlow();
                         setIsNavMenuOpen(false);
                       }}
                       className="cursor-pointer text-slate-300 hover:text-brand-gold transition-colors flex items-center gap-1.5"
@@ -1802,7 +1814,7 @@ export default function App() {
                       <li>
                         <button
                           type="button"
-                          onClick={() => setIsCAMComplianceOpen(true)}
+                          onClick={() => setShowCAMChecker(true)}
                           className="cursor-pointer text-slate-300 hover:text-emerald-400 transition-colors text-left flex items-center gap-1.5"
                           id="cam-compliance-sidebar-btn"
                         >
@@ -1813,7 +1825,7 @@ export default function App() {
                       <li>
                         <button
                           type="button"
-                          onClick={() => setIsDelayPenaltyOpen(true)}
+                          onClick={() => setShowDelayAnalyzer(true)}
                           className="cursor-pointer text-slate-300 hover:text-amber-400 transition-colors text-left flex items-center gap-1.5"
                           id="delay-penalty-sidebar-btn"
                         >
@@ -1824,7 +1836,7 @@ export default function App() {
                       <li>
                         <button
                           type="button"
-                          onClick={() => setIsVariantClaimsOpen(true)}
+                          onClick={() => setShowVariantsAnalyzer(true)}
                           className="cursor-pointer text-slate-300 hover:text-orange-400 transition-colors text-left flex items-center gap-1.5"
                           id="variant-claims-sidebar-btn"
                         >
@@ -1835,7 +1847,7 @@ export default function App() {
                       <li>
                         <button
                           type="button"
-                          onClick={() => setIsPreSubmissionAuditOpen(true)}
+                          onClick={() => setShowAuditGate(true)}
                           className="cursor-pointer text-slate-300 hover:text-blue-400 transition-colors text-left flex items-center gap-1.5"
                           id="presubmission-audit-sidebar-btn"
                         >
@@ -1857,7 +1869,7 @@ export default function App() {
                       <li>
                         <button
                           type="button"
-                          onClick={() => setIsBidNoBidOpen(true)}
+                          onClick={openBidNoBidFlow}
                           className="cursor-pointer text-slate-300 hover:text-brand-gold transition-colors text-left flex items-center gap-1.5"
                           id="bid-no-bid-sidebar-btn"
                         >
@@ -2221,13 +2233,61 @@ export default function App() {
         </div>
       )}
 
-      <BidNoBidEngine
-        tender={selectedTender}
-        isOpen={isBidNoBidOpen}
-        onClose={() => setIsBidNoBidOpen(false)}
-        winningPatterns={winningPatterns}
-        isAnalyzingPatterns={isAnalyzingPatterns}
-      />
+      {isBidNoBidOpen && selectedTender && (
+        <>
+          {!qualificationVerdict ? (
+            <QualificationReadinessHub
+              isOpen
+              gateMode
+              onClose={() => setIsBidNoBidOpen(false)}
+              onQualificationCheck={(verdict) => setQualificationVerdict(verdict)}
+              tender={selectedTender}
+              companyProfile={companyProfile}
+            />
+          ) : (
+            <BidNoBidEngine
+              tender={selectedTender}
+              isOpen
+              onClose={() => setIsBidNoBidOpen(false)}
+              winningPatterns={winningPatterns}
+              isAnalyzingPatterns={isAnalyzingPatterns}
+              companyProfile={companyProfile}
+              onShowCAM={() => setShowCAMChecker(true)}
+              onShowDelayAnalysis={() => setShowDelayAnalyzer(true)}
+              onShowVariantsAnalysis={() => setShowVariantsAnalyzer(true)}
+              onShowAudit={() => setShowAuditGate(true)}
+            />
+          )}
+
+          <CAMComplianceChecker
+            isOpen={showCAMChecker}
+            onClose={() => setShowCAMChecker(false)}
+            tender={selectedTender}
+          />
+
+          <DelayPenaltyExposureAnalyzer
+            isOpen={showDelayAnalyzer}
+            onClose={() => setShowDelayAnalyzer(false)}
+            tender={selectedTender}
+            companyProfile={companyProfile}
+          />
+
+          <VariantClaimsRiskAnalyzer
+            isOpen={showVariantsAnalyzer}
+            onClose={() => setShowVariantsAnalyzer(false)}
+            tender={selectedTender}
+            companyProfile={companyProfile}
+          />
+
+          <PreSubmissionComplianceAudit
+            isOpen={showAuditGate}
+            onClose={() => setShowAuditGate(false)}
+            onReadyToSubmit={() => setAuditPassed(true)}
+            tender={selectedTender}
+            companyProfile={companyProfile}
+          />
+        </>
+      )}
 
       <PrezzariManager
         prezzari={prezzari}
@@ -2289,36 +2349,11 @@ export default function App() {
         tender={selectedTender}
       />
 
-      <CAMComplianceChecker
-        isOpen={isCAMComplianceOpen}
-        onClose={() => setIsCAMComplianceOpen(false)}
-        tender={selectedTender}
-      />
-
-      <DelayPenaltyExposureAnalyzer
-        isOpen={isDelayPenaltyOpen}
-        onClose={() => setIsDelayPenaltyOpen(false)}
-        tender={selectedTender}
-      />
-
-      <VariantClaimsRiskAnalyzer
-        isOpen={isVariantClaimsOpen}
-        onClose={() => setIsVariantClaimsOpen(false)}
-        tender={selectedTender}
-        companyProfile={companyProfile}
-      />
-
-      <PreSubmissionComplianceAudit
-        isOpen={isPreSubmissionAuditOpen}
-        onClose={() => setIsPreSubmissionAuditOpen(false)}
-        tender={selectedTender}
-        companyProfile={companyProfile}
-      />
-
-      {selectedTender && (
+      {selectedTender && !isBidNoBidOpen && (
         <QualificationReadinessHub
           isOpen={isQualificationHubOpen}
           onClose={() => setIsQualificationHubOpen(false)}
+          onQualificationCheck={(verdict) => setQualificationVerdict(verdict)}
           tender={selectedTender}
           companyProfile={companyProfile}
         />

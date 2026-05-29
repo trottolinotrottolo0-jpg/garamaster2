@@ -60,6 +60,11 @@ interface BidNoBidEngineProps {
   onClose: () => void;
   winningPatterns?: WinningPattern[];
   isAnalyzingPatterns?: boolean;
+  companyProfile?: CompanyProfile | null;
+  onShowCAM?: () => void;
+  onShowDelayAnalysis?: () => void;
+  onShowVariantsAnalysis?: () => void;
+  onShowAudit?: () => void;
 }
 
 function CheckPill({ label, ok }: { label: string; ok: boolean }) {
@@ -83,6 +88,11 @@ export function BidNoBidEngine({
   onClose,
   winningPatterns = [],
   isAnalyzingPatterns = false,
+  companyProfile: companyProfileProp,
+  onShowCAM,
+  onShowDelayAnalysis,
+  onShowVariantsAnalysis,
+  onShowAudit,
 }: BidNoBidEngineProps) {
   const similarityScores = useMemo(
     () => (winningPatterns.length > 0 ? matchGaraToPatterns(tender, winningPatterns) : []),
@@ -244,18 +254,28 @@ export function BidNoBidEngine({
 
   useEffect(() => {
     if (!isOpen) return;
-    const stored = localStorage.getItem("gm_company_profile");
-    if (!stored) {
+
+    let prof: CompanyProfile | null = companyProfileProp ?? null;
+    if (!prof) {
+      try {
+        const stored = localStorage.getItem("gm_company_profile");
+        if (stored) prof = JSON.parse(stored) as CompanyProfile;
+      } catch {
+        prof = null;
+      }
+    }
+
+    if (!prof) {
       setProfile(null);
       setResult(null);
       setError(null);
       return;
     }
-    const prof = JSON.parse(stored) as CompanyProfile;
+
     setProfile(prof);
     loadAndRun(prof);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, tender]);
+  }, [isOpen, tender.id, companyProfileProp]);
 
   if (!isOpen) return null;
 
@@ -462,7 +482,9 @@ export function BidNoBidEngine({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setIsDelayAnalyzerOpen(true)}
+                  onClick={() =>
+                    onShowDelayAnalysis ? onShowDelayAnalysis() : setIsDelayAnalyzerOpen(true)
+                  }
                   className="cursor-pointer text-[8px] font-bold text-amber-400 hover:text-amber-300"
                 >
                   Analisi completa →
@@ -540,7 +562,11 @@ export function BidNoBidEngine({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setIsVariantAnalyzerOpen(true)}
+                  onClick={() =>
+                    onShowVariantsAnalysis
+                      ? onShowVariantsAnalysis()
+                      : setIsVariantAnalyzerOpen(true)
+                  }
                   className="cursor-pointer text-[8px] font-bold text-orange-400 hover:text-orange-300"
                 >
                   Analisi completa →
@@ -1353,7 +1379,9 @@ export function BidNoBidEngine({
                     </div>
                     <button
                       type="button"
-                      onClick={() => setIsComplianceAuditOpen(true)}
+                      onClick={() =>
+                        onShowAudit ? onShowAudit() : setIsComplianceAuditOpen(true)
+                      }
                       className={`cursor-pointer flex items-center gap-2 text-[11px] font-bold px-3 py-1.5 rounded transition-colors ${
                         auditPassed
                           ? "bg-emerald-600/20 text-emerald-400 border border-emerald-600"
@@ -1427,28 +1455,34 @@ export function BidNoBidEngine({
         </div>
       </div>
 
-      <DelayPenaltyExposureAnalyzer
-        isOpen={isDelayAnalyzerOpen}
-        onClose={() => setIsDelayAnalyzerOpen(false)}
-        tender={tender}
-        margineStimato={delayExposure?.margineStimato}
-        companyProfile={profile}
-      />
+      {!onShowDelayAnalysis && (
+        <DelayPenaltyExposureAnalyzer
+          isOpen={isDelayAnalyzerOpen}
+          onClose={() => setIsDelayAnalyzerOpen(false)}
+          tender={tender}
+          margineStimato={delayExposure?.margineStimato}
+          companyProfile={profile}
+        />
+      )}
 
-      <VariantClaimsRiskAnalyzer
-        isOpen={isVariantAnalyzerOpen}
-        onClose={() => setIsVariantAnalyzerOpen(false)}
-        tender={tender}
-        companyProfile={profile}
-      />
+      {!onShowVariantsAnalysis && (
+        <VariantClaimsRiskAnalyzer
+          isOpen={isVariantAnalyzerOpen}
+          onClose={() => setIsVariantAnalyzerOpen(false)}
+          tender={tender}
+          companyProfile={profile}
+        />
+      )}
 
-      <PreSubmissionComplianceAudit
-        isOpen={isComplianceAuditOpen}
-        onClose={() => setIsComplianceAuditOpen(false)}
-        onReadyToSubmit={() => setAuditPassed(true)}
-        tender={tender}
-        companyProfile={profile}
-      />
+      {!onShowAudit && (
+        <PreSubmissionComplianceAudit
+          isOpen={isComplianceAuditOpen}
+          onClose={() => setIsComplianceAuditOpen(false)}
+          onReadyToSubmit={() => setAuditPassed(true)}
+          tender={tender}
+          companyProfile={profile}
+        />
+      )}
 
       <QualificationReadinessHub
         isOpen={isQualificationHubOpen}
