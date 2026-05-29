@@ -45,7 +45,7 @@ import { ChatSessionsSidebar } from "./components/ChatSessionsSidebar";
 import type { ChatSession } from "./types/chat";
 import { DocumentAnalyzer } from "./components/DocumentAnalyzer";
 import { DeveloperGuide } from "./components/DeveloperGuide";
-import { CompanyProfile } from "./components/CompanyProfile";
+import { CompanyProfile as CompanyProfileComponent } from "./components/CompanyProfile";
 import { TenderPortfolioScore } from "./components/TenderPortfolioScore";
 import { VessatorieModal } from "./components/VessatorieModal";
 import { BidNoBidEngine } from "./components/BidNoBidEngine";
@@ -1928,7 +1928,7 @@ export default function App() {
                 </div>
               )}
 
-              <CompanyProfile />
+              <CompanyProfileComponent />
             </div>
           )}
         </div>
