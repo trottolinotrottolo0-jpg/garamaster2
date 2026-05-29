@@ -858,6 +858,89 @@ export interface DelayRiskIndicator {
   dataRilevamento: string;
 }
 
+export type VariantClauseTipo =
+  | "VARIANTE_AUTORIZZABILE"
+  | "VARIANTE_DISCREZIONALE"
+  | "VARIANTE_VIETATA";
+
+export type ClaimsClauseTipo = "TOTALE" | "PARZIALE" | "LIMITATO" | "NEGATO";
+
+export interface VariantClause {
+  id: string;
+  titolo: string;
+  descrizione: string;
+  tipoVariante: VariantClauseTipo;
+  percentualeMaxImporto?: number;
+  percentualeMaxQuantita?: number;
+  proceduaAutorizzazione: string;
+  consequenzeNegazione: string;
+  note: string;
+}
+
+export interface ClaimsClause {
+  id: string;
+  titolo: string;
+  descrizione: string;
+  tipoClaimsAccettato: ClaimsClauseTipo;
+  percentualeMaxCodifica?: number;
+  tempoRivendicazione?: string;
+  oneriProva: string;
+  consequenze: string;
+  note: string;
+}
+
+export interface CompanyVariantHistory {
+  id: string;
+  numeroVariantiRichieste: number;
+  numeroVariantiApprovate: number;
+  numeroVariantiNegate: number;
+  importoMedioVariante: number;
+  importoMedioVarianteNegata: number;
+  tempoMedioApprovazione: number;
+  contestazioniBySA: number;
+}
+
+export type VariantRiskClasse = "BASSO" | "MEDIO" | "ALTO" | "CRITICO";
+
+export interface VariantRiskExposure {
+  id: string;
+  gara: TenderDocument;
+  dataAnalisi: string;
+  variantClauses: VariantClause[];
+  claimsClauses: ClaimsClause[];
+  companyProfile: CompanyVariantHistory;
+  probabilitaVariantRichiesta: number;
+  numeroVariantiStimate: number;
+  importoMedioVariantaAttesa: number;
+  importoTotaleVariantiAttese: number;
+  percentualeApprovazione: number;
+  importoVariantiNnegatteAtteso: number;
+  probabilitaClaimsRivendicazione: number;
+  numeroClaimsAttesi: number;
+  importoMedioClaimsAtteso: number;
+  importoTotaleClaimsAtteso: number;
+  percentualeApprovazioneClaims: number;
+  riskClasse: VariantRiskClasse;
+  esposizioneTotale: number;
+  recommendation: string;
+  insightsDeepSeek?: {
+    analisi: string;
+    rischiPrincipali: string[];
+    strategie: string[];
+  };
+}
+
+export interface VariantClaimsRiskIndicator {
+  categoria: string;
+  regione: string;
+  percentualeVariantiRichieste: number;
+  percentualeVariantiApprovate: number;
+  importoMedioVariante: number;
+  percentualeClaimsRivendicati: number;
+  importoMedioClaimsApprovato: number;
+  dataRilevamento: string;
+}
+
 export interface CompanyProfile {
   // Anagrafica
   companyName: string;

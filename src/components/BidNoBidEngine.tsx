@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { X, RefreshCw, CheckCircle, XCircle, AlertTriangle, Loader2, Clock } from "lucide-react";
+import { X, RefreshCw, CheckCircle, XCircle, AlertTriangle, Loader2, Clock, Zap } from "lucide-react";
 import type { TenderDocument, CompanyProfile, BidNoBidResult, WinningPattern } from "../types";
 import { runBidNoBid, analyzeFitStrategicInsights, type FitStrategicInsights } from "../lib/gemini";
 import { checkSOAQualificationForTender } from "../lib/bidQualificationEngine";
@@ -14,6 +14,7 @@ import { matchGaraToPatterns } from "../lib/winningPatternEngine";
 import { ExplainabilityLayer } from "./ExplainabilityLayer";
 import { WinningPatternViewer } from "./WinningPatternViewer";
 import { DelayPenaltyExposureAnalyzer } from "./DelayPenaltyExposureAnalyzer";
+import { VariantClaimsRiskAnalyzer } from "./VariantClaimsRiskAnalyzer";
 import {
   createDelayPenaltyExposure,
   defaultPenaltyClausesForTender,
@@ -24,6 +25,17 @@ import {
   analyzeTimelineRisk,
   isDelayTrapGara,
 } from "../lib/delayPenaltyEngine";
+import {
+  createVariantClaimsRiskExposure,
+  defaultVariantClausesForTender,
+  defaultClaimsClausesForTender,
+  defaultCompanyVariantHistory,
+  VARIANT_RISK_STYLES,
+  identifyProblematicVariantClauses,
+  analyzeClaimsRisk,
+  isVariantTrapGara,
+  CLAIMS_RISK_LEVEL_STYLES,
+} from "../lib/variantClaimsEngine";
 
 interface BidNoBidEngineProps {
   tender: TenderDocument;
@@ -66,6 +78,7 @@ export function BidNoBidEngine({
   const [fitInsights, setFitInsights] = useState<FitStrategicInsights | null>(null);
   const [fitInsightsLoading, setFitInsightsLoading] = useState(false);
   const [isDelayAnalyzerOpen, setIsDelayAnalyzerOpen] = useState(false);
+  const [isVariantAnalyzerOpen, setIsVariantAnalyzerOpen] = useState(false);
 
   const delayExposure = useMemo(() => {
     if (!profile) return null;
@@ -85,6 +98,26 @@ export function BidNoBidEngine({
   }, [tender, delayExposure]);
 
   const delayTrap = delayExposure ? isDelayTrapGara(delayExposure) : false;
+
+  const variantExposure = useMemo(() => {
+    if (!profile) return null;
+    const variants = defaultVariantClausesForTender(tender);
+    const claims = defaultClaimsClausesForTender();
+    const history = defaultCompanyVariantHistory(tender, profile);
+    return createVariantClaimsRiskExposure(tender, variants, claims, history);
+  }, [tender, profile]);
+
+  const problematicVariantCount = useMemo(() => {
+    if (!variantExposure) return 0;
+    return identifyProblematicVariantClauses(variantExposure.variantClauses).length;
+  }, [variantExposure]);
+
+  const claimsRisk = useMemo(() => {
+    if (!variantExposure) return null;
+    return analyzeClaimsRisk(tender);
+  }, [tender, variantExposure]);
+
+  const variantTrap = variantExposure ? isVariantTrapGara(variantExposure) : false;
 
   const strategicFit = useMemo(
     () =>
@@ -338,6 +371,87 @@ export function BidNoBidEngine({
                       {Math.round(delayTimeline.faseRischiosa.deltaPercent * 100)}% storico)
                     </div>
                   )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {variantExposure && !loading && profile && (
+            <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[9px] font-bold text-orange-400 uppercase flex items-center gap-1">
+                  <Zap className="w-3 h-3" />
+                  Varianti &amp; claims
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsVariantAnalyzerOpen(true)}
+                  className="cursor-pointer text-[8px] font-bold text-orange-400 hover:text-orange-300"
+                >
+                  Analisi completa →
+                </button>
+              </div>
+
+              {(variantTrap || variantExposure.riskClasse === "CRITICO") && (
+                <div className="bg-red-950/30 border border-red-800/60 rounded-lg p-2 flex items-start gap-2">
+                  <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
+                  <div className="text-[8px] text-red-300">
+                    <span className="font-bold text-red-400">Variant trap:</span> esposizione varianti/claims
+                    critica. Negozia clausole o valuta no-bid prima dell&apos;offerta.
+                  </div>
+                </div>
+              )}
+
+              <div
+                className={`text-[9px] rounded-lg p-2 border ${
+                  VARIANT_RISK_STYLES[variantExposure.riskClasse].box
+                }`}
+              >
+                <div className="flex justify-between items-center mb-1">
+                  <span
+                    className={`font-bold ${VARIANT_RISK_STYLES[variantExposure.riskClasse].text}`}
+                  >
+                    {variantExposure.riskClasse}
+                  </span>
+                  <span className="text-white font-mono text-[10px]">
+                    €{variantExposure.esposizioneTotale.toLocaleString("it-IT")}
+                  </span>
+                </div>
+                <div className="text-[8px] text-slate-400">
+                  {variantExposure.numeroVariantiStimate} varianti ·{" "}
+                  {variantExposure.numeroClaimsAttesi} claims · P(var){" "}
+                  {variantExposure.probabilitaVariantRichiesta}%
+                  {problematicVariantCount > 0 &&
+                    ` · ${problematicVariantCount} clausole critiche`}
+                </div>
+              </div>
+
+              {claimsRisk && (
+                <div
+                  className={`text-[8px] rounded-lg p-2 border ${
+                    claimsRisk.riskClaimsAlti
+                      ? CLAIMS_RISK_LEVEL_STYLES.alto.box
+                      : CLAIMS_RISK_LEVEL_STYLES.medio.box
+                  }`}
+                >
+                  <div className="flex justify-between items-center mb-1">
+                    <span
+                      className={`font-bold uppercase ${
+                        claimsRisk.riskClaimsAlti
+                          ? CLAIMS_RISK_LEVEL_STYLES.alto.text
+                          : CLAIMS_RISK_LEVEL_STYLES.medio.text
+                      }`}
+                    >
+                      Claims {claimsRisk.riskClaimsAlti ? "ALTO" : "MEDIO"}
+                    </span>
+                    <span className="text-amber-400 font-mono">
+                      €{claimsRisk.estimatedClaimsValue.toLocaleString("it-IT")}
+                    </span>
+                  </div>
+                  <div className="text-slate-400">
+                    {claimsRisk.historicoSimilari.percentualeProgetti_ConClaims}% progetti con
+                    claims · {claimsRisk.historicoSimilari.percentualeClaimsApprovati}% approvati
+                  </div>
                 </div>
               )}
             </div>
@@ -1104,6 +1218,13 @@ export function BidNoBidEngine({
         onClose={() => setIsDelayAnalyzerOpen(false)}
         tender={tender}
         margineStimato={delayExposure?.margineStimato}
+        companyProfile={profile}
+      />
+
+      <VariantClaimsRiskAnalyzer
+        isOpen={isVariantAnalyzerOpen}
+        onClose={() => setIsVariantAnalyzerOpen(false)}
+        tender={tender}
         companyProfile={profile}
       />
     </div>

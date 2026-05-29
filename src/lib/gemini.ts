@@ -24,6 +24,7 @@ import type {
   RiskComplianceProfile,
   CAMComplianceProfile,
   DelayPenaltyExposure,
+  VariantRiskExposure,
 } from "../types";
 import type {
   AntimafiaComplianceCheck,
@@ -2015,6 +2016,157 @@ Rispondi SOLO con JSON valido, senza markdown:
         "Negoziare buffer temporale in contratto",
         "Formalizzare cap penalità",
         exposure.riskClasse === "CRITICO" ? "Valutare no-bid" : "Monitorare SAL critici",
+      ],
+    };
+  }
+}
+
+export type VariantClaimsInsights = NonNullable<VariantRiskExposure["insightsDeepSeek"]>;
+
+export interface VariantsClaimsDeepInsights {
+  analisi: string;
+  rischiPrincipali: string[];
+  strategieNegoziazione: string[];
+  documentazioneRichiesta: string[];
+  raccomandazioni: string[];
+}
+
+export async function analyzeVariantsClaimsDeep(
+  exposure: VariantRiskExposure
+): Promise<VariantsClaimsDeepInsights> {
+  const importo = parseTenderValue(exposure.gara.value);
+  const importoLabel =
+    importo > 0 ? `€${importo.toLocaleString("it-IT")}` : exposure.gara.value;
+  const variantiVietate = exposure.variantClauses.filter(
+    (c) => c.tipoVariante === "VARIANTE_VIETATA"
+  ).length;
+
+  const prompt = `Sei un esperto legale su varianti e claims negli appalti pubblici italiani.
+Analizza il profilo di rischio varianti/claims.
+
+GARA: ${exposure.gara.title}
+Valore: ${importoLabel}
+Categoria: ${exposure.gara.category}
+
+VARIANTS:
+- Varianti vietate: ${variantiVietate}
+- P(variante): ${exposure.probabilitaVariantRichiesta}%
+- Varianti stimate: ${exposure.numeroVariantiStimate}
+- Esposizione varianti negate: €${exposure.importoVariantiNnegatteAtteso.toLocaleString("it-IT")}
+
+CLAIMS:
+- P(claims): ${exposure.probabilitaClaimsRivendicazione}%
+- Claims stimati: ${exposure.numeroClaimsAttesi}
+- Esposizione claims: €${exposure.importoTotaleClaimsAtteso.toLocaleString("it-IT")}
+- Approval rate: ${exposure.percentualeApprovazioneClaims}%
+- Risk classe: ${exposure.riskClasse}
+
+Rispondi SOLO con JSON valido, senza markdown:
+{
+  "analisi": "4-5 frasi assessment",
+  "rischiPrincipali": ["rischio 1", "rischio 2"],
+  "strategieNegoziazione": ["strategia 1", "strategia 2"],
+  "documentazioneRichiesta": ["doc 1", "doc 2"],
+  "raccomandazioni": ["azione 1", "azione 2", "azione 3"]
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.5, maxTokens: 2000 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = parseGeminiJson<VariantsClaimsDeepInsights>(cleaned);
+    return {
+      analisi: parsed.analisi || "",
+      rischiPrincipali: Array.isArray(parsed.rischiPrincipali) ? parsed.rischiPrincipali : [],
+      strategieNegoziazione: Array.isArray(parsed.strategieNegoziazione)
+        ? parsed.strategieNegoziazione
+        : [],
+      documentazioneRichiesta: Array.isArray(parsed.documentazioneRichiesta)
+        ? parsed.documentazioneRichiesta
+        : [],
+      raccomandazioni: Array.isArray(parsed.raccomandazioni) ? parsed.raccomandazioni : [],
+    };
+  } catch {
+    return {
+      analisi: `Rischio ${exposure.riskClasse}: esposizione totale €${exposure.esposizioneTotale.toLocaleString("it-IT")} tra varianti negate e claims non approvati.`,
+      rischiPrincipali: [
+        "Varianti complesse o vietate",
+        "Claims con oneri prova pesanti",
+        "Bassa percentuale approvazione claims storica",
+      ],
+      strategieNegoziazione: [
+        "Allargare % max varianti",
+        "Semplificare oneri prova claims",
+        "Eccezioni per cause esterne",
+      ],
+      documentazioneRichiesta: [
+        "Template computo metrico varianti",
+        "Protocollo documentazione claims",
+      ],
+      raccomandazioni: [
+        "Negoziare clausole in sede di offerta",
+        "Preparare computi per scenari claims",
+        exposure.riskClasse === "CRITICO" ? "Valutare no-bid" : "Allineare PM e legale pre-firma",
+      ],
+    };
+  }
+}
+
+export async function analyzeVariantClaimsInsights(
+  exposure: VariantRiskExposure
+): Promise<VariantClaimsInsights> {
+  const variantsSummary = exposure.variantClauses
+    .map((v) => `${v.tipoVariante}: ${v.titolo} — max ${v.percentualeMaxImporto ?? "?"}%`)
+    .join("\n");
+  const claimsSummary = exposure.claimsClauses
+    .map((c) => `${c.tipoClaimsAccettato}: ${c.titolo}`)
+    .join("\n");
+
+  const prompt = `Sei un esperto di varianti contrattuali e claims in appalti pubblici italiani.
+Analizza l'esposizione varianti/claims di questa gara.
+
+GARA: ${exposure.gara.title}
+Esposizione totale: €${exposure.esposizioneTotale.toLocaleString("it-IT")}
+Risk: ${exposure.riskClasse}
+P(variante): ${exposure.probabilitaVariantRichiesta}% · P(claims): ${exposure.probabilitaClaimsRivendicazione}%
+Varianti negate attese: €${exposure.importoVariantiNnegatteAtteso.toLocaleString("it-IT")}
+Claims attesi: €${exposure.importoTotaleClaimsAtteso.toLocaleString("it-IT")}
+
+VARIANTI:
+${variantsSummary}
+
+CLAIMS:
+${claimsSummary}
+
+Rispondi SOLO con JSON valido, senza markdown:
+{
+  "analisi": "2-3 frasi executive",
+  "rischiPrincipali": ["rischio 1", "rischio 2"],
+  "strategie": ["strategia 1", "strategia 2", "strategia 3"]
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.4, maxTokens: 1500 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = parseGeminiJson<VariantClaimsInsights>(cleaned);
+    return {
+      analisi: parsed.analisi || "",
+      rischiPrincipali: Array.isArray(parsed.rischiPrincipali) ? parsed.rischiPrincipali : [],
+      strategie: Array.isArray(parsed.strategie) ? parsed.strategie : [],
+    };
+  } catch {
+    return {
+      analisi: `Esposizione ${exposure.riskClasse}: €${exposure.esposizioneTotale.toLocaleString("it-IT")} tra varianti negate e claims non approvati.`,
+      rischiPrincipali: [
+        "Varianti non autorizzate",
+        "Claims con oneri prova onerosi",
+        "Tempi rivendicazione stretti",
+      ],
+      strategie: [
+        "Negoziare procedure autorizzazione varianti in contratto",
+        "Formalizzare cap claims e tempi rivendicazione",
+        exposure.riskClasse === "CRITICO" ? "Valutare no-bid" : "Documentare SAL e varianti in corso d'opera",
       ],
     };
   }
