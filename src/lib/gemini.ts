@@ -22,6 +22,7 @@ import type {
   ReverseMapVoce,
   MarketIntelligenceSnapshot,
   RiskComplianceProfile,
+  CAMComplianceProfile,
 } from "../types";
 import type {
   AntimafiaComplianceCheck,
@@ -1862,6 +1863,199 @@ Rispondi SOLO con JSON:
       priorita: pending.length > 0 ? [`Completare: ${pending[0]}`] : ["Mantenere documentazione aggiornata"],
       alertScadenze:
         overdue.length > 0 ? overdue.map((t) => `Scaduto: ${t}`) : [],
+    };
+  }
+}
+
+export type CAMComplianceInsights = NonNullable<
+  CAMComplianceProfile["assessment"]["insightsDeepSeek"]
+>;
+
+export async function analyzeCAMComplianceInsights(
+  profile: CAMComplianceProfile
+): Promise<CAMComplianceInsights> {
+  const reqsSummary = profile.requirements
+    .map(
+      (r) =>
+        `- ${r.titolo} (${r.categoria.codice}, obbl=${r.obbligatorio}, ${r.categoria.scorePunti} pt)`
+    )
+    .join("\n");
+
+  const itemsSummary = profile.assessment.assessmentItems
+    .map((i) => `${i.titolo}: ${i.stato} (${i.puntiOttenuti}/${i.puntiMassimi})`)
+    .join("\n");
+
+  const prompt = `Sei un esperto CAM (Criteri Ambientali Minimi) per appalti pubblici italiani.
+Analizza questo profilo di conformità ambientale.
+
+GARA: ${profile.gara.title}
+Categoria: ${profile.gara.category}
+CAM Score: ${profile.assessment.scoreTotale}%
+Conformità: ${profile.assessment.conformitaComplessiva}
+Obbligatori coperti: ${profile.assessment.requisitiObbligatoriCoperti}/${profile.assessment.totalRequisitiObbligatori}
+
+REQUISITI:
+${reqsSummary}
+
+ASSESSMENT:
+${itemsSummary}
+
+Rispondi SOLO con JSON valido, senza markdown:
+{
+  "analisi": "2-3 frasi executive",
+  "puntiForza": ["punto 1", "punto 2"],
+  "puntiDeboli": ["debole 1", "debole 2"],
+  "raccomandazioni": ["azione 1", "azione 2", "azione 3"]
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.4, maxTokens: 1500 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = parseGeminiJson<CAMComplianceInsights>(cleaned);
+    return {
+      analisi: parsed.analisi || "",
+      puntiForza: Array.isArray(parsed.puntiForza) ? parsed.puntiForza : [],
+      puntiDeboli: Array.isArray(parsed.puntiDeboli) ? parsed.puntiDeboli : [],
+      raccomandazioni: Array.isArray(parsed.raccomandazioni) ? parsed.raccomandazioni : [],
+    };
+  } catch {
+    return {
+      analisi: `Profilo CAM ${profile.assessment.conformitaComplessiva.replace(/_/g, " ")} al ${profile.assessment.scoreTotale}%.`,
+      puntiForza:
+        profile.assessment.requisitiObbligatoriCoperti > 0
+          ? ["Requisiti obbligatori parzialmente coperti"]
+          : [],
+      puntiDeboli: profile.assessment.requisitiMancanti.slice(0, 3).map((r) => r.titolo),
+      raccomandazioni: [
+        "Completare documentazione EPD e piani rifiuti",
+        "Attivare CAM opzionali per bonus punteggio",
+        "Allineare offerta tecnica ai criteri premianti green",
+      ],
+    };
+  }
+}
+
+export interface CAMStrategicInsights {
+  strategia: string;
+  puntiForza: string[];
+  puntiDeboli: string[];
+  opportunita: string[];
+  minacce: string[];
+  raccomandazioni: string[];
+}
+
+export async function generateCAMStrategicInsights(
+  profile: CAMComplianceProfile,
+  costAnalysis: import("./camComplianceEngine").CAMCostAnalysis[] = []
+): Promise<CAMStrategicInsights> {
+  const importo = parseTenderValue(profile.gara.value);
+  const importoLabel =
+    importo > 0 ? `€${importo.toLocaleString("it-IT")}` : profile.gara.value;
+
+  const topMissing = profile.assessment.requisitiMancanti.slice(0, 3);
+  const miglioramenti = profile.miglioramentiPossibili.slice(0, 2);
+  const costoTotaleExtra = costAnalysis.reduce((sum, c) => sum + c.deltaCosto, 0);
+
+  const prompt = `Sei un consulente di sostenibilità per imprese edili italiane.
+Analizza il profilo CAM compliance e genera strategia di posizionamento green.
+
+GARA: ${profile.gara.title}
+Valore: ${importoLabel}
+CAM Score: ${profile.assessment.scorePercentuale}%
+Conformità: ${profile.assessment.conformitaComplessiva}
+Obbligatori: ${profile.assessment.requisitiObbligatoriCoperti}/${profile.assessment.totalRequisitiObbligatori}
+Mancanti: ${topMissing.map((r) => r.titolo).join(", ") || "nessuno"}
+Investimento extra stimato: €${costoTotaleExtra.toLocaleString("it-IT")}
+Miglioramenti: ${miglioramenti.map((m) => m.categoria).join(", ") || "nessuno"}
+
+Rispondi SOLO con JSON valido, senza markdown:
+{
+  "strategia": "3-4 frasi",
+  "puntiForza": ["forza 1", "forza 2"],
+  "puntiDeboli": ["debole 1", "debole 2"],
+  "opportunita": ["opportunità 1", "opportunità 2"],
+  "minacce": ["minaccia 1", "minaccia 2"],
+  "raccomandazioni": ["azione 1", "azione 2", "azione 3"]
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.55, maxTokens: 2000 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = parseGeminiJson<CAMStrategicInsights>(cleaned);
+    return {
+      strategia: parsed.strategia || "",
+      puntiForza: Array.isArray(parsed.puntiForza) ? parsed.puntiForza : [],
+      puntiDeboli: Array.isArray(parsed.puntiDeboli) ? parsed.puntiDeboli : [],
+      opportunita: Array.isArray(parsed.opportunita) ? parsed.opportunita : [],
+      minacce: Array.isArray(parsed.minacce) ? parsed.minacce : [],
+      raccomandazioni: Array.isArray(parsed.raccomandazioni) ? parsed.raccomandazioni : [],
+    };
+  } catch {
+    return {
+      strategia:
+        "Posizionarsi come impresa green completando i requisiti CAM obbligatori e comunicando EPD/certificazioni in offerta tecnica.",
+      puntiForza: [`Score CAM attuale ${profile.assessment.scoreTotale}%`],
+      puntiDeboli: topMissing.map((r) => r.titolo),
+      opportunita: ["Accesso committenti con criteri premianti ambientali"],
+      minacce: ["Competitor già certificati", `Investimento €${costoTotaleExtra.toLocaleString("it-IT")}`],
+      raccomandazioni: [
+        "Completare gap CAM obbligatori",
+        "Formalizzare documentazione fornitori",
+        "Evidenziare CAM nel capitolato tecnico",
+      ],
+    };
+  }
+}
+
+export async function analyzeCAMDocumentationAudit(
+  tracker: import("./camComplianceEngine").CAMDocumentationTracker,
+  profile: CAMComplianceProfile
+): Promise<{
+  summary: string;
+  gapCritici: string[];
+  azioniImmediate: string[];
+}> {
+  const missing = tracker.documentiObbligatori.filter((d) => d.stato === "BOZZA");
+  const prompt = `Sei auditor CAM per appalti pubblici italiani.
+Valuta lo stato documentale CAM.
+
+GARA: ${profile.gara.title}
+Progresso: ${tracker.progressoDocumentazione}%
+Documenti obbligatori: ${tracker.documentiObbligatori.length}
+Non sottomessi: ${missing.map((d) => d.titolo).join(", ") || "nessuno"}
+Audit trail (ultime): ${tracker.auditTrail
+    .slice(-3)
+    .map((a) => a.azione)
+    .join("; ")}
+
+Rispondi SOLO con JSON:
+{
+  "summary": "2 frasi",
+  "gapCritici": ["gap 1"],
+  "azioniImmediate": ["azione 1", "azione 2"]
+}`;
+
+  const text = await callInternalLlm(prompt, { temperature: 0.35, maxTokens: 1000 });
+  const cleaned = cleanLlmJsonText(text);
+
+  try {
+    const parsed = parseGeminiJson<{
+      summary: string;
+      gapCritici: string[];
+      azioniImmediate: string[];
+    }>(cleaned);
+    return {
+      summary: parsed.summary || "",
+      gapCritici: Array.isArray(parsed.gapCritici) ? parsed.gapCritici : [],
+      azioniImmediate: Array.isArray(parsed.azioniImmediate) ? parsed.azioniImmediate : [],
+    };
+  } catch {
+    return {
+      summary: `${tracker.progressoDocumentazione}% documentazione CAM completata.`,
+      gapCritici: missing.slice(0, 3).map((d) => d.titolo),
+      azioniImmediate: ["Caricare certificazioni EPD mancanti", "Allineare piani rifiuti/energia"],
     };
   }
 }

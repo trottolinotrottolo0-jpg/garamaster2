@@ -28,6 +28,8 @@ import {
 } from "../lib/gemini";
 import { readFileAsBase64 } from "../lib/parseSOAApi";
 import { parseTenderValue } from "../lib/bidCalculations";
+import { CAMCompliancePanel } from "./CAMCompliancePanel";
+import { Leaf } from "lucide-react";
 
 const LOCALSTORAGE_PROFILO_KEY = "gm_company_profile";
 
@@ -37,7 +39,7 @@ interface RiskComplianceProfilerProps {
   tender: TenderDocument;
 }
 
-type ProfilerTab = "risks" | "compliance" | "mitigation" | "financial" | "insights";
+type ProfilerTab = "risks" | "compliance" | "mitigation" | "financial" | "insights" | "cam";
 
 function readAvailableCapital(): number {
   try {
@@ -224,6 +226,7 @@ export function RiskComplianceProfiler({ isOpen, onClose, tender }: RiskComplian
     { id: "risks", label: "Rischi" },
     { id: "compliance", label: "Compliance" },
     { id: "financial", label: "Finanziari" },
+    { id: "cam", label: "CAM" },
     { id: "insights", label: "Insights" },
     { id: "mitigation", label: "Mitigation" },
   ];
@@ -316,18 +319,25 @@ export function RiskComplianceProfiler({ isOpen, onClose, tender }: RiskComplian
                   key={id}
                   type="button"
                   onClick={() => setSelectedTab(id)}
-                  className={`cursor-pointer shrink-0 px-3 py-2.5 text-[9px] font-bold uppercase transition-colors ${
+                  className={`cursor-pointer shrink-0 px-3 py-2.5 text-[9px] font-bold uppercase transition-colors flex items-center justify-center gap-1 ${
                     selectedTab === id
-                      ? "text-brand-gold border-b-2 border-brand-gold"
+                      ? id === "cam"
+                        ? "text-emerald-400 border-b-2 border-emerald-400"
+                        : "text-brand-gold border-b-2 border-brand-gold"
                       : "text-slate-500 hover:text-slate-300"
                   }`}
                 >
+                  {id === "cam" ? <Leaf className="w-3 h-3" /> : null}
                   {label}
                 </button>
               ))}
             </div>
 
             <div className="p-4 space-y-3 overflow-y-auto scrollbar-thin flex-1">
+              {selectedTab === "cam" && profile && (
+                <CAMCompliancePanel tender={profile.gara} compact />
+              )}
+
               {selectedTab === "risks" && (
                 <div className="space-y-2">
                   {profile.riskFactori.map((risk) => (

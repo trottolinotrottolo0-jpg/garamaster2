@@ -701,6 +701,100 @@ export interface RiskComplianceProfile {
   };
 }
 
+export type CAMCategoriaTipologia =
+  | "MATERIALE"
+  | "PROCESSO"
+  | "ENERGIA"
+  | "RIFIUTI"
+  | "TRASPORTO"
+  | "ALTRO";
+
+export interface CAMCategoria {
+  id: string;
+  codice: string;
+  nome: string;
+  descrizione: string;
+  tipologia: CAMCategoriaTipologia;
+  obbligatorio: boolean;
+  percentualeMinimaApplicazione?: number;
+  scorePunti: number;
+  documentazionerichiesta: string[];
+  note: string;
+}
+
+export interface CAMRequirement {
+  id: string;
+  titolo: string;
+  descrizione: string;
+  categoria: CAMCategoria;
+  obbligatorio: boolean;
+  deadline?: string;
+  confidenza: number;
+}
+
+export type CAMAssessmentStato =
+  | "NON_INIZIATO"
+  | "IN_VALUTAZIONE"
+  | "CONFORME"
+  | "NON_CONFORME";
+
+export interface CAMAssessmentItem {
+  requirementId: string;
+  titolo: string;
+  puntiMassimi: number;
+  puntiOttenuti: number;
+  stato: CAMAssessmentStato;
+  evidenza?: string;
+  dataValutazione?: string;
+}
+
+export type CAMConformitaComplessiva =
+  | "PIENAMENTE_CONFORME"
+  | "CONFORME"
+  | "PARZIALMENTE_CONFORME"
+  | "NON_CONFORME";
+
+export interface CAMComplianceScore {
+  id: string;
+  gara: TenderDocument;
+  dataValutazione: string;
+  assessmentItems: CAMAssessmentItem[];
+  scoreTotale: number;
+  scorePercentuale: number;
+  conformitaComplessiva: CAMConformitaComplessiva;
+  requisitiObbligatoriCoperti: number;
+  totalRequisitiObbligatori: number;
+  requisitiMancanti: CAMRequirement[];
+  azioniCorrettive: Array<{
+    requirementId: string;
+    azione: string;
+    timeline: string;
+    responsabile: string;
+  }>;
+  insightsDeepSeek?: {
+    analisi: string;
+    puntiForza: string[];
+    puntiDeboli: string[];
+    raccomandazioni: string[];
+  };
+}
+
+export type CAMMiglioramentoEffort = "BASSO" | "MEDIO" | "ALTO";
+
+export interface CAMComplianceProfile {
+  id: string;
+  gara: TenderDocument;
+  dataCreazione: string;
+  requirements: CAMRequirement[];
+  assessment: CAMComplianceScore;
+  miglioramentiPossibili: Array<{
+    categoria: string;
+    descrizione: string;
+    puntiAggiuntivi: number;
+    effort: CAMMiglioramentoEffort;
+  }>;
+}
+
 export interface CompanyProfile {
   // Anagrafica
   companyName: string;
