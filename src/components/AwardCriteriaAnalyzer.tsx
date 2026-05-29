@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, type ChangeEvent } from "react";
 import { X, FileText, Loader2, AlertCircle } from "lucide-react";
 import { requestParseAwardCriteria } from "../lib/parseAwardCriteriaApi";
 import {
@@ -139,7 +139,7 @@ export function AwardCriteriaAnalyzer({
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.currentTarget.files?.[0];
     if (!file) return;
     await parsePdfFile(file, isCompareMode && !!analysisResult);

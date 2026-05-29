@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, type ChangeEvent } from "react";
 import { X, AlertTriangle, Clock, FileText, Loader2, Upload } from "lucide-react";
 import type { TenderDocument, RiskComplianceProfile } from "../types";
 import {
@@ -151,7 +151,7 @@ export function RiskComplianceProfiler({ isOpen, onClose, tender }: RiskComplian
 
   if (!isOpen) return null;
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.currentTarget.files?.[0];
     if (!file) return;
     const isPdf =
@@ -192,7 +192,7 @@ export function RiskComplianceProfiler({ isOpen, onClose, tender }: RiskComplian
 
   const handleRequirementDocUpload = (
     requirementId: string,
-    e: React.ChangeEvent<HTMLInputElement>
+    e: ChangeEvent<HTMLInputElement>
   ) => {
     const file = e.target.files?.[0];
     if (!file || !profile) return;

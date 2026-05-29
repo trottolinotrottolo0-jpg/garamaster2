@@ -71,7 +71,7 @@ function extractJsonFromLlmResponse(text: string): string {
 /**
  * Parse JSON con fallback robusto
  */
-export function parseGeminiJson<T extends Record<string, unknown>>(
+export function parseGeminiJson<T extends object>(
   text: string
 ): T & { explainability?: ExplainabilityData } {
   const extracted = extractJsonFromLlmResponse(text);
@@ -318,14 +318,6 @@ DATI GARA:
   } catch {
     throw new Error("Risposta Gemini non valida — riprova");
   }
-}
-
-function parseTenderValue(valueStr: string): number {
-  const cleaned = valueStr
-    .replace(/[€\s]/g, "")
-    .replace(/\./g, "")
-    .replace(",", ".");
-  return parseFloat(cleaned) || 0;
 }
 
 function calcScenario(
@@ -1050,7 +1042,7 @@ DATI GARA:
       text
     );
     const redFlags = Array.isArray(parsed.redFlags)
-      ? parsed.redFlags.map((item) => normalizeRedFlagItem(item as Record<string, unknown>))
+      ? parsed.redFlags.map((item) => normalizeRedFlagItem(item as unknown as Record<string, unknown>))
       : [];
     const explainability = resolveRedFlagExplainability(parsed.explainability, redFlags, {
       sintesiRischio: parsed.sintesiRischio,
@@ -2774,7 +2766,7 @@ Rispondi SOLO con JSON valido, senza markdown, senza backtick:
   try {
     const parsed = parseGeminiJson<ProposalGuidedTextResult>(cleaned);
     return {
-      seczioneOfferta: parsed.sezioneOfferta || "",
+      seczioneOfferta: (parsed as { seczioneOfferta?: string }).seczioneOfferta || "",
       noteRedazione: Array.isArray(parsed.noteRedazione) ? parsed.noteRedazione : [],
       wordCountTarget: Number(parsed.wordCountTarget) || 350,
     };
