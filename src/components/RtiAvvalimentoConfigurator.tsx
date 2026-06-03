@@ -1,6 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
   CheckCircle2,
   Loader2,
   RefreshCw,
@@ -8,7 +10,13 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import type { CompanyProfile, TenderDocument } from "../types";
+import type {
+  CompanyProfile,
+  ImpattoPartner,
+  PartnerPotenziale,
+  ScenarioAnalysis,
+  TenderDocument,
+} from "../types";
 import type { ProfiloImpresaContext } from "../types/database";
 import { detectSoaGaps } from "../lib/soaGapAnalysis";
 import { fetchRtiAvvalimentoAnalysis, raccomandazioneLabel } from "../lib/rtiAvvalimentoApi";
@@ -55,6 +63,119 @@ function PercorsoCard({
         )}
       </div>
       {children}
+    </div>
+  );
+}
+
+function DeltaBadge({ value, label }: { value: number; label: string }) {
+  const positive = value >= 0;
+  return (
+    <div className="flex flex-col items-center gap-0.5">
+      <div
+        className={`flex items-center gap-0.5 text-[11px] font-bold ${
+          positive ? "text-emerald-400" : "text-red-400"
+        }`}
+      >
+        {positive ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+        {Math.abs(value)}%
+      </div>
+      <span className="text-[9px] text-slate-500">{label}</span>
+    </div>
+  );
+}
+
+function ScenarioCard({ scenario, highlight }: { scenario: ScenarioAnalysis; highlight?: boolean }) {
+  return (
+    <div
+      className={`rounded-lg border p-3 space-y-2 flex-1 ${
+        highlight
+          ? "border-brand-gold/50 bg-brand-gold/5"
+          : "border-neutral-800 bg-neutral-950/60"
+      }`}
+    >
+      <p className="text-[10px] font-bold text-white">{scenario.titolo}</p>
+      <div className="grid grid-cols-2 gap-1">
+        <div className="text-center">
+          <p className="text-[16px] font-extrabold text-brand-gold">{scenario.probabilitaVittoria ?? "—"}%</p>
+          <p className="text-[9px] text-slate-500">P(vittoria)</p>
+        </div>
+        <div className="text-center">
+          <p className="text-[16px] font-extrabold text-emerald-400">{scenario.stimaMargine ?? "—"}%</p>
+          <p className="text-[9px] text-slate-500">Margine stimato</p>
+        </div>
+      </div>
+      {scenario.principaliVantaggi?.length > 0 && (
+        <ul className="text-[9px] text-emerald-300/80 list-disc list-inside space-y-0.5">
+          {scenario.principaliVantaggi.map((v, i) => (
+            <li key={i}>{v}</li>
+          ))}
+        </ul>
+      )}
+      {scenario.principaliRischi?.length > 0 && (
+        <ul className="text-[9px] text-red-300/70 list-disc list-inside space-y-0.5">
+          {scenario.principaliRischi.map((r, i) => (
+            <li key={i}>{r}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function PartnerCard({ partner }: { partner: PartnerPotenziale }) {
+  const affidabilitaColor =
+    partner.affidabilita === "Alta"
+      ? "text-emerald-400"
+      : partner.affidabilita === "Media"
+        ? "text-amber-400"
+        : "text-red-400";
+  const tipoLabel =
+    partner.tipoSupporto === "mandataria"
+      ? "Mandataria"
+      : partner.tipoSupporto === "mandante"
+        ? "Mandante"
+        : "Ausiliaria";
+
+  return (
+    <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 p-3 space-y-1.5">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-[10px] font-bold text-white leading-tight">{partner.nome}</p>
+        <span
+          className={`shrink-0 text-[8px] font-bold uppercase border rounded px-1 py-0.5 ${affidabilitaColor} border-current`}
+        >
+          {partner.affidabilita}
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-1">
+        {partner.categorieSOA.map((c) => (
+          <span key={c} className="text-[8px] bg-brand-gold/20 text-brand-gold font-mono px-1 rounded">
+            {c}
+          </span>
+        ))}
+        <span className="text-[8px] bg-neutral-800 text-slate-400 px-1 rounded">{tipoLabel}</span>
+      </div>
+      {partner.areeGeografiche?.length > 0 && (
+        <p className="text-[9px] text-slate-500">{partner.areeGeografiche.join(", ")}</p>
+      )}
+      <p className="text-[9px] text-slate-300 leading-relaxed">{partner.motivazioneMatch}</p>
+    </div>
+  );
+}
+
+function ImpattoBox({ impatto }: { impatto: ImpattoPartner }) {
+  return (
+    <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-3 space-y-2">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+        Impatto stimato del partner
+      </p>
+      <div className="flex justify-around">
+        <DeltaBadge value={impatto.fitDelta} label="Fit gara" />
+        <DeltaBadge value={-impatto.rischioD} label="Rischio" />
+        <DeltaBadge value={impatto.marginalitaDelta} label="Marginalità" />
+      </div>
+      {impatto.note && (
+        <p className="text-[9px] text-slate-400 italic leading-relaxed">{impatto.note}</p>
+      )}
     </div>
   );
 }
@@ -166,6 +287,7 @@ export function RtiAvvalimentoConfigurator({
 
           {result && !loading && (
             <>
+              {/* Raccomandazione finale */}
               <div className="rounded-xl border border-brand-gold/50 bg-brand-gold/10 p-4 text-center">
                 <p className="text-[10px] uppercase tracking-wider text-slate-400 mb-1">
                   Raccomandazione finale
@@ -176,7 +298,39 @@ export function RtiAvvalimentoConfigurator({
                 <p className="text-[11px] text-slate-300 mt-2 leading-relaxed">{result.sintesi}</p>
               </div>
 
+              {/* Percorsi */}
               <div className="grid gap-3 sm:grid-cols-1">
+                {/* 0. Partecipa da solo */}
+                {result.partecipaDiretto && (
+                  <PercorsoCard
+                    title="0. Partecipa da solo"
+                    active={rac === "PARTECIPARE_DIRETTA"}
+                    consigliato={result.partecipaDiretto.consigliato}
+                  >
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                      {result.partecipaDiretto.motivazione}
+                    </p>
+                    {result.partecipaDiretto.condizioniNecessarie?.length > 0 && (
+                      <div>
+                        <p className="text-[9px] font-bold text-slate-400 mb-1 uppercase tracking-wide">
+                          Condizioni necessarie
+                        </p>
+                        <ul className="text-[10px] text-slate-400 list-disc list-inside space-y-0.5">
+                          {result.partecipaDiretto.condizioniNecessarie.map((c, i) => (
+                            <li key={i}>{c}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {result.partecipaDiretto.rischioResiduo && (
+                      <p className="text-[9px] text-amber-400 italic">
+                        Rischio residuo: {result.partecipaDiretto.rischioResiduo}
+                      </p>
+                    )}
+                  </PercorsoCard>
+                )}
+
+                {/* 1. RTI */}
                 <PercorsoCard
                   title="1. RTI (Raggruppamento)"
                   active={rac === "RTI"}
@@ -192,13 +346,39 @@ export function RtiAvvalimentoConfigurator({
                   <p className="text-[10px] text-slate-400">
                     <strong className="text-white">Quote:</strong> {result.rti.quotePartecipazione}
                   </p>
+
+                  {/* Partner suggeriti */}
                   {result.rti.partnerSuggeriti?.length > 0 && (
-                    <ul className="text-[10px] text-slate-500 list-disc list-inside">
-                      {result.rti.partnerSuggeriti.map((p, i) => (
-                        <li key={i}>{p}</li>
+                    <div className="space-y-2 pt-1">
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">
+                        Partner potenziali
+                      </p>
+                      {result.rti.partnerSuggeriti.map((p) => (
+                        <div key={p.id}>
+                          <PartnerCard partner={p} />
+                        </div>
                       ))}
-                    </ul>
+                    </div>
                   )}
+
+                  {/* Scenari confronto */}
+                  {result.rti.scenarioSenzaPartner && result.rti.scenarioConPartner && (
+                    <div className="space-y-1.5 pt-1">
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">
+                        Confronto scenari
+                      </p>
+                      <div className="flex gap-2">
+                        <ScenarioCard scenario={result.rti.scenarioSenzaPartner} />
+                        <ScenarioCard scenario={result.rti.scenarioConPartner} highlight />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Impatto partner */}
+                  {result.rti.impattoPartner && (
+                    <ImpattoBox impatto={result.rti.impattoPartner} />
+                  )}
+
                   {result.rti.documenti?.length > 0 && (
                     <p className="text-[9px] text-slate-500">
                       Doc.: {result.rti.documenti.join(" · ")}
@@ -206,6 +386,7 @@ export function RtiAvvalimentoConfigurator({
                   )}
                 </PercorsoCard>
 
+                {/* 2. Avvalimento */}
                 <PercorsoCard
                   title="2. Avvalimento (art. 104)"
                   active={rac === "AVVALIMENTO"}
@@ -225,8 +406,14 @@ export function RtiAvvalimentoConfigurator({
                     </ul>
                   )}
                   <p className="text-[10px] text-slate-500 italic">{result.avvalimento.limiti}</p>
+                  {result.avvalimento.documenti?.length > 0 && (
+                    <p className="text-[9px] text-slate-500">
+                      Doc.: {result.avvalimento.documenti.join(" · ")}
+                    </p>
+                  )}
                 </PercorsoCard>
 
+                {/* 3. Lasciare perdere */}
                 <PercorsoCard
                   title="3. Lasciare perdere la gara"
                   active={rac === "LASCIARE_PERDERE"}
