@@ -59,17 +59,19 @@ function makeMockResult(overrides: Partial<ProfitabilityGateResult> = {}): Profi
   return {
     verdict: "PROFITTEVOLE",
     scoreProfittabilita: 72,
-    margineAttesoPercent: 14.5,
-    margineAttesoEuro: 159_500,
+    margineAttesoPercent: 4.7,
+    margineAttesoEuro: 52_000,
     breakdownCosti: [
       { categoria: "Manodopera", importoStimato: 385_000, percentualeImporto: 35, note: "Stimato su costoOra operai" },
       { categoria: "Materiali", importoStimato: 330_000, percentualeImporto: 30, note: "Categoria OG1 standard" },
       { categoria: "Noli/Mezzi", importoStimato: 88_000, percentualeImporto: 8, note: "Attrezzature da cantiere" },
       { categoria: "Spese generali", importoStimato: 165_000, percentualeImporto: 15, note: "15% dell'importo" },
       { categoria: "Accantonamento rischio", importoStimato: 33_000, percentualeImporto: 3, note: "3% dell'importo" },
-      { categoria: "Utile atteso", importoStimato: 99_000, percentualeImporto: 9, note: "Differenza residua" },
+      { categoria: "Costi organizzativi", importoStimato: 27_500, percentualeImporto: 2.5, note: "Coordinamento e pianificazione operativa" },
+      { categoria: "Costi amministrativi", importoStimato: 19_500, percentualeImporto: 1.8, note: "Ufficio gare e pratiche amministrative" },
+      { categoria: "Utile atteso", importoStimato: 52_000, percentualeImporto: 4.7, note: "Differenza residua" },
     ],
-    costoTotaleStimato: 1_100_000,
+    costoTotaleStimato: 1_048_000,
     rischioEconomico: "basso",
     motivazione: "Gara ben calibrata sul profilo impresa con margine adeguato.",
     alertMargineInsufficiente: false,
@@ -106,22 +108,26 @@ describe("calcImportoOfferto", () => {
 describe("Breakdown costi", () => {
   const result = makeMockResult();
 
-  it("contiene esattamente 6 voci distinte", () => {
-    expect(result.breakdownCosti).toHaveLength(6);
+  it("contiene almeno 8 voci distinte (incluse voci organizzative e amministrative)", () => {
+    expect(result.breakdownCosti.length).toBeGreaterThanOrEqual(8);
     const categorie = result.breakdownCosti.map((i) => i.categoria);
     const uniche = new Set(categorie);
-    expect(uniche.size).toBe(6);
+    expect(uniche.size).toBe(result.breakdownCosti.length);
+    expect(categorie).toContain("Costi organizzativi");
+    expect(categorie).toContain("Costi amministrativi");
   });
 
-  it("somma voci ≈ costoTotaleStimato (entro 5%)", () => {
-    const sum = result.breakdownCosti.reduce((acc, item) => acc + item.importoStimato, 0);
+  it("somma voci di costo (escluso utile) ≈ costoTotaleStimato (entro 5%)", () => {
+    const sum = result.breakdownCosti.reduce((acc, item) => {
+      return acc + (item.categoria.toLowerCase().includes("utile") ? 0 : item.importoStimato);
+    }, 0);
     const delta = Math.abs(sum - result.costoTotaleStimato) / result.costoTotaleStimato;
     expect(delta).toBeLessThanOrEqual(0.05);
   });
 
-  it("costoTotaleStimato ≈ importoOfferto da ribasso 12%", () => {
-    const delta = Math.abs(result.costoTotaleStimato - IMPORTO_OFFERTO) / IMPORTO_OFFERTO;
-    expect(delta).toBeLessThanOrEqual(0.05);
+  it("margine atteso + costoTotaleStimato ≈ importoOfferto da ribasso 12%", () => {
+    const delta = Math.abs((result.costoTotaleStimato + result.margineAttesoEuro) - IMPORTO_OFFERTO) / IMPORTO_OFFERTO;
+    expect(delta).toBeLessThanOrEqual(0.01);
   });
 
   it("helper validateBreakdownSum approva dati coerenti", () => {

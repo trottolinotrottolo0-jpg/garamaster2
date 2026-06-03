@@ -2,7 +2,13 @@ import { useState, useEffect } from "react";
 import {
   X, BarChart3, RefreshCw, AlertTriangle, Loader2, XCircle, ArrowLeft,
 } from "lucide-react";
-import type { TenderDocument, CompanyProfile, ProfitabilityGateResult, ProfitabilityVerdict } from "../types";
+import type {
+  TenderDocument,
+  CompanyProfile,
+  ProfitabilityGateResult,
+  ProfitabilityVerdict,
+  Prezzario,
+} from "../types";
 import { runProfitabilityGate } from "../lib/gemini";
 import { ExplainabilityLayer } from "./ExplainabilityLayer";
 
@@ -10,6 +16,7 @@ interface ProfitabilityGateProps {
   tender: TenderDocument;
   isOpen: boolean;
   onClose: () => void;
+  prezzari?: Prezzario[];
 }
 
 const VERDICT_CFG: Record<ProfitabilityVerdict, { bg: string; border: string; text: string; label: string }> = {
@@ -37,18 +44,24 @@ function fmt(n: number) {
   return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
 }
 
-export function ProfitabilityGate({ tender, isOpen, onClose }: ProfitabilityGateProps) {
+export function ProfitabilityGate({ tender, isOpen, onClose, prezzari }: ProfitabilityGateProps) {
   const [profile, setProfile] = useState<CompanyProfile | null>(null);
   const [result, setResult] = useState<ProfitabilityGateResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const resolveVociPrezzario = (prof: CompanyProfile) => {
+    if (!prof.prezzarioPreferito || !prezzari?.length) return undefined;
+    return prezzari.find((p) => p.id === prof.prezzarioPreferito)?.voci;
+  };
 
   const loadAndRun = async (prof: CompanyProfile) => {
     setLoading(true);
     setError(null);
     setResult(null);
     try {
-      const res = await runProfitabilityGate(tender, prof);
+      const voci = resolveVociPrezzario(prof);
+      const res = await runProfitabilityGate(tender, prof, voci);
       setResult(res);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Errore sconosciuto");
@@ -70,7 +83,7 @@ export function ProfitabilityGate({ tender, isOpen, onClose }: ProfitabilityGate
     setProfile(prof);
     loadAndRun(prof);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, tender]);
+  }, [isOpen, tender, prezzari]);
 
   if (!isOpen) return null;
 
@@ -118,6 +131,12 @@ export function ProfitabilityGate({ tender, isOpen, onClose }: ProfitabilityGate
               <Loader2 className="w-8 h-8 text-brand-gold mx-auto animate-spin" />
               <p className="text-sm text-slate-300 font-semibold">Analisi profittabilità in corso</p>
               <p className="text-xs text-slate-500">Gemini calcola costi, margini e scenari...</p>
+              {profile?.prezzarioPreferito && prezzari?.find((p) => p.id === profile.prezzarioPreferito) && (
+                <p className="text-[10px] text-brand-gold">
+                  Prezzario attivo:{" "}
+                  {prezzari.find((p) => p.id === profile.prezzarioPreferito)?.nome}
+                </p>
+              )}
             </div>
           )}
 
@@ -228,6 +247,99 @@ export function ProfitabilityGate({ tender, isOpen, onClose }: ProfitabilityGate
               </div>
 
               {/* Motivazione */}
+              {result.productivityImpact && (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5 space-y-3">
+                  <h3 className="text-[9px] font-extrabold uppercase tracking-widest text-slate-500">
+                    Impatto produttivita squadra
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="bg-black/30 border border-neutral-800 rounded-lg p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Efficienza rilevata</p>
+                      <p className="text-sm text-white font-bold mt-1">{result.productivityImpact.efficiencyLevel.replace("_", " ")}</p>
+                    </div>
+                    <div className="bg-black/30 border border-neutral-800 rounded-lg p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Impatto manodopera</p>
+                      <p className="text-sm text-white font-bold mt-1">{result.productivityImpact.laborCostAdjustmentPercentage.toFixed(1)}%</p>
+                    </div>
+                    <div className="bg-black/30 border border-neutral-800 rounded-lg p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Impatto rischio</p>
+                      <p className="text-sm text-white font-bold mt-1">{result.productivityImpact.riskAdjustment}</p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-300">{result.productivityImpact.explanation}</p>
+                  {result.productivityImpact.warning && (
+                    <div className="bg-amber-950/40 border border-amber-800 rounded-lg p-3 flex items-start gap-2">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                      <p className="text-xs text-amber-300">{result.productivityImpact.warning}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {result.estimatedTimeImpact && (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5 space-y-3">
+                  <h3 className="text-[9px] font-extrabold uppercase tracking-widest text-slate-500">
+                    Impatto tempi stimati
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="bg-black/30 border border-neutral-800 rounded-lg p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Durata rilevata</p>
+                      <p className="text-sm text-white font-bold mt-1">
+                        {result.estimatedTimeImpact.durationDays ? `${result.estimatedTimeImpact.durationDays} giorni` : "non configurata"}
+                      </p>
+                    </div>
+                    <div className="bg-black/30 border border-neutral-800 rounded-lg p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Classe durata</p>
+                      <p className="text-sm text-white font-bold mt-1">{result.estimatedTimeImpact.durationLabel.replace("_", " ")}</p>
+                    </div>
+                    <div className="bg-black/30 border border-neutral-800 rounded-lg p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Impatto su rischio</p>
+                      <p className="text-sm text-white font-bold mt-1">{result.estimatedTimeImpact.riskAdjustment}</p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-300">
+                    {result.estimatedTimeImpact.explanation} Impatto costo: {fmt(result.estimatedTimeImpact.costAdjustmentEuro)}.
+                  </p>
+                  {result.estimatedTimeImpact.warning && (
+                    <div className="bg-amber-950/40 border border-amber-800 rounded-lg p-3 flex items-start gap-2">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                      <p className="text-xs text-amber-300">{result.estimatedTimeImpact.warning}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {result.regionalPriceListReference && (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5 space-y-3">
+                  <h3 className="text-[9px] font-extrabold uppercase tracking-widest text-slate-500">
+                    Riferimento prezzario regionale
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="bg-black/30 border border-neutral-800 rounded-lg p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Riferimento</p>
+                      <p className="text-sm text-white font-bold mt-1">{result.regionalPriceListReference.reference ?? "non indicato"}</p>
+                    </div>
+                    <div className="bg-black/30 border border-neutral-800 rounded-lg p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Regione / anno</p>
+                      <p className="text-sm text-white font-bold mt-1">
+                        {(result.regionalPriceListReference.region ?? "n/d")} / {result.regionalPriceListReference.year ?? "n/d"}
+                      </p>
+                    </div>
+                    <div className="bg-black/30 border border-neutral-800 rounded-lg p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Confidenza stima</p>
+                      <p className="text-sm text-white font-bold mt-1">{result.regionalPriceListReference.confidenceImpact}</p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-300">{result.regionalPriceListReference.explanation}</p>
+                  {result.regionalPriceListReference.warning && (
+                    <div className="bg-amber-950/40 border border-amber-800 rounded-lg p-3 flex items-start gap-2">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                      <p className="text-xs text-amber-300">{result.regionalPriceListReference.warning}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div>
                 <h3 className="text-[9px] font-extrabold uppercase tracking-widest text-slate-500 mb-2">
                   Analisi economica

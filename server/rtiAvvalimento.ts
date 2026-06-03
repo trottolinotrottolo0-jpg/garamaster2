@@ -89,8 +89,16 @@ export async function generateRtiAvvalimentoAnalysis(
       maxTokens: 8192,
     });
 
-    const cleaned = text.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
-    const parsed = JSON.parse(cleaned) as RtiAvvalimentoResponseBody;
+    const extracted = text.trim();
+    let cleaned = extracted;
+    if (cleaned.startsWith("```json")) cleaned = cleaned.slice(7);
+    else if (cleaned.startsWith("```")) cleaned = cleaned.slice(3);
+    if (cleaned.endsWith("```")) cleaned = cleaned.slice(0, -3);
+    cleaned = cleaned.trim();
+
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    const jsonStr = jsonMatch ? jsonMatch[0] : cleaned;
+    const parsed = JSON.parse(jsonStr) as RtiAvvalimentoResponseBody;
     return parsed;
   } catch (error) {
     throw new Error(formatGeminiError(error));

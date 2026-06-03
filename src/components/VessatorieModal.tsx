@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { TenderDocument, RiskLevel, RedFlagAnalysisResult } from "../types";
 import { runRedFlagAnalysis } from "../lib/gemini";
+import { resolveRedFlagExplainability } from "../lib/redFlagNormalization";
 import { ExplainabilityLayer } from "./ExplainabilityLayer";
 import {
   ShieldAlert, AlertTriangle, AlertCircle, Sparkles, HelpCircle,
@@ -51,6 +52,40 @@ export const VessatorieModal: React.FC<VessatorieModalProps> = ({
     if (sev === "high") return "CRITICITÀ CONTESTABILE";
     if (sev === "medium") return "ATTENZIONE";
     return "OSSERVAZIONE";
+  };
+
+  const categoryLabel = (type: string) => {
+    switch (type) {
+      case "hyper_detailed_specs":
+        return "Specifiche iper-dettagliate";
+      case "unbalanced_award_criteria":
+        return "Criteri di valutazione sbilanciati";
+      case "anomalous_timeline":
+        return "Tempi anomali";
+      case "restrictive_requirement_combination":
+        return "Combinazione restrittiva di requisiti";
+      case "requisito_sproporzionato":
+        return "Requisito potenzialmente sproporzionato";
+      case "clausola_sensibile":
+        return "Clausola sensibile";
+      case "rischio_operativo":
+        return "Rischio operativo / esecutivo";
+      case "rischio_esclusione":
+        return "Rischio di esclusione";
+      case "altro":
+        return "Altro (da approfondire)";
+      default:
+        return type.replaceAll("_", " ");
+    }
+  };
+
+  const getReferenceHref = (anchorId?: string) => {
+    if (!anchorId) return null;
+    const trimmed = anchorId.trim();
+    if (!trimmed) return null;
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed;
+    if (trimmed.startsWith("#")) return trimmed;
+    return null;
   };
 
   const rischioColor = (r: RiskLevel) => {
@@ -198,7 +233,7 @@ export const VessatorieModal: React.FC<VessatorieModalProps> = ({
                         >
                           {severityLabel(item.severity)}
                         </span>
-                        <span className="text-[10px] text-slate-400 font-mono">{item.type}</span>
+                        <span className="text-[10px] text-slate-400 font-mono">{categoryLabel(item.type)}</span>
                       </div>
                       <span className="text-[10px] text-brand-gold font-bold font-sans">
                         Ref: {item.articleRef.split(" (")[0]}
@@ -238,6 +273,42 @@ export const VessatorieModal: React.FC<VessatorieModalProps> = ({
                         </div>
                       </div>
 
+                      {item.sourceReference && (
+                        <div className="bg-neutral-900/30 p-2.5 rounded-lg border border-neutral-850 space-y-2">
+                          <span className="text-brand-gold font-bold block text-[10px] uppercase tracking-wider">
+                            Riferimento puntuale disciplinare
+                          </span>
+                          <div className="text-[10.5px] text-slate-300 space-y-1">
+                            <p>Documento: {item.sourceReference.documentName || "Documento gara"}</p>
+                            <p>Pagina: {item.sourceReference.pageNumber ?? "n/d"}</p>
+                            <p>Articolo/Clausola: {item.sourceReference.article || item.sourceReference.clauseTitle || "n/d"}</p>
+                            {item.sourceReference.excerpt && (
+                              <p className="italic text-slate-400">"{item.sourceReference.excerpt}"</p>
+                            )}
+                          </div>
+                          {getReferenceHref(item.sourceReference.anchorId) ? (
+                            <a
+                              href={getReferenceHref(item.sourceReference.anchorId) ?? "#"}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1.5 text-[10px] font-bold text-brand-gold hover:text-yellow-300 transition-colors"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                              Apri riferimento
+                            </a>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled
+                              className="inline-flex items-center gap-1.5 text-[10px] font-bold text-slate-500 border border-neutral-800 rounded px-2 py-1 cursor-not-allowed"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                              Riferimento disponibile nel documento
+                            </button>
+                          )}
+                        </div>
+                      )}
+
                       {/* Ready to use draft code block */}
                       <div className="space-y-1.5">
                         <span className="text-[9.5px] font-sans font-extrabold text-slate-450 uppercase tracking-wider block">
@@ -276,7 +347,19 @@ export const VessatorieModal: React.FC<VessatorieModalProps> = ({
                   </div>
                 ))}
               </div>
-              {result.explainability && <ExplainabilityLayer data={result.explainability} />}
+              {(() => {
+                const explainability = resolveRedFlagExplainability(
+                  result.explainability,
+                  result.redFlags,
+                  {
+                    sintesiRischio: result.sintesiRischio,
+                    rischioComplessivo: result.rischioComplessivo,
+                    tender,
+                  }
+                );
+                if (!explainability) return null;
+                return <ExplainabilityLayer data={explainability} />;
+              })()}
             </>
           )}
 

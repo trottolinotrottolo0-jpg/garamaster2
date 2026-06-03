@@ -1,5 +1,12 @@
-import { useState, type ReactNode } from "react";
-import { Plus, Trash2, Building2 } from "lucide-react";
+import { useState, useMemo, type ReactNode } from "react";
+import { Plus, Trash2, Building2, FileText, Target } from "lucide-react";
+import { SoaParserModal } from "./SoaParserModal";
+import { FitStrategicProfileModal } from "./FitStrategicProfileModal";
+import { FitPortfolioView } from "./FitPortfolioView";
+import {
+  clusterGareByFitStrategic,
+  buildFitParticipationHistory,
+} from "../lib/fitEngineStrategic";
 import type {
   CompanyAvailableResource,
   CompanyProfile as CompanyProfileType,
@@ -24,6 +31,8 @@ import type {
   SOACategory,
   SOACategoryCode,
   SOAClassifica,
+  SOAStructured,
+  FitStrategicProfile,
   GeographicArea,
   WorkSector,
   HistoricalTender,
@@ -198,6 +207,9 @@ function normalizeProfile(raw: Partial<CompanyProfileType>): CompanyProfileType 
     productivityData: normalizeProductivityData(raw.productivityData),
     historicalMargins: Array.isArray(raw.historicalMargins) ? raw.historicalMargins : [],
     historicalTenders: Array.isArray(raw.historicalTenders) ? raw.historicalTenders : [],
+    soaAttuale: raw.soaAttuale,
+    storicoSOA: Array.isArray(raw.storicoSOA) ? raw.storicoSOA : [],
+    fitStrategicProfile: raw.fitStrategicProfile,
   };
 }
 
@@ -217,6 +229,8 @@ export function CompanyProfile() {
     const stored = localStorage.getItem(STORAGE_KEY);
     return stored ? normalizeProfile(JSON.parse(stored) as Partial<CompanyProfileType>) : emptyProfile;
   });
+  const [isSoaParserOpen, setIsSoaParserOpen] = useState(false);
+  const [isFitModalOpen, setIsFitModalOpen] = useState(false);
 
   const resources = profile.availableResources ?? [];
   const tenderHistory = profile.tenderHistory ?? [];
@@ -224,6 +238,16 @@ export function CompanyProfile() {
   const activeProjects = profile.activeProjects ?? [];
   const historicalMargins = profile.historicalMargins ?? [];
   const historicalTenders = profile.historicalTenders ?? [];
+  const fitPortfolioClusters = useMemo(() => {
+    if (!profile.fitStrategicProfile) return [];
+    const participation = buildFitParticipationHistory(
+      profile.fitStrategicProfile,
+      profile.historicalTenders,
+      profile.tenderHistory
+    );
+    const tenders = participation.map((p) => p.tender);
+    return clusterGareByFitStrategic(tenders, profile.fitStrategicProfile);
+  }, [profile.fitStrategicProfile, profile.historicalTenders, profile.tenderHistory]);
   const prefs = profile.operationalPreferences ?? emptyOperationalPreferences;
   const preferredCategories = prefs.preferredCategories ?? [];
   const [saved, setSaved] = useState(false);
@@ -306,6 +330,19 @@ export function CompanyProfile() {
 
   const updateSOA = (idx: number, patch: Partial<SOACategory>) => {
     set("soaCategories", profile.soaCategories.map((c, i) => (i === idx ? { ...c, ...patch } : c)));
+  };
+
+  const handleSOAParsed = (soa: SOAStructured) => {
+    const updated: CompanyProfileType = {
+      ...profile,
+      soaAttuale: soa,
+      storicoSOA: [...(profile.storicoSOA ?? []), soa],
+      lastUpdated: new Date().toISOString(),
+    };
+    setProfile(updated);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
   };
 
   const toggleArea = (area: GeographicArea) => {
@@ -620,7 +657,71 @@ export function CompanyProfile() {
             <Plus className="w-3.5 h-3.5" />
             Aggiungi categoria SOA
           </button>
+          <button
+            type="button"
+            onClick={() => setIsSoaParserOpen(true)}
+            className="cursor-pointer flex items-center gap-2 text-[10px] font-bold text-white bg-neutral-800 hover:bg-neutral-700 px-3 py-1.5 rounded transition-colors"
+          >
+            <FileText className="w-3 h-3 text-brand-gold" />
+            Importa SOA da PDF/Excel
+          </button>
+          {profile.soaAttuale && (
+            <div className="bg-neutral-950 border border-neutral-800 rounded-lg p-3 mt-1">
+              <div className="text-[9px] text-slate-500 mb-1">SOA importato (file)</div>
+              <div className="text-[10px] text-white font-bold">{profile.soaAttuale.fileName}</div>
+              <div className="text-[9px] text-emerald-400 mt-1">
+                {profile.soaAttuale.totalCategorie} categorie · €
+                {profile.soaAttuale.importoTotaleMassimoRealizzabile.toLocaleString("it-IT")} max
+                realizzabile · {profile.soaAttuale.statoValidazione}
+              </div>
+              {(profile.storicoSOA?.length ?? 0) > 1 && (
+                <div className="text-[8px] text-slate-500 mt-1">
+                  Storico import: {profile.storicoSOA?.length} versioni
+                </div>
+              )}
+            </div>
+          )}
         </div>
+      </div>
+
+      {/* Strategia / Fit */}
+      <div className="bg-black border border-neutral-800 rounded-xl p-5 space-y-4">
+        <SectionTitle>Profilo strategico (Fit Engine)</SectionTitle>
+        <p className="text-[10px] text-slate-500">
+          Definisci nicchie e aree target per valutare l&apos;allineamento strategico delle gare in
+          Bid/No-Bid.
+        </p>
+        <button
+          type="button"
+          onClick={() => setIsFitModalOpen(true)}
+          className="cursor-pointer flex items-center gap-2 text-[10px] font-bold text-white bg-neutral-800 hover:bg-neutral-700 px-3 py-1.5 rounded transition-colors"
+        >
+          <Target className="w-3 h-3 text-brand-gold" />
+          Profilo strategico
+        </button>
+        {profile.fitStrategicProfile && (
+          <div className="bg-neutral-950 border border-neutral-800 rounded-lg p-3">
+            <div className="text-[9px] text-slate-500 mb-1">Profilo strategico attivo</div>
+            <div className="text-[10px] text-white space-y-1">
+              <div className="font-bold">
+                Nicchie: {profile.fitStrategicProfile.strategiaAttiva.nicchieTarget.length}
+              </div>
+              <div className="font-bold">
+                Aree: {profile.fitStrategicProfile.strategiaAttiva.areeTarget.length}
+              </div>
+              <div className="text-emerald-400">
+                Target: €
+                {(
+                  profile.fitStrategicProfile.strategiaAttiva.importoTargetAnnuale / 1_000_000
+                ).toFixed(1)}
+                M · margine {profile.fitStrategicProfile.strategiaAttiva.margineTargetMedio}%
+              </div>
+            </div>
+          </div>
+        )}
+        {profile.fitStrategicProfile && fitPortfolioClusters.length > 0 && (
+          <FitPortfolioView clusters={fitPortfolioClusters} />
+        )}
       </div>
 
       {/* Operatività */}
@@ -1977,6 +2078,32 @@ export function CompanyProfile() {
         </button>
         {saved && <span className="text-xs text-emerald-400 font-semibold">Profilo salvato ✓</span>}
       </div>
+
+      <SoaParserModal
+        isOpen={isSoaParserOpen}
+        onClose={() => setIsSoaParserOpen(false)}
+        onSOAParsed={handleSOAParsed}
+        currentSOA={profile.soaAttuale}
+        storicoSOA={profile.storicoSOA}
+      />
+
+      <FitStrategicProfileModal
+        isOpen={isFitModalOpen}
+        onClose={() => setIsFitModalOpen(false)}
+        onSaveProfile={(fitProfile: FitStrategicProfile) => {
+          const updated: CompanyProfileType = {
+            ...profile,
+            fitStrategicProfile: fitProfile,
+            lastUpdated: new Date().toISOString(),
+          };
+          setProfile(updated);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+          setSaved(true);
+        }}
+        currentProfile={profile.fitStrategicProfile}
+        historicalTenders={profile.historicalTenders}
+        tenderHistory={profile.tenderHistory}
+      />
     </div>
   );
 }
