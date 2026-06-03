@@ -53,6 +53,7 @@ type HomeDashboardProps = {
   supabaseConfigured: boolean;
   dataError: string | null;
   onNavigate: (tab: AppTab) => void;
+  onSelectTender?: (listId: string) => void;
   onRefreshAll: () => void;
   isRefreshing?: boolean;
   engineShortcuts: HomeShortcut[];
@@ -163,6 +164,7 @@ export function HomeDashboard({
   supabaseConfigured,
   dataError,
   onNavigate,
+  onSelectTender,
   onRefreshAll,
   isRefreshing,
   engineShortcuts,
@@ -322,7 +324,12 @@ export function HomeDashboard({
               <Target className="w-3.5 h-3.5 text-brand-gold" />
               Portfolio competitività
             </h2>
-            <TenderPortfolioScore userId={userId} profilo={profilo} tenders={tenders} />
+            <TenderPortfolioScore
+              userId={userId}
+              profilo={profilo}
+              tenders={tenders}
+              onSelectTender={onSelectTender}
+            />
             <SoaGapForecastPanel
               userId={userId}
               profilo={profilo}

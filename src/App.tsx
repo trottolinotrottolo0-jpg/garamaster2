@@ -718,6 +718,15 @@ export default function App() {
     if (tab === "feed") void refreshDailyFeed();
   };
 
+  const handleSelectTenderFromPortfolio = (listId: string) => {
+    const match = allTenders.find((t) => t.id === listId);
+    if (match) {
+      setSelectedTender(match);
+      setActiveTab("chat");
+      setIsNavMenuOpen(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-black flex text-white font-sans selection:bg-brand-gold selection:text-black" id="main-gpt-layout">
       
@@ -1293,6 +1302,7 @@ export default function App() {
                 supabaseConfigured={supabaseConfigured}
                 dataError={dataError}
                 onNavigate={navigateTo}
+                onSelectTender={handleSelectTenderFromPortfolio}
                 onRefreshAll={() => void handleRefreshDashboard()}
                 isRefreshing={dashboardRefreshing || dailyFeedLoading}
                 engineShortcuts={engineShortcuts}
@@ -1695,6 +1705,7 @@ export default function App() {
                     userId={user.id}
                     profilo={profilo}
                     tenders={allTenders}
+                    onSelectTender={handleSelectTenderFromPortfolio}
                   />
                 </div>
               )}
