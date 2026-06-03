@@ -11,12 +11,17 @@ import type {
 } from "../types";
 import { runProfitabilityGate } from "../lib/gemini";
 import { ExplainabilityLayer } from "./ExplainabilityLayer";
+import { EvidenceLayer } from "./evidence/EvidenceLayer";
+import { ConfidenceBadge } from "./evidence/ConfidenceBadge";
 
 interface ProfitabilityGateProps {
   tender: TenderDocument;
   isOpen: boolean;
   onClose: () => void;
   prezzari?: Prezzario[];
+  userId?: string;
+  garaId?: string | null;
+  profiloId?: string | null;
 }
 
 const VERDICT_CFG: Record<ProfitabilityVerdict, { bg: string; border: string; text: string; label: string }> = {
@@ -44,7 +49,15 @@ function fmt(n: number) {
   return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
 }
 
-export function ProfitabilityGate({ tender, isOpen, onClose, prezzari }: ProfitabilityGateProps) {
+export function ProfitabilityGate({
+  tender,
+  isOpen,
+  onClose,
+  prezzari,
+  userId,
+  garaId,
+  profiloId,
+}: ProfitabilityGateProps) {
   const [profile, setProfile] = useState<CompanyProfile | null>(null);
   const [result, setResult] = useState<ProfitabilityGateResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -376,6 +389,16 @@ export function ProfitabilityGate({ tender, isOpen, onClose, prezzari }: Profita
               </div>
 
               {result.explainability && <ExplainabilityLayer data={result.explainability} />}
+
+              <EvidenceLayer
+                userId={userId}
+                garaId={garaId}
+                profiloId={profiloId}
+                outputType="profitability"
+                outputId={`${tender.cig}_gate`}
+                inlineEvidence={result.evidence}
+                title="Perché il sistema ti dice questo (Profitability Gate)"
+              />
 
               {/* Footer */}
               <div className="pt-2 border-t border-neutral-900 space-y-3">

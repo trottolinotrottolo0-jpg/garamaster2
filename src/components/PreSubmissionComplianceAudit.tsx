@@ -38,6 +38,8 @@ import {
   type ComplianceAuditDeepInsights,
 } from "../lib/gemini";
 import { readFileAsBase64 } from "../lib/parseSOAApi";
+import { complianceItemToEvidence } from "../lib/evidence";
+import { EvidenceLayer } from "./evidence/EvidenceLayer";
 
 interface PreSubmissionComplianceAuditProps {
   isOpen: boolean;
@@ -45,6 +47,9 @@ interface PreSubmissionComplianceAuditProps {
   onReadyToSubmit?: (audit: PreSubmissionComplianceAudit) => void;
   tender: TenderDocument;
   companyProfile?: CompanyProfile | null;
+  userId?: string;
+  garaId?: string | null;
+  profiloId?: string | null;
 }
 
 type AuditTab = "items" | "reminders" | "insights" | "final";
@@ -69,6 +74,9 @@ export function PreSubmissionComplianceAudit({
   onReadyToSubmit,
   tender,
   companyProfile: companyProfileProp,
+  userId,
+  garaId,
+  profiloId,
 }: PreSubmissionComplianceAuditProps) {
   const [audit, setAudit] = useState<PreSubmissionComplianceAudit | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
@@ -653,6 +661,21 @@ export function PreSubmissionComplianceAudit({
             </div>
           )}
         </div>
+
+        {audit && (
+          <div className="px-4 pb-2">
+            <EvidenceLayer
+              userId={userId}
+              garaId={garaId}
+              profiloId={profiloId}
+              outputType="compliance"
+              outputId={`${tender.cig}_audit`}
+              inlineEvidence={audit.checklistItems.slice(0, 8).map(complianceItemToEvidence)}
+              title="Perché il sistema ti dice questo (Compliance)"
+              compact
+            />
+          </div>
+        )}
 
         <div className="flex gap-2 p-4 border-t border-neutral-800 shrink-0">
           <button

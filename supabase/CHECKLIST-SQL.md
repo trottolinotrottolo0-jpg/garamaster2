@@ -21,6 +21,7 @@
 | **Sync ANAC (Fase 2)** | **Sì** — `solo-anac-sync-fase2.sql` + `SUPABASE_SERVICE_ROLE_KEY` server |
 | **Documenti + AI scouting (Fase 3–4)** | **Sì** — `solo-scouting-fase3-fase4.sql` + bucket Storage |
 | **Tender Portfolio Score** | **Sì** — `solo-portfolio-scores.sql` + `solo-portfolio-scarto.sql` (opz. `solo-portfolio-carico.sql`) |
+| **Guided Tender Preparation (#11)** | **Sì** — `solo-guided-tender-preparation.sql` (+ bucket Storage) |
 | Profilo / login / lista gare demo | **Sì** — `schema.sql` (prima volta) |
 
 ---
@@ -73,7 +74,8 @@ In **Authentication → Policies** (o RLS sulla tabella): policy attive su ogni 
 | Chat + system prompt | **Nessuna tabella** |
 | Gara ROI Calculator | **Nessuna tabella** |
 | RTI & Avvalimento | **Nessuna tabella** |
-| Preparazione offerta guidata | **Nessuna tabella** (salvataggio usa `conversazioni_ai`) |
+| Preparazione offerta guidata (#11) | `tender_practices`, `tender_documents`, `tender_checklist_items` (+ chat usa `conversazioni_ai`) |
+| Evidence & Explainability (#14) | `evidence_items`, `evidence_graph_edges` — `supabase/solo-evidence-layer.sql` |
 | Parser Disciplinare PDF | `gare` (requisiti, penali, scadenze, criterio) |
 | Salva conversazione | `conversazioni_ai` |
 | Historical Knowledge Layer | `storico_gare_ai` (esito, ribasso, pattern, note AI) |
@@ -96,6 +98,7 @@ In **Authentication → Policies** (o RLS sulla tabella): policy attive su ogni 
 | `solo-storico-gare-ai.sql` | Solo Historical Knowledge Layer |
 | `solo-portfolio-scores.sql` | Score portfolio su `gare` (fit, urgenza, rischio, vista, motivazione) |
 | `fix-duplicate-gare-user-cig.sql` | Errore `gare_user_cig_unique_idx` / CIG duplicato su `gare` (stesso `user_id`) |
+| `solo-guided-tender-preparation.sql` | Pratiche partecipazione, documenti, checklist, Storage |
 | `solo-portfolio-scarto.sql` | Colonna `gare.scartata` |
 | `solo-portfolio-carico.sql` | Capacità squadre/mezzi su profilo e gare |
 

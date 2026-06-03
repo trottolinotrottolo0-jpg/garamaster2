@@ -48,6 +48,7 @@ import { DocumentAnalyzer } from "./components/DocumentAnalyzer";
 import { DeveloperGuide } from "./components/DeveloperGuide";
 import { CompanyProfile as CompanyProfileComponent } from "./components/CompanyProfile";
 import { TenderPortfolioScore } from "./components/TenderPortfolioScore";
+import { TenderPreparationModal } from "./components/TenderPreparationModal";
 import { VessatorieModal } from "./components/VessatorieModal";
 import { BidNoBidEngine } from "./components/BidNoBidEngine";
 import { RtiAvvalimentoConfigurator } from "./components/RtiAvvalimentoConfigurator";
@@ -166,6 +167,7 @@ export default function App() {
   const [isCapacityOpen, setIsCapacityOpen] = useState(false);
   const [isProfitabilityOpen, setIsProfitabilityOpen] = useState(false);
   const [isRtiAvvalimentoOpen, setIsRtiAvvalimentoOpen] = useState(false);
+  const [isTenderPreparationOpen, setIsTenderPreparationOpen] = useState(false);
   const [prezzari, setPrezzari] = useState<Prezzario[]>([]);
   const [isPrezzariManagerOpen, setIsPrezzariManagerOpen] = useState(false);
   const [companyProfile, setCompanyProfile] = useState<CompanyProfile | null>(null);
@@ -1748,12 +1750,23 @@ export default function App() {
                       <li>
                         <button
                           type="button"
+                          onClick={() => setIsTenderPreparationOpen(true)}
+                          className="cursor-pointer text-brand-gold hover:text-yellow-300 font-bold transition-colors text-left flex items-center gap-1.5"
+                          id="prepare-participation-btn"
+                        >
+                          <ListChecks className="w-3 h-3 shrink-0" />
+                          Prepara partecipazione
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
                           onClick={() => handleStartOfferPreparation(selectedTender)}
                           className="cursor-pointer text-emerald-400 hover:text-emerald-300 font-bold transition-colors text-left flex items-center gap-1.5"
                           id="prepare-offer-sidebar-btn"
                         >
                           <FileText className="w-3 h-3 shrink-0" />
-                          Prepara offerta (guidata)
+                          Prepara offerta (chat guidata)
                         </button>
                       </li>
                       <li>
@@ -2216,6 +2229,16 @@ export default function App() {
         onClose={() => setIsRtiAvvalimentoOpen(false)}
       />
 
+      {user?.id && (
+        <TenderPreparationModal
+          open={isTenderPreparationOpen}
+          onClose={() => setIsTenderPreparationOpen(false)}
+          tender={selectedTender}
+          userId={user.id}
+          profilo={profilo}
+        />
+      )}
+
       {isWinningPatternOpen && (
         <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-black border border-neutral-800 rounded-2xl max-w-lg w-full shadow-2xl flex flex-col max-h-[90vh]">
@@ -2263,6 +2286,13 @@ export default function App() {
               winningPatterns={winningPatterns}
               isAnalyzingPatterns={isAnalyzingPatterns}
               companyProfile={companyProfile}
+              userId={user?.id}
+              garaId={
+                selectedTender.id.startsWith("gare-")
+                  ? selectedTender.id.replace(/^gare-/, "")
+                  : null
+              }
+              profiloId={profilo?.id}
               onShowCAM={() => setShowCAMChecker(true)}
               onShowDelayAnalysis={() => setShowDelayAnalyzer(true)}
               onShowVariantsAnalysis={() => setShowVariantsAnalyzer(true)}
@@ -2296,6 +2326,13 @@ export default function App() {
             onReadyToSubmit={() => setAuditPassed(true)}
             tender={selectedTender}
             companyProfile={companyProfile}
+            userId={user?.id}
+            garaId={
+              selectedTender.id.startsWith("gare-")
+                ? selectedTender.id.replace(/^gare-/, "")
+                : null
+            }
+            profiloId={profilo?.id}
           />
         </>
       )}
@@ -2329,6 +2366,13 @@ export default function App() {
         isOpen={isProfitabilityOpen}
         onClose={() => setIsProfitabilityOpen(false)}
         prezzari={prezzari}
+        userId={user?.id}
+        garaId={
+          selectedTender.id.startsWith("gare-")
+            ? selectedTender.id.replace(/^gare-/, "")
+            : null
+        }
+        profiloId={profilo?.id}
       />
 
       {/* Deep D.Lgs. 36/2023 Vessatorie/Abusive Rules protective shield */}
@@ -2337,6 +2381,13 @@ export default function App() {
         onClose={() => setIsVessatorieOpen(false)}
         tender={selectedTender}
         onInjectClarification={(text) => handleSendMessage(text)}
+        userId={user?.id}
+        garaId={
+          selectedTender.id.startsWith("gare-")
+            ? selectedTender.id.replace(/^gare-/, "")
+            : null
+        }
+        profiloId={profilo?.id}
       />
 
       <AwardCriteriaAnalyzer

@@ -190,6 +190,8 @@ export function TenderPortfolioScore({
           setSortMode={portfolioGare.setSortMode}
           refresh={portfolioGare.refresh}
           onSelectTender={onSelectTender}
+          userId={userId}
+          profilo={profilo}
         />
       )}
     </div>

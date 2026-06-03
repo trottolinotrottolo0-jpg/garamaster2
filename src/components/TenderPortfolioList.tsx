@@ -18,6 +18,7 @@ import { RankingMotivazione } from "./RankingMotivazione";
 import { ScoreSinteticoBadge } from "./ScoreSinteticoBadge";
 import type { usePortfolioGare } from "../hooks/usePortfolioGare";
 import type { Gara, PortfolioSortMode } from "../types/gara";
+import type { ProfiloImpresaContext } from "../types/database";
 
 type PortfolioGareState = Pick<
   ReturnType<typeof usePortfolioGare>,
@@ -28,6 +29,8 @@ type TenderPortfolioListProps = PortfolioGareState & {
   onSelectTender?: (listId: string) => void;
   maxItems?: number;
   className?: string;
+  userId?: string;
+  profilo?: ProfiloImpresaContext | null;
 };
 
 function UrgencyBadge({ score, scadenza }: { score: number; scadenza?: string }) {
@@ -149,6 +152,8 @@ export function TenderPortfolioList({
   onSelectTender,
   maxItems = 50,
   className = "",
+  userId,
+  profilo,
 }: TenderPortfolioListProps) {
   const items = displayedGare.slice(0, maxItems);
 
@@ -250,7 +255,13 @@ export function TenderPortfolioList({
       ) : (
         <ul className="space-y-2 max-h-[320px] overflow-y-auto scrollbar-thin">
           {items.map((gara) => (
-            <PortfolioRow key={`${gara.source}-${gara.id}`} gara={gara} onSelect={onSelectTender} />
+            <PortfolioRow
+              key={`${gara.source}-${gara.id}`}
+              gara={gara}
+              onSelect={onSelectTender}
+              userId={userId}
+              profilo={profilo}
+            />
           ))}
         </ul>
       )}
@@ -267,9 +278,13 @@ export function TenderPortfolioList({
 function PortfolioRow({
   gara,
   onSelect,
+  userId,
+  profilo,
 }: {
   gara: Gara;
   onSelect?: (listId: string) => void;
+  userId?: string;
+  profilo?: ProfiloImpresaContext | null;
 }) {
   const importoLabel =
     gara.importo != null
@@ -304,7 +319,12 @@ function PortfolioRow({
           {importoLabel ? ` · ${importoLabel}` : ""}
         </span>
         <CaricoLoadBar score={gara.carico_score} />
-        <RankingMotivazione gara={gara} />
+        <RankingMotivazione
+          gara={gara}
+          userId={userId}
+          profilo={profilo}
+          garaId={gara.source === "gare" ? gara.id : null}
+        />
       </span>
       {onSelect && <ChevronRight className="w-4 h-4 text-slate-600 shrink-0 self-start mt-1" />}
     </>

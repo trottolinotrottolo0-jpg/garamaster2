@@ -4,6 +4,9 @@ import { TenderDocument, RiskLevel, RedFlagAnalysisResult } from "../types";
 import { runRedFlagAnalysis } from "../lib/gemini";
 import { resolveRedFlagExplainability } from "../lib/redFlagNormalization";
 import { ExplainabilityLayer } from "./ExplainabilityLayer";
+import { EvidenceLayer } from "./evidence/EvidenceLayer";
+import { EvidencePanel } from "./evidence/EvidencePanel";
+import { redFlagToEvidence } from "../lib/evidence";
 import {
   ShieldAlert, AlertTriangle, AlertCircle, Sparkles, HelpCircle,
   ArrowRight, ArrowLeft, FileText, CheckCircle2, ChevronRight, MessageSquare, Copy,
@@ -15,6 +18,9 @@ interface VessatorieModalProps {
   onClose: () => void;
   tender: TenderDocument;
   onInjectClarification: (text: string) => void;
+  userId?: string;
+  garaId?: string | null;
+  profiloId?: string | null;
 }
 
 export const VessatorieModal: React.FC<VessatorieModalProps> = ({
@@ -22,6 +28,9 @@ export const VessatorieModal: React.FC<VessatorieModalProps> = ({
   onClose,
   tender,
   onInjectClarification,
+  userId,
+  garaId,
+  profiloId,
 }) => {
   const [result, setResult] = useState<RedFlagAnalysisResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -309,6 +318,15 @@ export const VessatorieModal: React.FC<VessatorieModalProps> = ({
                         </div>
                       )}
 
+                      <EvidencePanel
+                        title="Perché questo red flag"
+                        items={[redFlagToEvidence(item, index)]}
+                        compact
+                        anchorHrefBuilder={(ref) =>
+                          getReferenceHref(item.sourceReference?.anchorId) ?? null
+                        }
+                      />
+
                       {/* Ready to use draft code block */}
                       <div className="space-y-1.5">
                         <span className="text-[9.5px] font-sans font-extrabold text-slate-450 uppercase tracking-wider block">
@@ -360,6 +378,15 @@ export const VessatorieModal: React.FC<VessatorieModalProps> = ({
                 if (!explainability) return null;
                 return <ExplainabilityLayer data={explainability} />;
               })()}
+              <EvidenceLayer
+                userId={userId}
+                garaId={garaId}
+                profiloId={profiloId}
+                outputType="red_flag"
+                outputId={`${tender.cig}_analysis`}
+                inlineEvidence={result.evidence}
+                title="Perché il sistema ti dice questo (Red Flag)"
+              />
             </>
           )}
 

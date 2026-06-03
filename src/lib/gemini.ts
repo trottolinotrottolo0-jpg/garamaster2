@@ -1,5 +1,7 @@
 /// <reference types="vite/client" />
 import { EXPLAINABILITY_JSON_INLINE, normalizeExplainability } from "./explainability";
+import { EVIDENCE_JSON_INLINE, EVIDENCE_PROMPT_BLOCK, peelEvidenceFromParsed } from "./evidence";
+import type { EvidenceItemInput } from "../types/evidence";
 import type {
   TenderDocument,
   CompanyProfile,
@@ -42,6 +44,7 @@ import {
   vociDaPrezzarioPerPricing,
 } from "./bidCalculations";
 import type { PricingLineItem } from "../types";
+import { mergeEvidenceLists, redFlagToEvidence } from "./evidence";
 import {
   normalizeRedFlagCategory,
   resolveRedFlagExplainability,
@@ -73,14 +76,15 @@ function extractJsonFromLlmResponse(text: string): string {
  */
 export function parseGeminiJson<T extends object>(
   text: string
-): T & { explainability?: ExplainabilityData } {
+): T & { explainability?: ExplainabilityData; evidence?: EvidenceItemInput[] } {
   const extracted = extractJsonFromLlmResponse(text);
   const parsed = JSON.parse(extracted) as Record<string, unknown>;
   const explainability = normalizeExplainability(
     parsed.explainability as Partial<ExplainabilityData> | undefined
   ) ?? undefined;
   delete parsed.explainability;
-  return { ...(parsed as T), explainability };
+  const evidence = peelEvidenceFromParsed(parsed);
+  return { ...(parsed as T), explainability, evidence: evidence.length ? evidence : undefined };
 }
 
 async function callInternalLlm(prompt: string, opts?: { temperature?: number; maxTokens?: number }) {
@@ -215,8 +219,11 @@ Il JSON deve rispettare esattamente questa struttura:
     "motivazione": string (2-3 frasi sul pattern storico),
     "azioneConsigliata": string
   },
-  ${EXPLAINABILITY_JSON_INLINE}
+  ${EXPLAINABILITY_JSON_INLINE},
+  ${EVIDENCE_JSON_INLINE}
 }
+
+${EVIDENCE_PROMPT_BLOCK}
 
 Logica decisionale:
 - GO: impresa compatibile, nessun blocco critico, score >= 70
@@ -995,8 +1002,11 @@ Struttura JSON richiesta:
   "conteggioMedium": number,
   "conteggioLow": number,
   "sintesiRischio": string (2-3 frasi di sintesi sul profilo di rischio complessivo della gara),
-  ${EXPLAINABILITY_JSON_INLINE}
+  ${EXPLAINABILITY_JSON_INLINE},
+  ${EVIDENCE_JSON_INLINE}
 }
+
+${EVIDENCE_PROMPT_BLOCK}
 
 Categorie da cercare in modo esplicito (se c'e evidenza testuale; usa esattamente questi valori nel campo type):
 - requisito_sproporzionato: requisiti economici/tecnici/organizzativi potenzialmente sproporzionati rispetto a oggetto/importo
@@ -1049,10 +1059,14 @@ DATI GARA:
       rischioComplessivo: parsed.rischioComplessivo,
       tender,
     });
+    const flagEvidence = redFlags.map((f, i) => redFlagToEvidence(f, i));
+    const evidence = mergeEvidenceLists(parsed.evidence ?? [], flagEvidence);
+
     return {
       ...parsed,
       redFlags,
       explainability,
+      evidence: evidence.length ? evidence : undefined,
       conteggioHigh: redFlags.filter((r) => r.severity === "high").length,
       conteggioMedium: redFlags.filter((r) => r.severity === "medium").length,
       conteggioLow: redFlags.filter((r) => r.severity === "low").length,
@@ -1420,8 +1434,11 @@ Struttura JSON:
   "scenarioRealistico": number (% margine scenario base),
   "scenarioPessimistico": number (% margine scenario avverso),
   "puntiAttenzione": string[] (3-5 elementi che possono erodere il margine),
-  ${EXPLAINABILITY_JSON_INLINE}
+  ${EXPLAINABILITY_JSON_INLINE},
+  ${EVIDENCE_JSON_INLINE}
 }
+
+${EVIDENCE_PROMPT_BLOCK}
 
 Logica verdict:
 - PROFITTEVOLE: margineAttesoPercent >= minMargineAccettabile + 5%, score >= 65

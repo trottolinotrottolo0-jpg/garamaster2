@@ -14,6 +14,10 @@ CONFIDENZA: [scrivi solo Alto, Medio o Basso]
 Per saluti, conferme brevi o domande chiarificatrici senza analisi, ometti il blocco.
 `;
 
+import { EVIDENCE_JSON_INLINE, EVIDENCE_PROMPT_BLOCK } from "./evidence";
+
+export { EVIDENCE_PROMPT_BLOCK, EVIDENCE_JSON_INLINE };
+
 export const EXPLAINABILITY_JSON_INLINE = `"explainability": {
     "perche": "string — motivazione della conclusione",
     "datiUsati": "string — campi profilo/gara usati",

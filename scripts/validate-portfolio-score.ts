@@ -12,6 +12,7 @@ import { join } from "path";
 import { calcolaScoreSintetico, generaMotivazione } from "../src/lib/scoring";
 import { sortByFit } from "../src/lib/fitScore";
 import { sortByUrgency, computeUrgencyScore } from "../src/lib/urgencyScore";
+import { resolveScadenzaPortfolio } from "../src/lib/portfolioDb";
 import { sortByRisk } from "../src/lib/riskScore";
 import { sortByMargine } from "../src/lib/margineScore";
 import { sortByCarico } from "../src/lib/caricoScore";
@@ -42,40 +43,26 @@ function num(v: unknown, fallback = 0): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
-function daysUntil(iso: string): number | null {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const target = new Date(d);
-  target.setHours(0, 0, 0, 0);
-  return Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-}
+const DEFAULT_MARGINE = 45;
 
-function expectedUrgenzaFromScadenza(scadenzaOfferta: string | null): number {
-  if (!scadenzaOfferta) return 0;
-  const giorni = daysUntil(scadenzaOfferta);
-  if (giorni == null) return 0;
-  if (giorni <= 3) return 100;
-  if (giorni <= 7) return 80;
-  if (giorni <= 14) return 60;
-  if (giorni <= 30) return 40;
-  return 20;
-}
-
-function calcScoreSinteticoDb(g: GaraDb): number {
-  const fit = num(g.fit_score);
-  const margine = num(g.margine_score, 45);
-  const rischio = num(g.rischio_score);
-  const urgenza = num(g.urgenza_score);
-  const carico = num(g.carico_score);
-  const raw =
-    fit * 0.3 +
-    margine * 0.2 +
-    (100 - rischio) * 0.2 +
-    urgenza * 0.15 +
-    (100 - carico) * 0.15;
-  return Math.round(Math.min(100, Math.max(0, raw)));
+/** Stessa logica di `calcolaScoreSintetico` + urgenza da scadenza (come in app). */
+function expectedFromRow(g: GaraDb): {
+  score: number;
+  urgenza: number;
+  margine: number;
+} {
+  const scadenza = resolveScadenzaPortfolio(g as Parameters<typeof resolveScadenzaPortfolio>[0]);
+  const urgenza = computeUrgencyScore(scadenza);
+  const margine =
+    g.margine_score != null && g.margine_score !== "" ? num(g.margine_score) : DEFAULT_MARGINE;
+  const score = calcolaScoreSintetico({
+    fit_score: num(g.fit_score),
+    margine_stimato: margine,
+    risk_score: num(g.rischio_score),
+    urgency_score: urgenza,
+    carico_score: num(g.carico_score),
+  });
+  return { score, urgenza, margine };
 }
 
 function expectedVista(g: GaraDb): "oggi" | "approfondire" | "scartare" {
@@ -159,7 +146,7 @@ function buildSeedRows(userId: string): GaraDb[] {
     motivazione_ranking:
       "Ottimo fit con profilo SOA e area geografica. Scadenza imminente: azione richiesta entro 5 giorni. Score complessivo: 82/100.",
   };
-  oggi.score_sintetico = calcScoreSinteticoDb(oggi);
+  oggi.score_sintetico = expectedFromRow(oggi).score;
   oggi.vista_portfolio = expectedVista(oggi);
   oggi.motivazione_ranking = `Ottimo fit con profilo SOA e area geografica. Scadenza imminente: azione richiesta entro 5 giorni. Score complessivo: ${oggi.score_sintetico}/100.`;
 
@@ -178,7 +165,7 @@ function buildSeedRows(userId: string): GaraDb[] {
     motivazione_ranking:
       "Valutazione nella media rispetto al profilo aziendale. Score complessivo: 47/100.",
   };
-  approfondire.score_sintetico = calcScoreSinteticoDb(approfondire);
+  approfondire.score_sintetico = expectedFromRow(approfondire).score;
   approfondire.vista_portfolio = expectedVista(approfondire);
   approfondire.motivazione_ranking = `Valutazione nella media rispetto al profilo aziendale. Score complessivo: ${approfondire.score_sintetico}/100.`;
 
@@ -195,7 +182,7 @@ function buildSeedRows(userId: string): GaraDb[] {
     scadenza_offerta: d20.toISOString(),
     scartata: false,
   };
-  scartare.score_sintetico = calcScoreSinteticoDb(scartare);
+  scartare.score_sintetico = expectedFromRow(scartare).score;
   scartare.vista_portfolio = expectedVista(scartare);
   scartare.motivazione_ranking = `Rischio elevato: clausole da verificare. Margine stimato insufficiente. Carico operativo alto. Score complessivo: ${scartare.score_sintetico}/100.`;
 
@@ -275,10 +262,10 @@ async function main() {
     results.t1.details.push(`Need 3 gare, found ${sample3.length}`);
   } else {
     for (const g of sample3) {
-      const computed = calcScoreSinteticoDb(g);
+      const { score: computed } = expectedFromRow(g);
       const stored = g.score_sintetico != null ? num(g.score_sintetico) : NaN;
       const titolo = String(g.titolo ?? g.cig).slice(0, 40);
-      console.log(`TEST1 ${titolo} → formula=${computed} db=${stored}`);
+      console.log(`TEST1 ${titolo} → atteso=${computed} db=${stored}`);
       if (!Number.isFinite(computed) || computed < 0 || computed > 100) {
         results.t1.pass = false;
         results.t1.details.push(`${titolo}: invalid computed ${computed}`);
@@ -296,10 +283,9 @@ async function main() {
     }
   }
 
-  // TEST 2
+  // TEST 2 — urgenza da scadenza_offerta / data_scadenza (come app)
   for (const g of gare) {
-    const scadenza = g.scadenza_offerta ? String(g.scadenza_offerta) : null;
-    const expected = expectedUrgenzaFromScadenza(scadenza);
+    const { urgenza: expected } = expectedFromRow(g);
     const stored = num(g.urgenza_score);
     if (g.urgenza_score == null) {
       results.t2.pass = false;
@@ -442,9 +428,13 @@ async function main() {
       results.t7.pass = false;
       results.t7.details.push(`${g.cig}: rischio>=70 without 'rischio'`);
     }
-    if (num(g.margine_score) < 30 && !low.includes("margine")) {
+    const margineEff =
+      g.margine_score != null && g.margine_score !== ""
+        ? num(g.margine_score)
+        : DEFAULT_MARGINE;
+    if (margineEff < 30 && !low.includes("margine")) {
       results.t7.pass = false;
-      results.t7.details.push(`${g.cig}: margine_score<30 without 'margine'`);
+      results.t7.details.push(`${g.cig}: margine<30 without 'margine'`);
     }
     if (num(g.carico_score) > 70 && !low.includes("carico")) {
       results.t7.pass = false;
@@ -532,8 +522,10 @@ async function main() {
   } else {
     console.log("• calcolaDecisionEngine in src/lib/calcoli.ts");
   }
-  if (!results.t1.pass || !results.t7.pass) {
-    console.log("• Apri il Portfolio in app (refresh) per risincronizzare score e motivazioni su Supabase");
+  if (!results.t1.pass || !results.t2.pass || !results.t7.pass) {
+    console.log(
+      "• Dati DB non allineati: esegui `npm run resync:portfolio` oppure apri Portfolio in app (refresh)"
+    );
   }
 
   const anyFail = Object.values(results).some((r) => !r.pass);

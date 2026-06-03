@@ -1296,6 +1296,7 @@ export interface RedFlagAnalysisResult {
   sintesiRischio: string;
   generatedAt: string;
   explainability?: ExplainabilityData;
+  evidence?: import("./types/evidence").EvidenceItemInput[];
 }
 
 // ─── CAPACITY & SATURATION ENGINE ───────────────────────────────────────────
@@ -1391,6 +1392,7 @@ export interface ProfitabilityGateResult {
   puntiAttenzione: string[];
   generatedAt: string;
   explainability?: ExplainabilityData;
+  evidence?: import("./types/evidence").EvidenceItemInput[];
 }
 
 // ─── BID/NO-BID ENGINE ──────────────────────────────────────────────────────
@@ -1512,6 +1514,7 @@ export interface BidNoBidResult {
   importoInTarget: boolean;
   generatedAt: string;
   explainability?: ExplainabilityData;
+  evidence?: import("./types/evidence").EvidenceItemInput[];
 }
 
 // ─── RTI & AVVALIMENTO CONFIGURATOR ─────────────────────────────────────────

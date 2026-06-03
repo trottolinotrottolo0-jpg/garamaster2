@@ -13,7 +13,11 @@
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:portfolio": "tsx scripts/validate-portfolio-score.ts"
+    "test:portfolio": "tsx scripts/validate-portfolio-score.ts",
+    "test:preparation": "tsx scripts/validate-guided-preparation.ts",
+    "resync:portfolio": "tsx scripts/resync-portfolio-db.ts",
+    "test:evidence": "tsx scripts/validate-evidence-layer.ts",
+    "test:evidence:db": "tsx scripts/validate-evidence-db-flow.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

@@ -12,6 +12,7 @@ import {
 } from "../lib/fitEngineStrategic";
 import { matchGaraToPatterns } from "../lib/winningPatternEngine";
 import { ExplainabilityLayer } from "./ExplainabilityLayer";
+import { EvidenceLayer } from "./evidence/EvidenceLayer";
 import { WinningPatternViewer } from "./WinningPatternViewer";
 import { DelayPenaltyExposureAnalyzer } from "./DelayPenaltyExposureAnalyzer";
 import { VariantClaimsRiskAnalyzer } from "./VariantClaimsRiskAnalyzer";
@@ -61,6 +62,9 @@ interface BidNoBidEngineProps {
   winningPatterns?: WinningPattern[];
   isAnalyzingPatterns?: boolean;
   companyProfile?: CompanyProfile | null;
+  userId?: string;
+  garaId?: string | null;
+  profiloId?: string | null;
   onShowCAM?: () => void;
   onShowDelayAnalysis?: () => void;
   onShowVariantsAnalysis?: () => void;
@@ -89,6 +93,9 @@ export function BidNoBidEngine({
   winningPatterns = [],
   isAnalyzingPatterns = false,
   companyProfile: companyProfileProp,
+  userId,
+  garaId,
+  profiloId,
   onShowCAM,
   onShowDelayAnalysis,
   onShowVariantsAnalysis,
@@ -1444,6 +1451,16 @@ export function BidNoBidEngine({
               )}
 
               {result.explainability && <ExplainabilityLayer data={result.explainability} />}
+
+              <EvidenceLayer
+                userId={userId}
+                garaId={garaId}
+                profiloId={profiloId}
+                outputType="bid_no_bid"
+                outputId={`${tender.cig}_decision`}
+                inlineEvidence={result.evidence}
+                title="Perché il sistema ti dice questo (Bid/No-Bid)"
+              />
 
               {/* Footer */}
               <p className="text-[10px] text-slate-600 pt-2 border-t border-neutral-900">

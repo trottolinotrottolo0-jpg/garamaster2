@@ -38,6 +38,8 @@ import { resolveSupabaseServiceRoleKey } from "./resolveSupabaseUrl";
 import { processGaraDocumento } from "./scouting/processGaraDocumento";
 import { runDocumentSync } from "./scouting/runDocumentSync";
 import { runScoutingEnrichment } from "./scouting/runScoutingEnrichment";
+import { suggestTenderPreparation } from "./tenderPreparationSuggest";
+import type { TenderPreparationSuggestBody } from "./tenderPreparationSuggest";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
@@ -148,6 +150,23 @@ async function createApp() {
       const message =
         error instanceof Error ? error.message : "Errore calcolo portfolio score.";
       console.error("[/api/portfolio-score]", message);
+      res.status(503).json({ error: message });
+    }
+  });
+
+  app.post("/api/tender-preparation/suggest", async (req, res) => {
+    try {
+      const body = req.body as TenderPreparationSuggestBody;
+      if (!body?.tender?.cig) {
+        res.status(400).json({ error: "Gara mancante." });
+        return;
+      }
+      const result = await suggestTenderPreparation(body);
+      res.json(result);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Errore suggerimenti preparazione.";
+      console.error("[/api/tender-preparation/suggest]", message);
       res.status(503).json({ error: message });
     }
   });
