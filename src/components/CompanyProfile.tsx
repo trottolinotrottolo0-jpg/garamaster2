@@ -1,5 +1,12 @@
-import { useState, type ReactNode } from "react";
-import { Plus, Trash2, Building2 } from "lucide-react";
+import { useState, useMemo, type ReactNode } from "react";
+import { Plus, Trash2, Building2, FileText, Target } from "lucide-react";
+import { SoaParserModal } from "./SoaParserModal";
+import { FitStrategicProfileModal } from "./FitStrategicProfileModal";
+import { FitPortfolioView } from "./FitPortfolioView";
+import {
+  clusterGareByFitStrategic,
+  buildFitParticipationHistory,
+} from "../lib/fitEngineStrategic";
 import type {
   CompanyAvailableResource,
   CompanyProfile as CompanyProfileType,
@@ -24,8 +31,12 @@ import type {
   SOACategory,
   SOACategoryCode,
   SOAClassifica,
+  SOAStructured,
+  FitStrategicProfile,
   GeographicArea,
   WorkSector,
+  HistoricalTender,
+  TenderOutcome,
 } from "../types";
 
 const STORAGE_KEY = "gm_company_profile";
@@ -168,6 +179,8 @@ const emptyProfile: CompanyProfileType = {
   geographicAreas: [], workSectors: [],
   targetImportMin: 0, targetImportMax: 0,
   employeesCount: 0, activeSquads: 0, activeJobsites: 0,
+  oreGiornaliereSquadra: 8, rendimentoSquadrePercent: 100, giorniLavorativiSettimana: 5,
+  durataMediaCantieriMesi: 6,
   availableResources: [],
   tenderHistory: [],
   similarWorks: [],
@@ -175,6 +188,7 @@ const emptyProfile: CompanyProfileType = {
   operationalPreferences: emptyOperationalPreferences,
   productivityData: emptyProductivityData,
   historicalMargins: [],
+  historicalTenders: [],
   lastYearRevenue: 0, avgMarginPercent: 0,
   avgRibassoPercent: 0, avgWinRatePercent: 0, minMargineAccettabile: 0,
   costoOraOperaio: 0, costoOraCaposquadra: 0, incidenzaSpeseGenerali: 0, incidenzaRischioMedio: 0,
@@ -192,6 +206,10 @@ function normalizeProfile(raw: Partial<CompanyProfileType>): CompanyProfileType 
     operationalPreferences: normalizeOperationalPreferences(raw.operationalPreferences),
     productivityData: normalizeProductivityData(raw.productivityData),
     historicalMargins: Array.isArray(raw.historicalMargins) ? raw.historicalMargins : [],
+    historicalTenders: Array.isArray(raw.historicalTenders) ? raw.historicalTenders : [],
+    soaAttuale: raw.soaAttuale,
+    storicoSOA: Array.isArray(raw.storicoSOA) ? raw.storicoSOA : [],
+    fitStrategicProfile: raw.fitStrategicProfile,
   };
 }
 
@@ -211,15 +229,59 @@ export function CompanyProfile() {
     const stored = localStorage.getItem(STORAGE_KEY);
     return stored ? normalizeProfile(JSON.parse(stored) as Partial<CompanyProfileType>) : emptyProfile;
   });
+  const [isSoaParserOpen, setIsSoaParserOpen] = useState(false);
+  const [isFitModalOpen, setIsFitModalOpen] = useState(false);
 
   const resources = profile.availableResources ?? [];
   const tenderHistory = profile.tenderHistory ?? [];
   const similarWorks = profile.similarWorks ?? [];
   const activeProjects = profile.activeProjects ?? [];
   const historicalMargins = profile.historicalMargins ?? [];
+  const historicalTenders = profile.historicalTenders ?? [];
+  const fitPortfolioClusters = useMemo(() => {
+    if (!profile.fitStrategicProfile) return [];
+    const participation = buildFitParticipationHistory(
+      profile.fitStrategicProfile,
+      profile.historicalTenders,
+      profile.tenderHistory
+    );
+    const tenders = participation.map((p) => p.tender);
+    return clusterGareByFitStrategic(tenders, profile.fitStrategicProfile);
+  }, [profile.fitStrategicProfile, profile.historicalTenders, profile.tenderHistory]);
   const prefs = profile.operationalPreferences ?? emptyOperationalPreferences;
   const preferredCategories = prefs.preferredCategories ?? [];
   const [saved, setSaved] = useState(false);
+  const [showAddTender, setShowAddTender] = useState(false);
+  const [newTender, setNewTender] = useState<Omit<HistoricalTender, "id">>({
+    anno: new Date().getFullYear(),
+    categoriaSOA: "",
+    importoGara: 0,
+    regioneGara: "",
+    ribasso: 0,
+    esito: "vinta",
+    margineRealizzato: undefined,
+    noteGara: "",
+  });
+
+  const addHistoricalTender = () => {
+    const item: HistoricalTender = { ...newTender, id: crypto.randomUUID() };
+    set("historicalTenders", [...historicalTenders, item]);
+    setNewTender({
+      anno: new Date().getFullYear(),
+      categoriaSOA: "",
+      importoGara: 0,
+      regioneGara: "",
+      ribasso: 0,
+      esito: "vinta",
+      margineRealizzato: undefined,
+      noteGara: "",
+    });
+    setShowAddTender(false);
+  };
+
+  const removeHistoricalTender = (id: string) => {
+    set("historicalTenders", historicalTenders.filter((t) => t.id !== id));
+  };
 
   const setPrefs = (patch: Partial<CompanyOperationalPreferences>) => {
     set("operationalPreferences", { ...prefs, ...patch });
@@ -268,6 +330,19 @@ export function CompanyProfile() {
 
   const updateSOA = (idx: number, patch: Partial<SOACategory>) => {
     set("soaCategories", profile.soaCategories.map((c, i) => (i === idx ? { ...c, ...patch } : c)));
+  };
+
+  const handleSOAParsed = (soa: SOAStructured) => {
+    const updated: CompanyProfileType = {
+      ...profile,
+      soaAttuale: soa,
+      storicoSOA: [...(profile.storicoSOA ?? []), soa],
+      lastUpdated: new Date().toISOString(),
+    };
+    setProfile(updated);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
   };
 
   const toggleArea = (area: GeographicArea) => {
@@ -582,7 +657,71 @@ export function CompanyProfile() {
             <Plus className="w-3.5 h-3.5" />
             Aggiungi categoria SOA
           </button>
+          <button
+            type="button"
+            onClick={() => setIsSoaParserOpen(true)}
+            className="cursor-pointer flex items-center gap-2 text-[10px] font-bold text-white bg-neutral-800 hover:bg-neutral-700 px-3 py-1.5 rounded transition-colors"
+          >
+            <FileText className="w-3 h-3 text-brand-gold" />
+            Importa SOA da PDF/Excel
+          </button>
+          {profile.soaAttuale && (
+            <div className="bg-neutral-950 border border-neutral-800 rounded-lg p-3 mt-1">
+              <div className="text-[9px] text-slate-500 mb-1">SOA importato (file)</div>
+              <div className="text-[10px] text-white font-bold">{profile.soaAttuale.fileName}</div>
+              <div className="text-[9px] text-emerald-400 mt-1">
+                {profile.soaAttuale.totalCategorie} categorie · €
+                {profile.soaAttuale.importoTotaleMassimoRealizzabile.toLocaleString("it-IT")} max
+                realizzabile · {profile.soaAttuale.statoValidazione}
+              </div>
+              {(profile.storicoSOA?.length ?? 0) > 1 && (
+                <div className="text-[8px] text-slate-500 mt-1">
+                  Storico import: {profile.storicoSOA?.length} versioni
+                </div>
+              )}
+            </div>
+          )}
         </div>
+      </div>
+
+      {/* Strategia / Fit */}
+      <div className="bg-black border border-neutral-800 rounded-xl p-5 space-y-4">
+        <SectionTitle>Profilo strategico (Fit Engine)</SectionTitle>
+        <p className="text-[10px] text-slate-500">
+          Definisci nicchie e aree target per valutare l&apos;allineamento strategico delle gare in
+          Bid/No-Bid.
+        </p>
+        <button
+          type="button"
+          onClick={() => setIsFitModalOpen(true)}
+          className="cursor-pointer flex items-center gap-2 text-[10px] font-bold text-white bg-neutral-800 hover:bg-neutral-700 px-3 py-1.5 rounded transition-colors"
+        >
+          <Target className="w-3 h-3 text-brand-gold" />
+          Profilo strategico
+        </button>
+        {profile.fitStrategicProfile && (
+          <div className="bg-neutral-950 border border-neutral-800 rounded-lg p-3">
+            <div className="text-[9px] text-slate-500 mb-1">Profilo strategico attivo</div>
+            <div className="text-[10px] text-white space-y-1">
+              <div className="font-bold">
+                Nicchie: {profile.fitStrategicProfile.strategiaAttiva.nicchieTarget.length}
+              </div>
+              <div className="font-bold">
+                Aree: {profile.fitStrategicProfile.strategiaAttiva.areeTarget.length}
+              </div>
+              <div className="text-emerald-400">
+                Target: €
+                {(
+                  profile.fitStrategicProfile.strategiaAttiva.importoTargetAnnuale / 1_000_000
+                ).toFixed(1)}
+                M · margine {profile.fitStrategicProfile.strategiaAttiva.margineTargetMedio}%
+              </div>
+            </div>
+          </div>
+        )}
+        {profile.fitStrategicProfile && fitPortfolioClusters.length > 0 && (
+          <FitPortfolioView clusters={fitPortfolioClusters} />
+        )}
       </div>
 
       {/* Operatività */}
@@ -896,6 +1035,70 @@ export function CompanyProfile() {
               onChange={(e) => set("activeJobsites", e.target.value === "" ? 0 : parseInt(e.target.value))}
             />
           </div>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Ore lavorative/giorno per squadra
+            </label>
+            <input
+              type="number"
+              className={inputCls()}
+              value={profile.oreGiornaliereSquadra}
+              onChange={(e) =>
+                set("oreGiornaliereSquadra", e.target.value === "" ? 8 : parseInt(e.target.value, 10))
+              }
+              step="1"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Rendimento medio squadre (%)
+            </label>
+            <input
+              type="number"
+              className={inputCls()}
+              value={profile.rendimentoSquadrePercent}
+              onChange={(e) =>
+                set("rendimentoSquadrePercent", e.target.value === "" ? 100 : parseInt(e.target.value, 10))
+              }
+              step="5"
+            />
+            <p className="text-[9px] text-slate-600 mt-1">100% = piena capacità teorica</p>
+          </div>
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Giorni lavorativi/settimana
+            </label>
+            <input
+              type="number"
+              className={inputCls()}
+              value={profile.giorniLavorativiSettimana}
+              onChange={(e) =>
+                set("giorniLavorativiSettimana", e.target.value === "" ? 5 : parseInt(e.target.value, 10))
+              }
+              step="1"
+              min="1"
+              max="7"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+            Durata media cantieri in corso (mesi)
+          </label>
+          <input
+            type="number"
+            className={inputCls("max-w-xs")}
+            value={profile.durataMediaCantieriMesi}
+            onChange={(e) =>
+              set("durataMediaCantieriMesi", e.target.value === "" ? 6 : parseInt(e.target.value, 10))
+            }
+            step="1"
+          />
+          <p className="text-[9px] text-slate-600 mt-1">
+            stima media durata residua dei cantieri aperti
+          </p>
         </div>
       </div>
 
@@ -1696,6 +1899,163 @@ export function CompanyProfile() {
         </button>
       </div>
 
+      {/* Archivio gare passate */}
+      <div className="bg-black border border-neutral-800 rounded-xl p-5 space-y-4">
+        <SectionTitle>Archivio gare passate</SectionTitle>
+
+        {historicalTenders.length === 0 && !showAddTender && (
+          <p className="text-xs text-slate-500 italic">Nessuna gara archiviata.</p>
+        )}
+
+        <div className="space-y-2">
+          {historicalTenders.map((t) => {
+            const esitoCls =
+              t.esito === "vinta" ? "bg-emerald-950/40 border-emerald-800 text-emerald-400"
+              : t.esito === "persa" ? "bg-red-950/40 border-red-800 text-red-400"
+              : t.esito === "in_corso" ? "bg-blue-950/40 border-blue-800 text-blue-400"
+              : "bg-neutral-800 border-neutral-700 text-slate-400";
+            return (
+              <div key={t.id} className="bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2.5 flex items-center gap-3 flex-wrap">
+                <span className="text-xs font-mono text-slate-400 shrink-0">{t.anno}</span>
+                <span className="text-xs font-bold text-white">{t.categoriaSOA || "—"}</span>
+                <span className="text-xs text-slate-300">€{(t.importoGara / 1000).toFixed(0)}k</span>
+                <span className="text-xs text-slate-400">-{t.ribasso}%</span>
+                {t.margineRealizzato !== undefined && (
+                  <span className="text-xs text-emerald-400 font-mono">+{t.margineRealizzato}% marg.</span>
+                )}
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border font-mono uppercase ${esitoCls}`}>
+                  {t.esito.replace("_", " ")}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removeHistoricalTender(t.id)}
+                  className="cursor-pointer ml-auto p-1 rounded border border-neutral-700 hover:border-red-700 text-slate-500 hover:text-red-400 transition-colors"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        {showAddTender && (
+          <div className="bg-neutral-950 border border-neutral-700 rounded-xl p-4 space-y-3">
+            <p className="text-[9px] font-extrabold uppercase tracking-widest text-slate-500">Nuova gara passata</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Anno</label>
+                <input
+                  type="number"
+                  className={inputCls()}
+                  value={newTender.anno === 0 ? "" : newTender.anno}
+                  onChange={(e) => setNewTender((p) => ({ ...p, anno: e.target.value === "" ? 0 : parseInt(e.target.value) }))}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Categoria SOA</label>
+                <input
+                  className={inputCls()}
+                  value={newTender.categoriaSOA}
+                  onChange={(e) => setNewTender((p) => ({ ...p, categoriaSOA: e.target.value }))}
+                  placeholder="es. OG1"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Importo gara (€)</label>
+                <input
+                  type="number"
+                  className={inputCls()}
+                  value={newTender.importoGara === 0 ? "" : newTender.importoGara}
+                  onChange={(e) => setNewTender((p) => ({ ...p, importoGara: e.target.value === "" ? 0 : parseFloat(e.target.value) }))}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Regione</label>
+                <input
+                  className={inputCls()}
+                  value={newTender.regioneGara}
+                  onChange={(e) => setNewTender((p) => ({ ...p, regioneGara: e.target.value }))}
+                  placeholder="es. Lombardia"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Ribasso offerto (%)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  className={inputCls()}
+                  value={newTender.ribasso === 0 ? "" : newTender.ribasso}
+                  onChange={(e) => setNewTender((p) => ({ ...p, ribasso: e.target.value === "" ? 0 : parseFloat(e.target.value) }))}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Esito</label>
+                <select
+                  className="bg-neutral-900 border border-neutral-800 rounded-lg text-xs text-white focus:border-brand-gold focus:outline-none px-3 py-2 w-full"
+                  value={newTender.esito}
+                  onChange={(e) => setNewTender((p) => ({ ...p, esito: e.target.value as TenderOutcome }))}
+                >
+                  <option value="vinta">Vinta</option>
+                  <option value="persa">Persa</option>
+                  <option value="ritirata">Ritirata</option>
+                  <option value="in_corso">In corso</option>
+                </select>
+              </div>
+              {newTender.esito === "vinta" && (
+                <div>
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Margine realizzato (%)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    className={inputCls()}
+                    value={newTender.margineRealizzato === undefined || newTender.margineRealizzato === 0 ? "" : newTender.margineRealizzato}
+                    onChange={(e) => setNewTender((p) => ({ ...p, margineRealizzato: e.target.value === "" ? undefined : parseFloat(e.target.value) }))}
+                    placeholder="opzionale"
+                  />
+                </div>
+              )}
+              <div className={newTender.esito === "vinta" ? "" : "col-span-2"}>
+                <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Note (opzionale)</label>
+                <textarea
+                  className="bg-neutral-950 border border-neutral-800 rounded-lg text-xs text-white focus:border-brand-gold focus:outline-none px-3 py-2 w-full resize-none h-16"
+                  value={newTender.noteGara ?? ""}
+                  onChange={(e) => setNewTender((p) => ({ ...p, noteGara: e.target.value.slice(0, 200) }))}
+                  maxLength={200}
+                  placeholder="max 200 caratteri"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={addHistoricalTender}
+                className="cursor-pointer bg-brand-gold hover:bg-yellow-400 text-black text-xs font-bold px-4 py-2 rounded-lg transition-colors"
+              >
+                Aggiungi
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAddTender(false)}
+                className="cursor-pointer bg-neutral-900 border border-neutral-700 hover:border-neutral-500 text-slate-300 text-xs font-bold px-4 py-2 rounded-lg transition-colors"
+              >
+                Annulla
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!showAddTender && (
+          <button
+            type="button"
+            onClick={() => setShowAddTender(true)}
+            className="cursor-pointer flex items-center gap-2 text-xs text-brand-gold border border-brand-gold/40 hover:border-brand-gold rounded-lg px-3 py-2 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Aggiungi gara passata
+          </button>
+        )}
+      </div>
+
       {/* Note storico */}
       <div className="bg-black border border-neutral-800 rounded-xl p-5 space-y-4">
         <SectionTitle>Note storico gare</SectionTitle>
@@ -1718,6 +2078,32 @@ export function CompanyProfile() {
         </button>
         {saved && <span className="text-xs text-emerald-400 font-semibold">Profilo salvato ✓</span>}
       </div>
+
+      <SoaParserModal
+        isOpen={isSoaParserOpen}
+        onClose={() => setIsSoaParserOpen(false)}
+        onSOAParsed={handleSOAParsed}
+        currentSOA={profile.soaAttuale}
+        storicoSOA={profile.storicoSOA}
+      />
+
+      <FitStrategicProfileModal
+        isOpen={isFitModalOpen}
+        onClose={() => setIsFitModalOpen(false)}
+        onSaveProfile={(fitProfile: FitStrategicProfile) => {
+          const updated: CompanyProfileType = {
+            ...profile,
+            fitStrategicProfile: fitProfile,
+            lastUpdated: new Date().toISOString(),
+          };
+          setProfile(updated);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+          setSaved(true);
+        }}
+        currentProfile={profile.fitStrategicProfile}
+        historicalTenders={profile.historicalTenders}
+        tenderHistory={profile.tenderHistory}
+      />
     </div>
   );
 }

@@ -264,6 +264,79 @@ export function CapacitySaturationEngine({ tender, isOpen, onClose }: CapacitySa
                 <p className="text-sm text-slate-300 leading-relaxed">{result.analisiCompatibilita}</p>
               </div>
 
+              {/* Produttività squadre */}
+              <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 space-y-3">
+                <h3 className="text-[9px] font-extrabold uppercase tracking-widest text-slate-500">
+                  Confronto produttività vs fabbisogno gara
+                </h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="text-center">
+                    <span className="text-2xl font-extrabold text-brand-gold font-mono">
+                      {result.oreDisponibiliStimate.toLocaleString("it-IT")}
+                    </span>
+                    <p className="text-[10px] text-slate-500 mt-0.5">ore disponibili stimate</p>
+                  </div>
+                  <div className="text-center">
+                    <span className="text-2xl font-extrabold text-white font-mono">
+                      {result.oreRichiesteStimate.toLocaleString("it-IT")}
+                    </span>
+                    <p className="text-[10px] text-slate-500 mt-0.5">ore richieste stimate</p>
+                  </div>
+                </div>
+                <div
+                  className={`flex items-center gap-2 text-xs font-bold px-3 py-2 rounded-lg border ${
+                    result.produttivitaSufficiente
+                      ? "bg-emerald-950/40 border-emerald-800 text-emerald-400"
+                      : "bg-red-950/40 border-red-800 text-red-400"
+                  }`}
+                >
+                  {result.produttivitaSufficiente
+                    ? <CheckCircle className="w-3.5 h-3.5 shrink-0" />
+                    : <XCircle className="w-3.5 h-3.5 shrink-0" />}
+                  {result.produttivitaSufficiente
+                    ? "Produttività sufficiente per coprire la gara"
+                    : "Produttività insufficiente — fabbisogno ore supera la disponibilità"}
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">{result.produttivitaAnalisi}</p>
+              </div>
+
+              {/* Tempi stimati */}
+              <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 space-y-3">
+                <h3 className="text-[9px] font-extrabold uppercase tracking-widest text-slate-500">
+                  Confronto gara vs tempi stimati
+                </h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="text-center">
+                    <span className="text-2xl font-extrabold text-brand-gold font-mono">
+                      {result.durataGaraStimataSettimane}
+                    </span>
+                    <p className="text-[10px] text-slate-500 mt-0.5">settimane stimate gara</p>
+                  </div>
+                  <div className="text-center">
+                    <span className="text-2xl font-extrabold text-white font-mono">
+                      {result.meseLiberazioneRisorse}
+                    </span>
+                    <p className="text-[10px] text-slate-500 mt-0.5">mesi prima di liberare risorse</p>
+                  </div>
+                </div>
+                <div className={`flex items-center gap-2 text-xs font-bold px-3 py-2 rounded-lg border ${
+                  result.compatibilitaTemporale === "ottima"
+                    ? "bg-emerald-950/40 border-emerald-800 text-emerald-400"
+                    : result.compatibilitaTemporale === "accettabile"
+                    ? "bg-blue-950/40 border-blue-800 text-blue-400"
+                    : result.compatibilitaTemporale === "critica"
+                    ? "bg-amber-950/40 border-amber-800 text-amber-400"
+                    : "bg-red-950/40 border-red-800 text-red-400"
+                }`}>
+                  {result.compatibilitaTemporale === "ottima" && <CheckCircle className="w-3.5 h-3.5 shrink-0" />}
+                  {result.compatibilitaTemporale === "accettabile" && <CheckCircle className="w-3.5 h-3.5 shrink-0" />}
+                  {result.compatibilitaTemporale === "critica" && <AlertTriangle className="w-3.5 h-3.5 shrink-0" />}
+                  {result.compatibilitaTemporale === "incompatibile" && <XCircle className="w-3.5 h-3.5 shrink-0" />}
+                  Compatibilità temporale: {result.compatibilitaTemporale.toUpperCase()}
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">{result.tempiAnalisi}</p>
+              </div>
+
               {/* Alert */}
               {result.rischioAlert && (
                 <div className="bg-red-950/40 border border-red-800 rounded-xl p-4 flex items-start gap-3">

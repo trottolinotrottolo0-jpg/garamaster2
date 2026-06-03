@@ -1,6 +1,12 @@
 import { RefreshCw, Target } from "lucide-react";
+import { usePortfolioGare } from "../hooks/usePortfolioGare";
 import { usePortfolioScore } from "../hooks/usePortfolioScore";
 import { getPortfolioScoreTier } from "../lib/portfolioScoreApi";
+import { TenderPortfolioList } from "./TenderPortfolioList";
+import { TenderPortfolioApprofondire } from "./TenderPortfolioApprofondire";
+import { TenderPortfolioDiscard } from "./TenderPortfolioDiscard";
+import { TenderPortfolioWatchToday } from "./TenderPortfolioWatchToday";
+import type { PortfolioViewMode } from "../types/gara";
 import type { TenderDocument } from "../types";
 import type { ProfiloImpresaContext } from "../types/database";
 
@@ -10,6 +16,7 @@ type TenderPortfolioScoreProps = {
   tenders: TenderDocument[];
   compact?: boolean;
   className?: string;
+  onSelectTender?: (listId: string) => void;
 };
 
 export function TenderPortfolioScore({
@@ -18,7 +25,9 @@ export function TenderPortfolioScore({
   tenders,
   compact = false,
   className = "",
+  onSelectTender,
 }: TenderPortfolioScoreProps) {
+  const portfolioGare = usePortfolioGare(userId, profilo, tenders);
   const { result, loading, error, refresh } = usePortfolioScore(
     userId,
     profilo,
@@ -129,6 +138,125 @@ export function TenderPortfolioScore({
       >
         <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} />
         Aggiorna score
+      </button>
+
+      <PortfolioViewTabs
+        viewMode={portfolioGare.viewMode}
+        setViewMode={portfolioGare.setViewMode}
+        watchTodayCount={portfolioGare.watchTodayCount}
+        discardCount={portfolioGare.discardCount}
+        approfondireCount={portfolioGare.approfondireCount}
+      />
+
+      {portfolioGare.scartoError && (
+        <p className="mt-3 text-[11px] text-red-300 rounded-lg border border-red-900/40 bg-red-950/20 px-3 py-2">
+          {portfolioGare.scartoError}
+        </p>
+      )}
+
+      {portfolioGare.viewMode === "watch_today" ? (
+        <TenderPortfolioWatchToday
+          className="mt-4"
+          gare={portfolioGare.gareDaGuardareOggi}
+          loading={portfolioGare.loading}
+          onSelectTender={onSelectTender}
+        />
+      ) : portfolioGare.viewMode === "review" ? (
+        <TenderPortfolioApprofondire
+          className="mt-4"
+          candidates={portfolioGare.approfondireCandidates}
+          loading={portfolioGare.loading}
+          onApprofondisci={onSelectTender}
+        />
+      ) : portfolioGare.viewMode === "discard" ? (
+        <TenderPortfolioDiscard
+          className="mt-4"
+          candidates={portfolioGare.discardCandidates}
+          scartate={portfolioGare.gareScartate}
+          loading={portfolioGare.loading}
+          showScartate={portfolioGare.showScartate}
+          onToggleShowScartate={() => portfolioGare.setShowScartate(!portfolioGare.showScartate)}
+          onConfirmScarto={portfolioGare.confirmScarto}
+          onRestore={portfolioGare.restoreScarto}
+          onSelectTender={onSelectTender}
+        />
+      ) : (
+        <TenderPortfolioList
+          className="mt-4"
+          displayedGare={portfolioGare.displayedGare}
+          loading={portfolioGare.loading}
+          error={portfolioGare.error}
+          sortMode={portfolioGare.sortMode}
+          setSortMode={portfolioGare.setSortMode}
+          refresh={portfolioGare.refresh}
+          onSelectTender={onSelectTender}
+        />
+      )}
+    </div>
+  );
+}
+
+function PortfolioViewTabs({
+  viewMode,
+  setViewMode,
+  watchTodayCount,
+  discardCount,
+  approfondireCount,
+}: {
+  viewMode: PortfolioViewMode;
+  setViewMode: (mode: PortfolioViewMode) => void;
+  watchTodayCount: number;
+  discardCount: number;
+  approfondireCount: number;
+}) {
+  const tabClass = (active: boolean) =>
+    `cursor-pointer px-3 py-1.5 rounded-lg text-[11px] font-extrabold transition-colors ${
+      active
+        ? "bg-brand-gold text-black"
+        : "text-slate-400 hover:text-white border border-neutral-800 bg-black/40"
+    }`;
+
+  return (
+    <div className="mt-4 flex flex-wrap gap-2" role="tablist" aria-label="Viste portfolio">
+      <button
+        type="button"
+        role="tab"
+        aria-selected={viewMode === "all"}
+        className={tabClass(viewMode === "all")}
+        onClick={() => setViewMode("all")}
+      >
+        Tutte le gare
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={viewMode === "watch_today"}
+        className={tabClass(viewMode === "watch_today")}
+        onClick={() => setViewMode("watch_today")}
+      >
+        Da guardare oggi ({watchTodayCount})
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={viewMode === "review"}
+        className={`${tabClass(viewMode === "review")} ${
+          viewMode !== "review" && approfondireCount > 0 ? "border-sky-900/40" : ""
+        }`}
+        onClick={() => setViewMode("review")}
+      >
+        Da approfondire ({approfondireCount})
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={viewMode === "discard"}
+        className={`${tabClass(viewMode === "discard")} ${
+          viewMode !== "discard" && discardCount > 0 ? "border-red-900/40" : ""
+        }`}
+        onClick={() => setViewMode("discard")}
+      >
+        Da scartare ({discardCount})
       </button>
     </div>
   );

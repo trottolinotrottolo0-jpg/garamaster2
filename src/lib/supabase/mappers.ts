@@ -68,6 +68,12 @@ function parseRequirements(row: Record<string, JsonValue | undefined>): TenderRe
   return [];
 }
 
+function parseOptionalNumber(value: JsonValue | undefined): number | undefined {
+  if (value == null || value === "") return undefined;
+  const n = typeof value === "number" ? value : Number(String(value).replace(/[^\d.,]/g, "").replace(",", "."));
+  return Number.isNaN(n) ? undefined : n;
+}
+
 export function isProfiloIncomplete(profilo: ProfiloImpresaContext | null): boolean {
   if (!profilo) return true;
   return !profilo.partitaIva && !profilo.soa;
@@ -98,12 +104,17 @@ export function mapProfiloToContext(row: ProfiloImpresaRow): ProfiloImpresaConte
         ? String(row.fatturato_medio)
         : undefined;
 
+  const squadreDisponibili = parseOptionalNumber(row.squadre_disponibili);
+  const mezziDisponibili = parseOptionalNumber(row.mezzi_disponibili);
+
   const summary = [
     `Ragione sociale: ${ragioneSociale}`,
     row.partita_iva ? `P.IVA: ${row.partita_iva}` : null,
     soaParts.length ? `SOA: ${soaParts.join(", ")}` : null,
     fatturato ? `Fatturato (triennio/medio): € ${fatturato}` : null,
     regioni.length ? `Regioni operative: ${regioni.join(", ")}` : null,
+    squadreDisponibili != null ? `Squadre disponibili: ${squadreDisponibili}` : null,
+    mezziDisponibili != null ? `Mezzi disponibili: ${mezziDisponibili}` : null,
     certificazioni.length ? `Certificazioni: ${certificazioni.join(", ")}` : null,
     row.note ? `Note: ${row.note}` : null,
   ]
@@ -117,6 +128,8 @@ export function mapProfiloToContext(row: ProfiloImpresaRow): ProfiloImpresaConte
     partitaIva: row.partita_iva ?? undefined,
     soa: soaParts.join(", ") || undefined,
     fatturatoTriennale: fatturato,
+    squadreDisponibili,
+    mezziDisponibili,
     regioni: regioni.length ? regioni : undefined,
     certificazioni: certificazioni.length ? certificazioni : undefined,
     summary,

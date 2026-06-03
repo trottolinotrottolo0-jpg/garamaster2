@@ -20,6 +20,7 @@
 | **Scouting Gare (Fase 1)** | **Sì** — `gare_scouting_utente` + `gare_documenti` + colonne URL su `gare_anac` |
 | **Sync ANAC (Fase 2)** | **Sì** — `solo-anac-sync-fase2.sql` + `SUPABASE_SERVICE_ROLE_KEY` server |
 | **Documenti + AI scouting (Fase 3–4)** | **Sì** — `solo-scouting-fase3-fase4.sql` + bucket Storage |
+| **Tender Portfolio Score** | **Sì** — `solo-portfolio-scores.sql` + `solo-portfolio-scarto.sql` (opz. `solo-portfolio-carico.sql`) |
 | Profilo / login / lista gare demo | **Sì** — `schema.sql` (prima volta) |
 
 ---
@@ -93,6 +94,10 @@ In **Authentication → Policies** (o RLS sulla tabella): policy attive su ogni 
 | `fix-duplicate-cig.sql` | Solo se errore `gare_anac_cig_unique_idx` / CIG duplicato (es. DEMO0000001) |
 | `solo-scouting-fase3-fase4.sql` | Documenti PDF (Storage + parse) + enrichment AI `gare_scouting` + alert feed |
 | `solo-storico-gare-ai.sql` | Solo Historical Knowledge Layer |
+| `solo-portfolio-scores.sql` | Score portfolio su `gare` (fit, urgenza, rischio, vista, motivazione) |
+| `fix-duplicate-gare-user-cig.sql` | Errore `gare_user_cig_unique_idx` / CIG duplicato su `gare` (stesso `user_id`) |
+| `solo-portfolio-scarto.sql` | Colonna `gare.scartata` |
+| `solo-portfolio-carico.sql` | Capacità squadre/mezzi su profilo e gare |
 
 ---
 
@@ -118,6 +123,7 @@ In **Authentication → Policies** (o RLS sulla tabella): policy attive su ogni 
 | `column "scadenza_offerta" does not exist` | Esegui `fix-scadenza-offerta.sql` (NON rieseguire tutto `schema.sql` se `gare` esiste già) |
 | Scouting: tabella `gare_scouting_utente` mancante | Esegui `solo-scouting-gare.sql` |
 | `could not create unique index "gare_anac_cig_unique_idx"` (CIG duplicato) | Esegui `fix-duplicate-cig.sql` oppure riesegui `solo-anac-sync-fase2.sql` |
+| `could not create unique index "gare_user_cig_unique_idx"` (stesso CIG su `gare` per un utente) | Esegui `fix-duplicate-gare-user-cig.sql` |
 | `no unique or exclusion constraint matching the ON CONFLICT` (sync ANAC) | Aggiorna il server (upsert manuale) oppure esegui `fix-anac-cig-unique.sql` |
 
 Per trovare il tuo `user_id`: **Authentication → Users** → copia UUID utente.

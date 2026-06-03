@@ -97,7 +97,12 @@ export async function parseDisciplinarePdf(params: {
 
   const model = resolveOpenRouterModel();
   const limitedText = extractedText.slice(0, 120000);
-  const prompt = `${DISCIPLINARE_PARSE_USER_PROMPT}\n\nTESTO DISCIPLINARE:\n${limitedText}`;
+  const prompt = `${DISCIPLINARE_PARSE_USER_PROMPT}
+
+Rispondi SOLO con un oggetto JSON valido, senza markdown, senza backtick, senza testo aggiuntivo.
+
+TESTO DISCIPLINARE:
+${limitedText}`;
 
   const { text, modelUsed } = await deepseekChatCompletion({
     model,

@@ -18,10 +18,21 @@ export interface GaraRoiGeminiEstimate {
   motivazioneProbabilita: string;
 }
 
+export type GaraRoiVerdetto = "vale_la_pena" | "valuta_con_cautela" | "lascia_perdere";
+
 export interface GaraRoiResponseBody extends GaraRoiGeminiEstimate {
   importoGaraEuro: number;
   costiPartecipazioneEuro: number;
   profittoAttesoEuro: number;
   roiPercent: number | null;
   formulaSintesi: string;
+  // campi feature #56
+  estimatedParticipationHours: number;
+  internalHourlyCostEuro: number;
+  participationInternalCostEuro: number;
+  expectedMarginIfWonEuro: number;
+  expectedValueEuro: number;
+  roiPartecipazionePercent: number | null;
+  verdetto: GaraRoiVerdetto;
+  motivazioneLeggibile: string;
 }

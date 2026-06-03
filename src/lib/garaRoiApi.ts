@@ -2,6 +2,8 @@ import type { CompanyProfile, TenderDocument } from "../types";
 import type { ProfiloImpresaContext } from "../types/database";
 import { parseTenderImporto } from "./tenderValue";
 
+export type GaraRoiVerdetto = "vale_la_pena" | "valuta_con_cautela" | "lascia_perdere";
+
 export interface GaraRoiResult {
   marginePercentStimato: number;
   orePreparazioneStimate: number;
@@ -9,13 +11,22 @@ export interface GaraRoiResult {
   costiAggiuntiviEuro: number;
   probabilitaVittoriaPercent: number;
   motivazioneMargine: string;
-  motivazioneProbabilita: string;
+  motivazionoProbabilita: string;
   importoGaraEuro: number;
   costiPartecipazioneEuro: number;
   profittoAttesoEuro: number;
   roiPercent: number | null;
   formulaSintesi: string;
   generatedAt: string;
+  // campi feature #56
+  estimatedParticipationHours: number;
+  internalHourlyCostEuro: number;
+  participationInternalCostEuro: number;
+  expectedMarginIfWonEuro: number;
+  expectedValueEuro: number;
+  roiPartecipazionePercent: number | null;
+  verdetto: GaraRoiVerdetto;
+  motivazioneLeggibile: string;
 }
 
 export async function fetchGaraRoi(params: {
@@ -47,18 +58,16 @@ export async function fetchGaraRoi(params: {
 export function roiTier(roiPercent: number | null): {
   label: string;
   className: string;
+  verdetto: GaraRoiVerdetto;
 } {
   if (roiPercent == null) {
-    return { label: "N/D", className: "text-slate-400" };
+    return { label: "N/D", className: "text-slate-400", verdetto: "lascia_perdere" };
   }
-  if (roiPercent >= 150) {
-    return { label: "Eccellente", className: "text-emerald-400" };
+  if (roiPercent >= 200) {
+    return { label: "Vale la pena", className: "text-emerald-400", verdetto: "vale_la_pena" };
   }
   if (roiPercent >= 50) {
-    return { label: "Buono", className: "text-brand-gold" };
+    return { label: "Valuta con cautela", className: "text-amber-400", verdetto: "valuta_con_cautela" };
   }
-  if (roiPercent >= 0) {
-    return { label: "Moderato", className: "text-amber-400" };
-  }
-  return { label: "Negativo", className: "text-red-400" };
+  return { label: "Lascia perdere", className: "text-red-400", verdetto: "lascia_perdere" };
 }

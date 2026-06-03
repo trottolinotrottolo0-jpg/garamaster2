@@ -9,6 +9,10 @@ import type {
   ProfiloImpresaRow,
   ProfiloOnboardingInput,
 } from "../types/database";
+import { calcolaVistaPortfolio } from "../lib/portfolioVista";
+import { garaToPortfolioUpdate } from "../lib/portfolioDb";
+import { setLocalScartata } from "../lib/portfolioScartoStorage";
+import type { Gara } from "../types/gara";
 import type { TenderDocument } from "../types";
 
 function toListItem(row: GaraRow | GaraAnacRow, source: "gare" | "gare_anac"): GaraListItem {
@@ -196,6 +200,140 @@ export async function loadGareCatalog(userId: string): Promise<{
   ];
 
   return { items, tenders };
+}
+
+export async function persistPortfolioScores(
+  userId: string,
+  gare: Gara[]
+): Promise<void> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+
+  for (const gara of gare) {
+    const payload = garaToPortfolioUpdate(gara);
+
+    if (gara.source === "gare") {
+      const { error } = await supabase
+        .from("gare")
+        .update(payload)
+        .eq("id", gara.id)
+        .eq("user_id", userId);
+      if (error) {
+        console.warn("[GaraMaster] persist portfolio gare:", gara.id, error.message);
+      }
+      continue;
+    }
+
+    if (gara.source !== "gare_anac" || !gara.cig) continue;
+
+    const { data: existing } = await supabase
+      .from("gare")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("cig", gara.cig)
+      .maybeSingle();
+
+    if (existing?.id) {
+      const { error } = await supabase
+        .from("gare")
+        .update({
+          ...payload,
+          titolo: gara.titolo,
+          regione: gara.regione ?? null,
+          scadenza_offerta: gara.scadenza ?? null,
+          categoria_soa: gara.categoria ?? null,
+          importo: gara.importo ?? null,
+        })
+        .eq("id", existing.id)
+        .eq("user_id", userId);
+      if (error) {
+        console.warn("[GaraMaster] persist portfolio mirror:", gara.cig, error.message);
+      }
+    } else {
+      const { error } = await supabase.from("gare").insert({
+        user_id: userId,
+        cig: gara.cig,
+        titolo: gara.titolo,
+        regione: gara.regione ?? null,
+        scadenza_offerta: gara.scadenza ?? null,
+        categoria_soa: gara.categoria ?? null,
+        importo: gara.importo ?? null,
+        ...payload,
+      });
+      if (error) {
+        console.warn("[GaraMaster] insert portfolio mirror:", gara.cig, error.message);
+      }
+    }
+  }
+}
+
+export async function setGaraScartata(
+  userId: string,
+  gara: Gara,
+  scartata: boolean
+): Promise<void> {
+  const listKey = gara.listId ?? `${gara.source}-${gara.id}`;
+  const vista_portfolio = scartata
+    ? "scartare"
+    : calcolaVistaPortfolio(gara.score_sintetico, false);
+
+  if (gara.source === "gare") {
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      setLocalScartata(listKey, scartata);
+      return;
+    }
+
+    const { error } = await supabase
+      .from("gare")
+      .update({ scartata, vista_portfolio })
+      .eq("id", gara.id)
+      .eq("user_id", userId);
+
+    if (error) {
+      const missingColumn = /scartata|column/i.test(error.message);
+      if (missingColumn) {
+        console.warn("[GaraMaster] Colonna scartata assente — uso cache locale.");
+        setLocalScartata(listKey, scartata);
+        return;
+      }
+      throw new Error(`Errore aggiornamento scarto gara: ${error.message}`);
+    }
+    if (!scartata && gara.cig) {
+      void persistPortfolioScores(userId, [{ ...gara, scartata: false, vista_portfolio }]);
+    }
+    return;
+  }
+
+  if (gara.source === "gare_anac" && gara.cig) {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      const { data: existing } = await supabase
+        .from("gare")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("cig", gara.cig)
+        .maybeSingle();
+      if (existing?.id) {
+        await supabase
+          .from("gare")
+          .update({ scartata, vista_portfolio })
+          .eq("id", existing.id)
+          .eq("user_id", userId);
+      } else {
+        await supabase.from("gare").insert({
+          user_id: userId,
+          cig: gara.cig,
+          titolo: gara.titolo,
+          scartata,
+          vista_portfolio,
+          score_sintetico: gara.score_sintetico,
+        });
+      }
+    }
+  }
+
+  setLocalScartata(listKey, scartata);
 }
 
 export async function fetchGaraById(

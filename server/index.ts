@@ -13,6 +13,18 @@ import { generateGaraRoi } from "./garaRoi";
 import type { GaraRoiRequestBody } from "./garaRoiTypes";
 import { transcribeAudio } from "./transcribeAudio";
 import { parseDisciplinarePdf } from "./parseDisciplinare";
+import { parsePrezzarioPdf } from "./parsePrezzario";
+import { parseSOAFile } from "./parseSOA";
+import { parseAwardCriteriaFromBando } from "./parseAwardCriteria";
+import { parseRiskComplianceFromBando } from "./parseComplianceRequirements";
+import { parseCAMRequirementsFromBando } from "./parseCAMRequirements";
+import { parseDelayPenaltiesFromBando } from "./parseDelayPenalties";
+import { parseVariantsClausesFromBando } from "./parseVariantsClauses";
+import { parseQualificationRequirementsFromBando } from "./parseQualificationRequirements";
+import {
+  fetchHistoricalGareData,
+  saveMarketIntelligenceSnapshot,
+} from "./marketIntelligence";
 import { generatePostGaraForensics } from "./postGaraForensics";
 import { generateSoaGapForecast } from "./soaGapForecast";
 import type { SoaGapForecastRequestBody } from "./soaGapForecastTypes";
@@ -240,6 +252,267 @@ async function createApp() {
       const message =
         error instanceof Error ? error.message : "Errore parser disciplinare.";
       console.error("[/api/parse-disciplinare]", message);
+      res.status(503).json({ error: message });
+    }
+  });
+
+  app.post("/api/parse-soa", async (req, res) => {
+    try {
+      const { fileBase64, fileName, mimeType } = req.body as {
+        fileBase64?: string;
+        fileName?: string;
+        mimeType?: string;
+      };
+
+      if (!fileBase64?.trim()) {
+        res.status(400).json({ error: "File SOA mancante." });
+        return;
+      }
+
+      const name = fileName?.trim() || "soa.pdf";
+      const result = await parseSOAFile({
+        fileBase64,
+        fileName: name,
+        mimeType: mimeType ?? "application/pdf",
+      });
+
+      res.json(result);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Errore parser SOA.";
+      console.error("[/api/parse-soa]", message);
+      res.status(503).json({ error: message });
+    }
+  });
+
+  app.get("/api/market-intelligence/historical", async (_req, res) => {
+    try {
+      const data = await fetchHistoricalGareData();
+      res.json(data);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Errore storico market intelligence.";
+      console.error("[/api/market-intelligence/historical]", message);
+      res.status(503).json({ error: message });
+    }
+  });
+
+  app.post("/api/market-intelligence/snapshot", async (req, res) => {
+    try {
+      const snapshot = req.body;
+      if (!snapshot?.id) {
+        res.status(400).json({ error: "Snapshot non valido." });
+        return;
+      }
+      const ok = await saveMarketIntelligenceSnapshot(snapshot);
+      res.json({ ok });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Errore salvataggio snapshot.";
+      console.error("[/api/market-intelligence/snapshot]", message);
+      res.status(503).json({ error: message });
+    }
+  });
+
+  app.post("/api/parse-award-criteria", async (req, res) => {
+    try {
+      const { fileBase64, fileName, tender } = req.body as {
+        fileBase64?: string;
+        fileName?: string;
+        tender?: import("../src/types").TenderDocument;
+      };
+
+      if (!fileBase64?.trim()) {
+        res.status(400).json({ error: "PDF bando mancante." });
+        return;
+      }
+      if (!tender?.id) {
+        res.status(400).json({ error: "Gara (tender) non specificata." });
+        return;
+      }
+
+      const name = fileName?.trim() || "bando.pdf";
+      const result = await parseAwardCriteriaFromBando(fileBase64, name, tender);
+      res.json(result);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Errore parser criteri di aggiudicazione.";
+      console.error("[/api/parse-award-criteria]", message);
+      res.status(503).json({ error: message });
+    }
+  });
+
+  app.post("/api/parse-risk-compliance", async (req, res) => {
+    try {
+      const { fileBase64, fileName, tender } = req.body as {
+        fileBase64?: string;
+        fileName?: string;
+        tender?: import("../src/types").TenderDocument;
+      };
+
+      if (!fileBase64?.trim()) {
+        res.status(400).json({ error: "PDF bando mancante." });
+        return;
+      }
+      if (!tender?.id) {
+        res.status(400).json({ error: "Gara (tender) non specificata." });
+        return;
+      }
+
+      const name = fileName?.trim() || "bando.pdf";
+      const result = await parseRiskComplianceFromBando(fileBase64, name, tender);
+      res.json(result);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Errore analisi risk & compliance.";
+      console.error("[/api/parse-risk-compliance]", message);
+      res.status(503).json({ error: message });
+    }
+  });
+
+  app.post("/api/parse-cam-requirements", async (req, res) => {
+    try {
+      const { fileBase64, fileName, tender } = req.body as {
+        fileBase64?: string;
+        fileName?: string;
+        tender?: import("../src/types").TenderDocument;
+      };
+
+      if (!fileBase64?.trim()) {
+        res.status(400).json({ error: "PDF bando mancante." });
+        return;
+      }
+      if (!tender?.id) {
+        res.status(400).json({ error: "Gara (tender) non specificata." });
+        return;
+      }
+
+      const name = fileName?.trim() || "bando.pdf";
+      const requirements = await parseCAMRequirementsFromBando(fileBase64, name, tender);
+      res.json({ requirements });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Errore parsing requisiti CAM.";
+      console.error("[/api/parse-cam-requirements]", message);
+      res.status(503).json({ error: message });
+    }
+  });
+
+  app.post("/api/parse-delay-penalties", async (req, res) => {
+    try {
+      const { fileBase64, fileName, tender } = req.body as {
+        fileBase64?: string;
+        fileName?: string;
+        tender?: import("../src/types").TenderDocument;
+      };
+
+      if (!fileBase64?.trim()) {
+        res.status(400).json({ error: "PDF bando mancante." });
+        return;
+      }
+      if (!tender?.id) {
+        res.status(400).json({ error: "Gara (tender) non specificata." });
+        return;
+      }
+
+      const name = fileName?.trim() || "bando.pdf";
+      const penaltyClauses = await parseDelayPenaltiesFromBando(fileBase64, name, tender);
+      res.json({ penaltyClauses });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Errore parsing penalità ritardo.";
+      console.error("[/api/parse-delay-penalties]", message);
+      res.status(503).json({ error: message });
+    }
+  });
+
+  app.post("/api/parse-qualification-requirements", async (req, res) => {
+    try {
+      const { fileBase64, fileName, tender } = req.body as {
+        fileBase64?: string;
+        fileName?: string;
+        tender?: import("../src/types").TenderDocument;
+      };
+
+      if (!fileBase64?.trim()) {
+        res.status(400).json({ error: "PDF bando mancante." });
+        return;
+      }
+      if (!tender?.id) {
+        res.status(400).json({ error: "Gara (tender) non specificata." });
+        return;
+      }
+
+      const name = fileName?.trim() || "bando.pdf";
+      const requirements = await parseQualificationRequirementsFromBando(
+        fileBase64,
+        name,
+        tender
+      );
+      res.json({ requirements });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Errore parsing requisiti qualificazione.";
+      console.error("[/api/parse-qualification-requirements]", message);
+      res.status(503).json({ error: message });
+    }
+  });
+
+  app.post("/api/parse-variants-clauses", async (req, res) => {
+    try {
+      const { fileBase64, fileName, tender } = req.body as {
+        fileBase64?: string;
+        fileName?: string;
+        tender?: import("../src/types").TenderDocument;
+      };
+
+      if (!fileBase64?.trim()) {
+        res.status(400).json({ error: "PDF bando mancante." });
+        return;
+      }
+      if (!tender?.id) {
+        res.status(400).json({ error: "Gara (tender) non specificata." });
+        return;
+      }
+
+      const name = fileName?.trim() || "bando.pdf";
+      const result = await parseVariantsClausesFromBando(fileBase64, name, tender);
+      res.json(result);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Errore parsing varianti/claims.";
+      console.error("[/api/parse-variants-clauses]", message);
+      res.status(503).json({ error: message });
+    }
+  });
+
+  app.post("/api/parse-prezzario", async (req, res) => {
+    try {
+      const { pdfBase64, fileName, mimeType } = req.body as {
+        pdfBase64?: string;
+        fileName?: string;
+        mimeType?: string;
+      };
+
+      if (!pdfBase64?.trim()) {
+        res.status(400).json({ error: "PDF prezzario mancante." });
+        return;
+      }
+
+      const name = fileName?.trim() || "prezzario.pdf";
+      const result = await parsePrezzarioPdf({
+        pdfBase64,
+        fileName: name,
+        mimeType: mimeType ?? "application/pdf",
+      });
+
+      res.json(result);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Errore parser prezzario.";
+      console.error("[/api/parse-prezzario]", message);
       res.status(503).json({ error: message });
     }
   });

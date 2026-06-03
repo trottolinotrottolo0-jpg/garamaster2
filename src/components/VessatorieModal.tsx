@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { TenderDocument, RiskLevel, RedFlagAnalysisResult } from "../types";
 import { runRedFlagAnalysis } from "../lib/gemini";
+import { resolveRedFlagExplainability } from "../lib/redFlagNormalization";
 import { ExplainabilityLayer } from "./ExplainabilityLayer";
 import {
   ShieldAlert, AlertTriangle, AlertCircle, Sparkles, HelpCircle,
@@ -63,6 +64,16 @@ export const VessatorieModal: React.FC<VessatorieModalProps> = ({
         return "Tempi anomali";
       case "restrictive_requirement_combination":
         return "Combinazione restrittiva di requisiti";
+      case "requisito_sproporzionato":
+        return "Requisito potenzialmente sproporzionato";
+      case "clausola_sensibile":
+        return "Clausola sensibile";
+      case "rischio_operativo":
+        return "Rischio operativo / esecutivo";
+      case "rischio_esclusione":
+        return "Rischio di esclusione";
+      case "altro":
+        return "Altro (da approfondire)";
       default:
         return type.replaceAll("_", " ");
     }
@@ -336,7 +347,19 @@ export const VessatorieModal: React.FC<VessatorieModalProps> = ({
                   </div>
                 ))}
               </div>
-              {result.explainability && <ExplainabilityLayer data={result.explainability} />}
+              {(() => {
+                const explainability = resolveRedFlagExplainability(
+                  result.explainability,
+                  result.redFlags,
+                  {
+                    sintesiRischio: result.sintesiRischio,
+                    rischioComplessivo: result.rischioComplessivo,
+                    tender,
+                  }
+                );
+                if (!explainability) return null;
+                return <ExplainabilityLayer data={explainability} />;
+              })()}
             </>
           )}
 

@@ -51,7 +51,38 @@ Rispondi SOLO con JSON valido, senza markdown:
     "struttura": "string — mandataria/mandante, forma RTI",
     "capogruppo": "string — chi deve essere capogruppo e perché",
     "quotePartecipazione": "string — ripartizione % indicativa",
-    "partnerSuggeriti": ["string — tipologie imprese partner"],
+    "partnerSuggeriti": [
+      {
+        "id": "string — identificativo breve es. P1",
+        "nome": "string — tipologia partner es. Impresa specializzata OG3",
+        "categorieSOA": ["string — es. OG3, OS28"],
+        "areeGeografiche": ["string — regioni operative"],
+        "capacita": "string — cosa copre operativamente",
+        "affidabilita": "Alta" | "Media" | "Bassa",
+        "tipoSupporto": "mandataria" | "mandante" | "ausiliaria",
+        "motivazioneMatch": "string — perché è il profilo giusto per questa gara"
+      }
+    ],
+    "scenarioSenzaPartner": {
+      "titolo": "Partecipazione autonoma (senza RTI)",
+      "probabilitaVittoria": number,
+      "stimaMargine": number,
+      "principaliRischi": ["string"],
+      "principaliVantaggi": ["string"]
+    },
+    "scenarioConPartner": {
+      "titolo": "RTI con partner ottimale",
+      "probabilitaVittoria": number,
+      "stimaMargine": number,
+      "principaliRischi": ["string"],
+      "principaliVantaggi": ["string"]
+    },
+    "impattoPartner": {
+      "fitDelta": number,
+      "rischioD": number,
+      "marginalitaDelta": number,
+      "note": "string"
+    },
     "documenti": ["string — documenti per formalizzare RTI"]
   },
   "avvalimento": {
@@ -67,6 +98,13 @@ Rispondi SOLO con JSON valido, senza markdown:
     "consigliato": boolean,
     "motivazione": "string",
     "rischiPrincipali": ["string"],
+    "documenti": []
+  },
+  "partecipaDiretto": {
+    "consigliato": boolean,
+    "motivazione": "string",
+    "condizioniNecessarie": ["string — condizioni da soddisfare prima di partecipare da soli"],
+    "rischioResiduo": "string — rischio principale anche se si partecipa da soli",
     "documenti": []
   },
   "perche": "string",
@@ -89,8 +127,16 @@ export async function generateRtiAvvalimentoAnalysis(
       maxTokens: 8192,
     });
 
-    const cleaned = text.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
-    const parsed = JSON.parse(cleaned) as RtiAvvalimentoResponseBody;
+    const extracted = text.trim();
+    let cleaned = extracted;
+    if (cleaned.startsWith("```json")) cleaned = cleaned.slice(7);
+    else if (cleaned.startsWith("```")) cleaned = cleaned.slice(3);
+    if (cleaned.endsWith("```")) cleaned = cleaned.slice(0, -3);
+    cleaned = cleaned.trim();
+
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    const jsonStr = jsonMatch ? jsonMatch[0] : cleaned;
+    const parsed = JSON.parse(jsonStr) as RtiAvvalimentoResponseBody;
     return parsed;
   } catch (error) {
     throw new Error(formatGeminiError(error));

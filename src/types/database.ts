@@ -19,6 +19,8 @@ export interface ProfiloImpresaRow {
   iso_9001?: boolean | null;
   iso_14001?: boolean | null;
   iso_45001?: boolean | null;
+  squadre_disponibili?: number | string | null;
+  mezzi_disponibili?: number | string | null;
   note?: string | null;
   created_at?: string | null;
   [key: string]: JsonValue | undefined;
@@ -41,6 +43,26 @@ export interface GaraRow {
   data_scadenza?: string | null;
   stato_pratica?: string | null;
   categoria_soa?: string | null;
+  fit_score?: number | string | null;
+  urgenza_score?: number | string | null;
+  rischio_score?: number | string | null;
+  margine_score?: number | string | null;
+  carico_score?: number | string | null;
+  convenienza_score?: number | string | null;
+  motivazione_ranking?: string | null;
+  vista_portfolio?: string | null;
+  risk_score?: number | string | null;
+  red_flag_count?: number | string | null;
+  carico_operativo?: number | string | null;
+  margine_stimato?: number | string | null;
+  costo_stimato_interno?: number | string | null;
+  ribasso_ipotizzato?: number | string | null;
+  bid_no_bid?: string | null;
+  score_sintetico?: number | string | null;
+  scartata?: boolean | null;
+  squadre_richieste?: number | string | null;
+  durata_mesi?: number | string | null;
+  durata_gara_settimane?: number | string | null;
   criterio_aggiudicazione?: string | null;
   requisiti?: JsonValue;
   penali?: JsonValue;
@@ -67,6 +89,12 @@ export interface GaraAnacRow {
   cpv?: string | null;
   categoria?: string | null;
   fit_score?: number | string | null;
+  risk_score?: number | string | null;
+  red_flag_count?: number | string | null;
+  carico_operativo?: number | string | null;
+  margine_stimato?: number | string | null;
+  costo_stimato_interno?: number | string | null;
+  ribasso_ipotizzato?: number | string | null;
   [key: string]: JsonValue | undefined;
 }
 
@@ -107,6 +135,8 @@ export interface ProfiloImpresaContext {
   partitaIva?: string;
   soa?: string;
   fatturatoTriennale?: string;
+  squadreDisponibili?: number;
+  mezziDisponibili?: number;
   regioni?: string[];
   certificazioni?: string[];
   summary: string;

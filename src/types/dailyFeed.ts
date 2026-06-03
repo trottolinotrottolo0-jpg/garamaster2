@@ -1,3 +1,66 @@
+// --- Alert Engine types (#16) ---
+
+export type AlertSeverity = "INFO" | "WARNING" | "HIGH" | "CRITICAL";
+
+export type AlertCategoria =
+  | "SCADENZA"
+  | "FIT"
+  | "PRIORITA"
+  | "DOCUMENTI"
+  | "TASK"
+  | "COMPLIANCE"
+  | "GARA"
+  | "OPERATIVO";
+
+export interface AlertItem {
+  id: string;
+  titolo: string;
+  descrizione: string;
+  severity: AlertSeverity;
+  categoria: AlertCategoria;
+  data: string;
+  garaId?: string;
+  cig?: string;
+  actionConsigliata?: string;
+}
+
+export interface DailyDigest {
+  generatedAt: string;
+  gareMonitorate: number;
+  gareUrgenti: number;
+  alertCritici: number;
+  taskAperti: number;
+  raccomandazione: string;
+}
+
+export interface WeeklyDigest {
+  settimana: string;
+  nuoveOpportunita: number;
+  gareAnalizzate: number;
+  alertRisolti: number;
+  raccomandazione: string;
+}
+
+export interface NotifPrefs {
+  gareUrgenti: boolean;
+  gareAltaPriorita: boolean;
+  documentiMancanti: boolean;
+  task: boolean;
+  compliance: boolean;
+  alertCritici: boolean;
+}
+
+export const DEFAULT_NOTIF_PREFS: NotifPrefs = {
+  gareUrgenti: true,
+  gareAltaPriorita: true,
+  documentiMancanti: true,
+  task: true,
+  compliance: true,
+  alertCritici: true,
+};
+
+// --- Feed types (esistenti) ---
+
 export interface DailyFeedExpiringItem {
   id: string;
   garaId: string;

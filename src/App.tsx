@@ -1,6 +1,26 @@
 import { useState, useEffect, useRef, useMemo, useCallback, type ReactNode } from "react";
 import { motion } from "motion/react";
-import { Message, McpServer, PacketLog, TenderDocument, ChatAttachment } from "./types";
+import {
+  Message,
+  McpServer,
+  PacketLog,
+  TenderDocument,
+  ChatAttachment,
+  Prezzario,
+  CompanyProfile,
+  type ColllegamentoComputoPrezzario,
+  type WinningPattern,
+  type GaraSimilareHistorica,
+} from "./types";
+import {
+  generateWinningPatterns,
+  matchGaraToPatterns,
+  analyzePatternsTimeTrend,
+  generatePatternAlerts,
+  type PatternAlert,
+} from "./lib/winningPatternEngine";
+import { WinningPatternViewer } from "./components/WinningPatternViewer";
+import { buildComputoFromTender } from "./lib/bidCalculations";
 import { initialMcpServers, mockTenders } from "./mockData";
 import { useGaraMaster } from "./context/GaraMasterContext";
 import { requestGaraMasterReply } from "./lib/chatApi";
@@ -26,14 +46,25 @@ import { ChatSessionsSidebar } from "./components/ChatSessionsSidebar";
 import type { ChatSession } from "./types/chat";
 import { DocumentAnalyzer } from "./components/DocumentAnalyzer";
 import { DeveloperGuide } from "./components/DeveloperGuide";
-import { CompanyProfile } from "./components/CompanyProfile";
+import { CompanyProfile as CompanyProfileComponent } from "./components/CompanyProfile";
 import { TenderPortfolioScore } from "./components/TenderPortfolioScore";
 import { VessatorieModal } from "./components/VessatorieModal";
 import { BidNoBidEngine } from "./components/BidNoBidEngine";
 import { RtiAvvalimentoConfigurator } from "./components/RtiAvvalimentoConfigurator";
 import { BidPricingEngine } from "./components/BidPricingEngine";
+import { PrezzariManager } from "./components/PrezzariManager";
 import { CapacitySaturationEngine } from "./components/CapacitySaturationEngine";
 import { ProfitabilityGate } from "./components/ProfitabilityGate";
+import { AwardCriteriaAnalyzer } from "./components/AwardCriteriaAnalyzer";
+import { MarketIntelligenceDashboard } from "./components/MarketIntelligenceDashboard";
+import { RiskComplianceProfiler } from "./components/RiskComplianceProfiler";
+import { CAMComplianceChecker } from "./components/CAMComplianceChecker";
+import { DelayPenaltyExposureAnalyzer } from "./components/DelayPenaltyExposureAnalyzer";
+import { VariantClaimsRiskAnalyzer } from "./components/VariantClaimsRiskAnalyzer";
+import { PreSubmissionComplianceAudit } from "./components/PreSubmissionComplianceAudit";
+import { QualificationReadinessHub } from "./components/QualificationReadinessHub";
+import { fetchHistoricalGareData } from "./lib/marketIntelligenceApi";
+import { buildHistoricalFromCompanyProfile, mergeHistoricalSources } from "./lib/marketIntelligenceEngine";
 import { AlertDailyFeed } from "./components/AlertDailyFeed";
 import { ScoutingGareApp } from "./components/ScoutingGareApp";
 import { GaraRoiCalculator } from "./components/GaraRoiCalculator";
@@ -48,8 +79,11 @@ import {
   Cpu, Layers, Network, BookOpen, MessageSquare, ShieldCheck, Info, Plus, Search, Sliders, LogOut, Settings, 
   Sparkles, HelpCircle, Briefcase, User, Database, ShieldAlert, Key, Download, Bell,
   Menu, ChevronDown, ChevronLeft, ChevronRight, PanelLeftOpen, PanelRightOpen,
-  FileText, Calculator, Scale, TrendingUp, Activity, BarChart3, Users, Home, Target
+  FileText, Calculator, Scale, TrendingUp, Activity, BarChart3, Users, Home, Target, ListChecks, AlertTriangle, Leaf, Clock, Zap, CheckCircle2
 } from "lucide-react";
+
+const LOCALSTORAGE_PREZZARI_KEY = "gm_prezzari";
+const LOCALSTORAGE_PROFILO_KEY = "gm_company_profile";
 
 type SidebarDropdownSectionProps = {
   title: string;
@@ -116,12 +150,42 @@ export default function App() {
   const [packets, setPackets] = useState<PacketLog[]>([]);
   const [isSimplifiedMode, setIsSimplifiedMode] = useState<boolean>(true);
   const [isVessatorieOpen, setIsVessatorieOpen] = useState<boolean>(false);
+  const [isAwardAnalyzerOpen, setIsAwardAnalyzerOpen] = useState(false);
+  const [isMarketIntelligenceOpen, setIsMarketIntelligenceOpen] = useState(false);
+  const [isRiskComplianceOpen, setIsRiskComplianceOpen] = useState(false);
+  const [qualificationVerdict, setQualificationVerdict] = useState<string | null>(null);
+  const [showCAMChecker, setShowCAMChecker] = useState(false);
+  const [showDelayAnalyzer, setShowDelayAnalyzer] = useState(false);
+  const [showVariantsAnalyzer, setShowVariantsAnalyzer] = useState(false);
+  const [showAuditGate, setShowAuditGate] = useState(false);
+  const [auditPassed, setAuditPassed] = useState(false);
+  const [isQualificationHubOpen, setIsQualificationHubOpen] = useState(false);
+  const [historicalGareData, setHistoricalGareData] = useState<GaraSimilareHistorica[]>([]);
   const [isBidNoBidOpen, setIsBidNoBidOpen] = useState(false);
   const [isBidPricingOpen, setIsBidPricingOpen] = useState(false);
   const [isCapacityOpen, setIsCapacityOpen] = useState(false);
   const [isProfitabilityOpen, setIsProfitabilityOpen] = useState(false);
   const [isRtiAvvalimentoOpen, setIsRtiAvvalimentoOpen] = useState(false);
-  
+  const [prezzari, setPrezzari] = useState<Prezzario[]>([]);
+  const [isPrezzariManagerOpen, setIsPrezzariManagerOpen] = useState(false);
+  const [companyProfile, setCompanyProfile] = useState<CompanyProfile | null>(null);
+  const [computoCollegamenti, setComputoCollegamenti] = useState<ColllegamentoComputoPrezzario[]>([]);
+  const [winningPatterns, setWinningPatterns] = useState<WinningPattern[]>([]);
+  const [isAnalyzingPatterns, setIsAnalyzingPatterns] = useState(false);
+  const [isWinningPatternOpen, setIsWinningPatternOpen] = useState(false);
+  const [patternAlerts, setPatternAlerts] = useState<PatternAlert[]>([]);
+  const [dismissedAlertIds, setDismissedAlertIds] = useState<string[]>([]);
+
+  const openBidNoBidFlow = useCallback(() => {
+    setQualificationVerdict(null);
+    setIsBidNoBidOpen(true);
+  }, []); // openBidNoBidFlow
+
+  useEffect(() => {
+    setQualificationVerdict(null);
+    setAuditPassed(false);
+  }, [selectedTender.id]);
+
   // Custom states for settings
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSysInfoOpen, setIsSysInfoOpen] = useState(false);
@@ -146,6 +210,115 @@ export default function App() {
   const toggleRightSection = (key: keyof typeof rightOpenSections) => {
     setRightOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
   };
+
+  useEffect(() => {
+    const storedPrezzari = localStorage.getItem(LOCALSTORAGE_PREZZARI_KEY);
+    if (storedPrezzari) {
+      try {
+        setPrezzari(JSON.parse(storedPrezzari) as Prezzario[]);
+      } catch {
+        setPrezzari([]);
+      }
+    }
+    const storedProfile = localStorage.getItem(LOCALSTORAGE_PROFILO_KEY);
+    if (storedProfile) {
+      try {
+        setCompanyProfile(JSON.parse(storedProfile) as CompanyProfile);
+      } catch {
+        setCompanyProfile(null);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isBidPricingOpen && !isPrezzariManagerOpen) return;
+    const storedProfile = localStorage.getItem(LOCALSTORAGE_PROFILO_KEY);
+    if (!storedProfile) return;
+    try {
+      setCompanyProfile(JSON.parse(storedProfile) as CompanyProfile);
+    } catch {
+      setCompanyProfile(null);
+    }
+  }, [isBidPricingOpen, isPrezzariManagerOpen]);
+
+  useEffect(() => {
+    if (!isMarketIntelligenceOpen) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const fromApi = await fetchHistoricalGareData();
+        const fromProfile = buildHistoricalFromCompanyProfile(companyProfile);
+        if (!cancelled) {
+          setHistoricalGareData(mergeHistoricalSources(fromApi, fromProfile));
+        }
+      } catch {
+        if (!cancelled) {
+          setHistoricalGareData(buildHistoricalFromCompanyProfile(companyProfile));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isMarketIntelligenceOpen, companyProfile]);
+
+  useEffect(() => {
+    const storico = companyProfile?.historicalTenders;
+    if (!storico?.length) {
+      setWinningPatterns([]);
+      return;
+    }
+    setIsAnalyzingPatterns(true);
+    const timer = window.setTimeout(() => {
+      const patterns = generateWinningPatterns(storico);
+      setWinningPatterns(patterns);
+      setIsAnalyzingPatterns(false);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [companyProfile?.historicalTenders]);
+
+  useEffect(() => {
+    if (!selectedTender?.id || winningPatterns.length === 0) {
+      setPatternAlerts([]);
+      return;
+    }
+    const matches = matchGaraToPatterns(selectedTender, winningPatterns);
+    const trends = analyzePatternsTimeTrend(winningPatterns);
+    setPatternAlerts(generatePatternAlerts(matches, winningPatterns, trends));
+  }, [selectedTender, winningPatterns]);
+
+  const visiblePatternAlerts = useMemo(
+    () => patternAlerts.filter((a) => !dismissedAlertIds.includes(a.id)),
+    [patternAlerts, dismissedAlertIds]
+  );
+
+  const handlePatternAlertAction = useCallback(
+    (alert: PatternAlert) => {
+      if (alert.tipo === "VERY_SIMILAR" || alert.tipo === "TREND_WARNING") {
+        setIsWinningPatternOpen(true);
+      } else if (alert.tipo === "OPPORTUNITY") {
+        openBidNoBidFlow();
+      } else if (alert.tipo === "RISK") {
+        setIsVessatorieOpen(true);
+      }
+    },
+    []
+  );
+
+  const savePrezzari = useCallback((nuoviPrezzari: Prezzario[]) => {
+    setPrezzari(nuoviPrezzari);
+    localStorage.setItem(LOCALSTORAGE_PREZZARI_KEY, JSON.stringify(nuoviPrezzari));
+  }, []);
+
+  const savePrezzarioPreferito = useCallback((id: string) => {
+    if (!companyProfile) return;
+    const updated: CompanyProfile = {
+      ...companyProfile,
+      prezzarioPreferito: id || undefined,
+    };
+    setCompanyProfile(updated);
+    localStorage.setItem(LOCALSTORAGE_PROFILO_KEY, JSON.stringify(updated));
+  }, [companyProfile]);
 
   useEffect(() => {
     if (dataError) {
@@ -463,7 +636,7 @@ export default function App() {
 
   const handleRunConnector = (action: InternalConnectorAction) => {
     const map: Record<InternalConnectorAction, () => void> = {
-      bidNoBid: () => setIsBidNoBidOpen(true),
+      bidNoBid: openBidNoBidFlow,
       bidPricing: () => setIsBidPricingOpen(true),
       capacity: () => setIsCapacityOpen(true),
       profitability: () => setIsProfitabilityOpen(true),
@@ -692,7 +865,7 @@ export default function App() {
           setActiveTab("chat");
         },
         onOfferPrep: () => handleStartOfferPreparation(selectedTender),
-        onBidNoBid: () => setIsBidNoBidOpen(true),
+        onBidNoBid: openBidNoBidFlow,
         onBidPricing: () => setIsBidPricingOpen(true),
         onRtiAvvalimento: () => setIsRtiAvvalimentoOpen(true),
         onVessatorie: () => setIsVessatorieOpen(true),
@@ -716,6 +889,15 @@ export default function App() {
     setActiveTab(tab);
     setIsNavMenuOpen(false);
     if (tab === "feed") void refreshDailyFeed();
+  };
+
+  const handleSelectTenderFromPortfolio = (listId: string) => {
+    const match = allTenders.find((t) => t.id === listId);
+    if (match) {
+      setSelectedTender(match);
+      setActiveTab("chat");
+      setIsNavMenuOpen(false);
+    }
   };
 
   return (
@@ -1035,7 +1217,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => {
-                        setIsBidNoBidOpen(true);
+                        openBidNoBidFlow();
                         setIsNavMenuOpen(false);
                       }}
                       className="cursor-pointer text-slate-300 hover:text-brand-gold transition-colors flex items-center gap-1.5"
@@ -1055,6 +1237,19 @@ export default function App() {
                     >
                       <TrendingUp className="w-3 h-3 inline text-brand-gold shrink-0" />
                       Bid Pricing Engine
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsPrezzariManagerOpen(true);
+                        setIsNavMenuOpen(false);
+                      }}
+                      className="cursor-pointer text-slate-300 hover:text-brand-gold transition-colors flex items-center gap-1.5"
+                    >
+                      <FileText className="w-3 h-3 inline text-brand-gold shrink-0" />
+                      Gestisci Prezzari
                     </button>
                   </li>
                   <li>
@@ -1293,6 +1488,7 @@ export default function App() {
                 supabaseConfigured={supabaseConfigured}
                 dataError={dataError}
                 onNavigate={navigateTo}
+                onSelectTender={handleSelectTenderFromPortfolio}
                 onRefreshAll={() => void handleRefreshDashboard()}
                 isRefreshing={dashboardRefreshing || dailyFeedLoading}
                 engineShortcuts={engineShortcuts}
@@ -1428,6 +1624,51 @@ export default function App() {
                 <div className="flex-1 overflow-y-auto p-4 scrollbar-thin space-y-3">
                   <GaraRoiCalculator tender={activeTender} profilo={profilo} sidebar />
 
+                  {visiblePatternAlerts.length > 0 && (
+                    <div className="space-y-2" id="pattern-alerts-panel">
+                      {visiblePatternAlerts.map((alert) => (
+                        <div
+                          key={alert.id}
+                          className={`border rounded-lg p-3 text-[10px] ${
+                            alert.severity === "ALTA"
+                              ? "bg-red-950/30 border-red-900 text-red-300"
+                              : alert.severity === "MEDIA"
+                                ? "bg-amber-950/30 border-amber-900 text-amber-300"
+                                : "bg-blue-950/30 border-blue-900 text-blue-300"
+                          }`}
+                        >
+                          <div className="flex justify-between items-start gap-2 mb-1">
+                            <span className="font-bold leading-snug">{alert.titolo}</span>
+                            {alert.dismissible && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setDismissedAlertIds((prev) => [...prev, alert.id])
+                                }
+                                className="cursor-pointer text-xs opacity-50 hover:opacity-100 shrink-0"
+                                aria-label="Chiudi alert"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                          <p className="mb-2 leading-relaxed text-[9px] opacity-90">
+                            {alert.descrizione}
+                          </p>
+                          {alert.actionLabel && (
+                            <button
+                              type="button"
+                              onClick={() => handlePatternAlertAction(alert)}
+                              className="cursor-pointer text-xs font-bold underline hover:no-underline"
+                            >
+                              {alert.actionLabel}
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <SidebarDropdownSection
                     title="Requisiti analizzati"
                     badge={
@@ -1539,7 +1780,106 @@ export default function App() {
                       <li>
                         <button
                           type="button"
-                          onClick={() => setIsBidNoBidOpen(true)}
+                          onClick={() => setIsWinningPatternOpen(true)}
+                          className="cursor-pointer text-slate-300 hover:text-brand-gold transition-colors text-left flex items-center gap-1.5"
+                          id="winning-pattern-sidebar-btn"
+                        >
+                          <Target className="w-3 h-3 text-brand-gold shrink-0" />
+                          Pattern vincenti ({winningPatterns.length})
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          onClick={() => setIsAwardAnalyzerOpen(true)}
+                          className="cursor-pointer text-slate-300 hover:text-brand-gold transition-colors text-left flex items-center gap-1.5"
+                          id="award-criteria-sidebar-btn"
+                        >
+                          <ListChecks className="w-3 h-3 text-brand-gold shrink-0" />
+                          Analizza criteri (reverse map)
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          onClick={() => setIsMarketIntelligenceOpen(true)}
+                          className="cursor-pointer text-slate-300 hover:text-brand-gold transition-colors text-left flex items-center gap-1.5"
+                          id="market-intelligence-sidebar-btn"
+                        >
+                          <BarChart3 className="w-3 h-3 text-brand-gold shrink-0" />
+                          Market Intelligence
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          onClick={() => setIsRiskComplianceOpen(true)}
+                          className="cursor-pointer text-slate-300 hover:text-brand-gold transition-colors text-left flex items-center gap-1.5"
+                          id="risk-compliance-sidebar-btn"
+                        >
+                          <AlertTriangle className="w-3 h-3 text-brand-gold shrink-0" />
+                          Risk &amp; Compliance
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          onClick={() => setShowCAMChecker(true)}
+                          className="cursor-pointer text-slate-300 hover:text-emerald-400 transition-colors text-left flex items-center gap-1.5"
+                          id="cam-compliance-sidebar-btn"
+                        >
+                          <Leaf className="w-3 h-3 text-emerald-400 shrink-0" />
+                          CAM Compliance
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          onClick={() => setShowDelayAnalyzer(true)}
+                          className="cursor-pointer text-slate-300 hover:text-amber-400 transition-colors text-left flex items-center gap-1.5"
+                          id="delay-penalty-sidebar-btn"
+                        >
+                          <Clock className="w-3 h-3 text-amber-400 shrink-0" />
+                          Delay &amp; Penalty
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          onClick={() => setShowVariantsAnalyzer(true)}
+                          className="cursor-pointer text-slate-300 hover:text-orange-400 transition-colors text-left flex items-center gap-1.5"
+                          id="variant-claims-sidebar-btn"
+                        >
+                          <Zap className="w-3 h-3 text-orange-400 shrink-0" />
+                          Variants &amp; Claims
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          onClick={() => setShowAuditGate(true)}
+                          className="cursor-pointer text-slate-300 hover:text-blue-400 transition-colors text-left flex items-center gap-1.5"
+                          id="presubmission-audit-sidebar-btn"
+                        >
+                          <CheckCircle2 className="w-3 h-3 text-blue-400 shrink-0" />
+                          Pre-Submission Audit
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          onClick={() => setIsQualificationHubOpen(true)}
+                          className="cursor-pointer text-slate-300 hover:text-blue-400 transition-colors text-left flex items-center gap-1.5"
+                          id="qualification-hub-sidebar-btn"
+                        >
+                          <CheckCircle2 className="w-3 h-3 text-blue-400 shrink-0" />
+                          Qualification Hub
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          onClick={openBidNoBidFlow}
                           className="cursor-pointer text-slate-300 hover:text-brand-gold transition-colors text-left flex items-center gap-1.5"
                           id="bid-no-bid-sidebar-btn"
                         >
@@ -1695,6 +2035,7 @@ export default function App() {
                     userId={user.id}
                     profilo={profilo}
                     tenders={allTenders}
+                    onSelectTender={handleSelectTenderFromPortfolio}
                   />
                 </div>
               )}
@@ -1726,7 +2067,7 @@ export default function App() {
                 </div>
               )}
 
-              <CompanyProfile />
+              <CompanyProfileComponent />
             </div>
           )}
         </div>
@@ -1875,16 +2216,106 @@ export default function App() {
         onClose={() => setIsRtiAvvalimentoOpen(false)}
       />
 
-      <BidNoBidEngine
-        tender={selectedTender}
-        isOpen={isBidNoBidOpen}
-        onClose={() => setIsBidNoBidOpen(false)}
+      {isWinningPatternOpen && (
+        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-black border border-neutral-800 rounded-2xl max-w-lg w-full shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-800 shrink-0">
+              <span className="text-xs font-extrabold tracking-widest uppercase text-white flex items-center gap-2">
+                <Target className="w-4 h-4 text-brand-gold" />
+                Winning Pattern Engine
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsWinningPatternOpen(false)}
+                className="cursor-pointer text-slate-500 hover:text-white text-lg font-bold"
+                aria-label="Chiudi"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-5 overflow-y-auto scrollbar-thin">
+              <WinningPatternViewer
+                patterns={winningPatterns}
+                similarityScores={matchGaraToPatterns(selectedTender, winningPatterns)}
+                isLoading={isAnalyzingPatterns}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isBidNoBidOpen && selectedTender && (
+        <>
+          {!qualificationVerdict ? (
+            <QualificationReadinessHub
+              isOpen
+              gateMode
+              onClose={() => setIsBidNoBidOpen(false)}
+              onQualificationCheck={(verdict) => setQualificationVerdict(verdict)}
+              tender={selectedTender}
+              companyProfile={companyProfile}
+            />
+          ) : (
+            <BidNoBidEngine
+              tender={selectedTender}
+              isOpen
+              onClose={() => setIsBidNoBidOpen(false)}
+              winningPatterns={winningPatterns}
+              isAnalyzingPatterns={isAnalyzingPatterns}
+              companyProfile={companyProfile}
+              onShowCAM={() => setShowCAMChecker(true)}
+              onShowDelayAnalysis={() => setShowDelayAnalyzer(true)}
+              onShowVariantsAnalysis={() => setShowVariantsAnalyzer(true)}
+              onShowAudit={() => setShowAuditGate(true)}
+            />
+          )}
+
+          <CAMComplianceChecker
+            isOpen={showCAMChecker}
+            onClose={() => setShowCAMChecker(false)}
+            tender={selectedTender}
+          />
+
+          <DelayPenaltyExposureAnalyzer
+            isOpen={showDelayAnalyzer}
+            onClose={() => setShowDelayAnalyzer(false)}
+            tender={selectedTender}
+            companyProfile={companyProfile}
+          />
+
+          <VariantClaimsRiskAnalyzer
+            isOpen={showVariantsAnalyzer}
+            onClose={() => setShowVariantsAnalyzer(false)}
+            tender={selectedTender}
+            companyProfile={companyProfile}
+          />
+
+          <PreSubmissionComplianceAudit
+            isOpen={showAuditGate}
+            onClose={() => setShowAuditGate(false)}
+            onReadyToSubmit={() => setAuditPassed(true)}
+            tender={selectedTender}
+            companyProfile={companyProfile}
+          />
+        </>
+      )}
+
+      <PrezzariManager
+        prezzari={prezzari}
+        onSavePrezzari={savePrezzari}
+        isOpen={isPrezzariManagerOpen}
+        onClose={() => setIsPrezzariManagerOpen(false)}
       />
 
       <BidPricingEngine
         tender={selectedTender}
         isOpen={isBidPricingOpen}
         onClose={() => setIsBidPricingOpen(false)}
+        prezzari={prezzari}
+        prezzarioSelezionato={companyProfile?.prezzarioPreferito}
+        onPrezzarioChange={savePrezzarioPreferito}
+        computoMetrico={buildComputoFromTender(selectedTender)}
+        onCollegamentiComputo={setComputoCollegamenti}
       />
 
       <CapacitySaturationEngine
@@ -1897,6 +2328,7 @@ export default function App() {
         tender={selectedTender}
         isOpen={isProfitabilityOpen}
         onClose={() => setIsProfitabilityOpen(false)}
+        prezzari={prezzari}
       />
 
       {/* Deep D.Lgs. 36/2023 Vessatorie/Abusive Rules protective shield */}
@@ -1906,6 +2338,37 @@ export default function App() {
         tender={selectedTender}
         onInjectClarification={(text) => handleSendMessage(text)}
       />
+
+      <AwardCriteriaAnalyzer
+        isOpen={isAwardAnalyzerOpen}
+        onClose={() => setIsAwardAnalyzerOpen(false)}
+        tender={selectedTender}
+      />
+
+      <MarketIntelligenceDashboard
+        isOpen={isMarketIntelligenceOpen}
+        onClose={() => setIsMarketIntelligenceOpen(false)}
+        allTenders={allTenders}
+        selectedTender={selectedTender}
+        historicalData={historicalGareData}
+        yourWinRatePercent={companyProfile?.avgWinRatePercent}
+      />
+
+      <RiskComplianceProfiler
+        isOpen={isRiskComplianceOpen}
+        onClose={() => setIsRiskComplianceOpen(false)}
+        tender={selectedTender}
+      />
+
+      {selectedTender && !isBidNoBidOpen && (
+        <QualificationReadinessHub
+          isOpen={isQualificationHubOpen}
+          onClose={() => setIsQualificationHubOpen(false)}
+          onQualificationCheck={(verdict) => setQualificationVerdict(verdict)}
+          tender={selectedTender}
+          companyProfile={companyProfile}
+        />
+      )}
 
     </div>
   );
