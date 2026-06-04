@@ -1533,11 +1533,40 @@ export interface RtiAvvalimentoPercorso {
   documenti: string[];
 }
 
+export interface PartnerPotenziale {
+  id: string;
+  nome: string;
+  categorieSOA: string[];
+  areeGeografiche: string[];
+  capacita: string;
+  affidabilita: "Alta" | "Media" | "Bassa";
+  tipoSupporto: "mandataria" | "mandante" | "ausiliaria";
+  motivazioneMatch: string;
+}
+
+export interface ImpattoPartner {
+  fitDelta: number;
+  rischioD: number;
+  marginalitaDelta: number;
+  note: string;
+}
+
+export interface ScenarioAnalysis {
+  titolo: string;
+  probabilitaVittoria: number;
+  stimaMargine: number;
+  principaliRischi: string[];
+  principaliVantaggi: string[];
+}
+
 export interface RtiAvvalimentoRtiDetail extends RtiAvvalimentoPercorso {
   struttura: string;
   capogruppo: string;
   quotePartecipazione: string;
-  partnerSuggeriti: string[];
+  partnerSuggeriti: PartnerPotenziale[];
+  scenarioSenzaPartner: ScenarioAnalysis;
+  scenarioConPartner: ScenarioAnalysis;
+  impattoPartner: ImpattoPartner;
 }
 
 export interface RtiAvvalimentoAvvalimentoDetail extends RtiAvvalimentoPercorso {
@@ -1551,6 +1580,11 @@ export interface RtiAvvalimentoLasciareDetail extends RtiAvvalimentoPercorso {
   rischiPrincipali: string[];
 }
 
+export interface RtiAvvalimentoPartecipaDirettoDetail extends RtiAvvalimentoPercorso {
+  condizioniNecessarie: string[];
+  rischioResiduo: string;
+}
+
 export interface RtiAvvalimentoResult {
   raccomandazioneFinale: RtiAvvalimentoRaccomandazione;
   sintesi: string;
@@ -1558,6 +1592,7 @@ export interface RtiAvvalimentoResult {
   rti: RtiAvvalimentoRtiDetail;
   avvalimento: RtiAvvalimentoAvvalimentoDetail;
   lasciarePerdere: RtiAvvalimentoLasciareDetail;
+  partecipaDiretto: RtiAvvalimentoPartecipaDirettoDetail;
   perche: string;
   datiUsati: string;
   verifica: string;

@@ -1,6 +1,6 @@
 import { formatGeminiError } from "./geminiChat";
 import { deepseekChatCompletion } from "./deepseekChat";
-import type { GaraRoiRequestBody, GaraRoiResponseBody } from "./garaRoiTypes";
+import type { GaraRoiRequestBody, GaraRoiResponseBody, GaraRoiVerdetto } from "./garaRoiTypes";
 
 function buildPrompt(body: GaraRoiRequestBody): string {
   return `Sei il **Gara ROI Calculator** di GaraMaster AI per appalti pubblici italiani (D.Lgs. 36/2023).
@@ -49,6 +49,44 @@ Rispondi SOLO JSON valido:
 }`;
 }
 
+function deriveVerdetto(roi: number | null): GaraRoiVerdetto {
+  if (roi == null) return "lascia_perdere";
+  if (roi >= 200) return "vale_la_pena";
+  if (roi >= 50) return "valuta_con_cautela";
+  return "lascia_perdere";
+}
+
+function buildMotivazioneLeggibile(
+  ore: number,
+  costoInterno: number,
+  costoTotale: number,
+  winProb: number,
+  expectedMargin: number,
+  expectedValue: number,
+  roi: number | null,
+  verdetto: GaraRoiVerdetto
+): string {
+  const fmt = (n: number) =>
+    n.toLocaleString("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+  const roiStr = roi != null ? `${Math.round(roi)}%` : "N/D";
+  const conclusione =
+    verdetto === "vale_la_pena"
+      ? "Vale la pena approfondire."
+      : verdetto === "valuta_con_cautela"
+        ? "Valuta con cautela prima di procedere."
+        : "Il gioco potrebbe non valere la candela.";
+
+  return (
+    `Questa gara richiede circa ${Math.round(ore)} ore interne, pari a ${fmt(costoInterno)} di costo diretto` +
+    (costoTotale > costoInterno
+      ? ` (${fmt(costoTotale)} inclusi costi aggiuntivi).`
+      : ".") +
+    ` Con probabilità stimata di aggiudicazione del ${winProb}% e margine atteso di ${fmt(expectedMargin)},` +
+    ` il valore atteso della partecipazione è ${fmt(expectedValue)}.` +
+    ` ROI partecipazione: circa ${roiStr}. ${conclusione}`
+  );
+}
+
 export function buildRoiResponse(
   body: GaraRoiRequestBody,
   estimate: {
@@ -62,20 +100,59 @@ export function buildRoiResponse(
   }
 ): GaraRoiResponseBody {
   const importo = body.importoGaraEuro;
-  const costiPartecipazione =
-    estimate.orePreparazioneStimate * estimate.tariffaOrariaEuro +
-    estimate.costiAggiuntiviEuro;
+
+  // clamp win probability 1-60% (stima prudente, non certezza)
+  const winProb = Math.min(60, Math.max(1, estimate.probabilitaVittoriaPercent));
+
+  const participationInternalCost = Math.max(
+    0,
+    estimate.orePreparazioneStimate * estimate.tariffaOrariaEuro
+  );
+  const costiPartecipazione = participationInternalCost + (estimate.costiAggiuntiviEuro ?? 0);
+
+  // vecchia formula (backwards compat)
   const profittoAtteso = importo * (estimate.marginePercentStimato / 100) - costiPartecipazione;
   const roiPercent =
     costiPartecipazione > 0 ? (profittoAtteso / costiPartecipazione) * 100 : null;
 
+  // nuova formula EV-based (#56)
+  const expectedMarginIfWon = importo * (estimate.marginePercentStimato / 100);
+  const expectedValue = expectedMarginIfWon * (winProb / 100);
+  const roiPartecipazione =
+    costiPartecipazione > 0
+      ? ((expectedValue - costiPartecipazione) / costiPartecipazione) * 100
+      : null;
+
+  const verdetto = deriveVerdetto(roiPartecipazione);
+  const motivazioneLeggibile = buildMotivazioneLeggibile(
+    estimate.orePreparazioneStimate,
+    participationInternalCost,
+    costiPartecipazione,
+    winProb,
+    expectedMarginIfWon,
+    expectedValue,
+    roiPartecipazione,
+    verdetto
+  );
+
   return {
     ...estimate,
+    probabilitaVittoriaPercent: winProb,
     importoGaraEuro: importo,
     costiPartecipazioneEuro: Math.round(costiPartecipazione),
     profittoAttesoEuro: Math.round(profittoAtteso),
     roiPercent: roiPercent != null ? Math.round(roiPercent * 10) / 10 : null,
     formulaSintesi: `((€${importo.toLocaleString("it-IT")} × ${estimate.marginePercentStimato}%) − €${Math.round(costiPartecipazione).toLocaleString("it-IT")}) / €${Math.round(costiPartecipazione).toLocaleString("it-IT")}`,
+    // campi #56
+    estimatedParticipationHours: Math.round(estimate.orePreparazioneStimate),
+    internalHourlyCostEuro: estimate.tariffaOrariaEuro,
+    participationInternalCostEuro: Math.round(participationInternalCost),
+    expectedMarginIfWonEuro: Math.round(expectedMarginIfWon),
+    expectedValueEuro: Math.round(expectedValue),
+    roiPartecipazionePercent:
+      roiPartecipazione != null ? Math.round(roiPartecipazione * 10) / 10 : null,
+    verdetto,
+    motivazioneLeggibile,
   };
 }
 
@@ -103,8 +180,8 @@ export async function generateGaraRoi(body: GaraRoiRequestBody): Promise<GaraRoi
       tariffaOrariaEuro: Math.min(250, Math.max(40, Number(parsed.tariffaOrariaEuro) || 90)),
       costiAggiuntiviEuro: Math.max(0, Number(parsed.costiAggiuntiviEuro) || 0),
       probabilitaVittoriaPercent: Math.min(
-        95,
-        Math.max(2, Number(parsed.probabilitaVittoriaPercent) || 25)
+        60,
+        Math.max(1, Number(parsed.probabilitaVittoriaPercent) || 15)
       ),
       motivazioneMargine: String(parsed.motivazioneMargine ?? "Stima per categoria e complessità bando."),
       motivazioneProbabilita: String(
