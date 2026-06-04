@@ -6,6 +6,7 @@ import {
 } from "../src/lib/soaValidationEngine";
 import { deepseekChatCompletion, resolveOpenRouterModel } from "./deepseekChat";
 import { Buffer } from "node:buffer";
+import pdfParse from "pdf-parse/lib/pdf-parse.js";
 
 const SOA_PARSE_PROMPT = `Sei un esperto di SOA (Sistema di Qualificazione delle Attrezzature) italiano e attestazioni CCIAA.
 Analizza il testo estratto da un documento SOA dell'impresa e identifica TUTTE le categorie di lavori con importi massimi realizzati.
@@ -62,8 +63,23 @@ async function extractTextFromSoaFile(
     mimeType === "application/pdf" || mimeType.toLowerCase().includes("pdf");
 
   if (isPdf) {
-    const { default: pdfParse } = await import("pdf-parse");
-    const parsedPdf = await pdfParse(buffer);
+    let parsedPdf;
+    try {
+      parsedPdf = await pdfParse(buffer);
+    } catch (pdfError) {
+      const msg = pdfError instanceof Error ? pdfError.message : String(pdfError);
+      console.error("❌ PDF PARSE ERROR:", {
+        message: msg,
+        code: (pdfError as NodeJS.ErrnoException).code,
+        stack: pdfError instanceof Error ? pdfError.stack : undefined,
+        bufferLength: buffer.length,
+        bufferStart: buffer.slice(0, 10).toString("hex"),
+      });
+      throw new Error(
+        `Impossibile leggere il PDF: ${msg}. ` +
+        `Verifica che il file sia un PDF valido, non corrotto, non password-protected.`
+      );
+    }
     const text = String(parsedPdf?.text ?? "").trim();
     if (!text) {
       throw new Error(
