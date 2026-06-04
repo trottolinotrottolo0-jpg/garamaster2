@@ -1,6 +1,7 @@
 import type { TenderDocument, PenaltyClause, PenaltyClauseTipo } from "../src/types";
 import { deepseekChatCompletion, resolveOpenRouterModel } from "./deepseekChat";
 import { Buffer } from "node:buffer";
+import pdfParse from "pdf-parse/lib/pdf-parse.js";
 import { parseTenderValue } from "../src/lib/bidCalculations";
 
 const PENALTY_PROMPT = `Sei un esperto di diritto dei contratti pubblici italiani.
@@ -142,8 +143,25 @@ export async function parseDelayPenaltiesFromBando(
   const data = stripBase64(bandoPdfBase64);
   if (!data) throw new Error("PDF bando non valido.");
 
-  const { default: pdfParse } = await import("pdf-parse");
-  const text = String((await pdfParse(Buffer.from(data, "base64")))?.text ?? "").trim();
+  const pdfBuffer = Buffer.from(data, "base64");
+  let parsedPdf;
+  try {
+    parsedPdf = await pdfParse(pdfBuffer);
+  } catch (pdfError) {
+    const msg = pdfError instanceof Error ? pdfError.message : String(pdfError);
+    console.error("❌ PDF PARSE ERROR:", {
+      message: msg,
+      code: (pdfError as NodeJS.ErrnoException).code,
+      stack: pdfError instanceof Error ? pdfError.stack : undefined,
+      bufferLength: pdfBuffer.length,
+      bufferStart: pdfBuffer.slice(0, 10).toString("hex"),
+    });
+    throw new Error(
+      `Impossibile leggere il PDF: ${msg}. ` +
+      `Verifica che il file sia un PDF valido, non corrotto, non password-protected.`
+    );
+  }
+  const text = String(parsedPdf?.text ?? "").trim();
   if (!text) throw new Error("Testo PDF vuoto — usa un PDF testuale.");
 
   const importo = parseTenderValue(tender.value);

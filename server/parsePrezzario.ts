@@ -1,6 +1,7 @@
 import type { ParsePrezzarioPdfResponse, ExtractedVocePrezzario } from "../src/types";
 import { deepseekChatCompletion, resolveOpenRouterModel } from "./deepseekChat";
 import { Buffer } from "node:buffer";
+import pdfParse from "pdf-parse/lib/pdf-parse.js";
 
 const PREZZARIO_PARSE_PROMPT = `Sei un esperto di estrazione dati da prezzari pubblici e regionali italiani.
 Analizza il testo estratto da un PDF prezzario e restituisci TUTTE le voci in formato JSON.
@@ -108,9 +109,24 @@ export async function parsePrezzarioPdf(params: {
     throw new Error("File PDF non valido o vuoto.");
   }
 
-  const { default: pdfParse } = await import("pdf-parse");
   const pdfBuffer = Buffer.from(data, "base64");
-  const parsedPdf = await pdfParse(pdfBuffer);
+  let parsedPdf;
+  try {
+    parsedPdf = await pdfParse(pdfBuffer);
+  } catch (pdfError) {
+    const msg = pdfError instanceof Error ? pdfError.message : String(pdfError);
+    console.error("❌ PDF PARSE ERROR:", {
+      message: msg,
+      code: (pdfError as NodeJS.ErrnoException).code,
+      stack: pdfError instanceof Error ? pdfError.stack : undefined,
+      bufferLength: pdfBuffer.length,
+      bufferStart: pdfBuffer.slice(0, 10).toString("hex"),
+    });
+    throw new Error(
+      `Impossibile leggere il PDF: ${msg}. ` +
+      `Verifica che il file sia un PDF valido, non corrotto, non password-protected.`
+    );
+  }
   const extractedText = String(parsedPdf?.text ?? "").trim();
 
   if (!extractedText) {

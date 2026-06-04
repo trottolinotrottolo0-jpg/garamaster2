@@ -2,6 +2,7 @@ import type { DisciplinareParseResult } from "../src/types/disciplinareParse";
 import { DISCIPLINARE_PARSE_USER_PROMPT } from "./disciplinareParsePrompt";
 import { deepseekChatCompletion, resolveOpenRouterModel } from "./deepseekChat";
 import { Buffer } from "node:buffer";
+import pdfParse from "pdf-parse/lib/pdf-parse.js";
 
 function normalizeParse(raw: Record<string, unknown>): DisciplinareParseResult {
   const requisitiSoa = Array.isArray(raw.requisiti_soa)
@@ -79,14 +80,44 @@ export async function parseDisciplinarePdf(params: {
   fileName: string;
   mimeType?: string;
 }): Promise<{ parse: DisciplinareParseResult; model: string }> {
+  // ── LOG INIZIO ──────────────────────────────────────────────────────────────
+  console.log("📄 parseDisciplinarePdf START", {
+    fileName: params.fileName,
+    pdfBase64Length: params.pdfBase64?.length,
+    pdfBase64Start: params.pdfBase64?.slice(0, 50),
+  });
+
   const data = params.pdfBase64.replace(/^data:[^;]+;base64,/, "").trim();
   if (!data) {
     throw new Error("File PDF non valido o vuoto.");
   }
+  console.log("✓ stripBase64 OK", { dataLength: data.length });
 
-  const { default: pdfParse } = await import("pdf-parse");
   const pdfBuffer = Buffer.from(data, "base64");
-  const parsedPdf = await pdfParse(pdfBuffer);
+  console.log("✓ Buffer creato", {
+    bufferLength: pdfBuffer.length,
+    magicBytes: pdfBuffer.slice(0, 4).toString("hex"),
+  });
+
+  let parsedPdf;
+  try {
+    console.log("→ Calling pdfParse...");
+    parsedPdf = await pdfParse(pdfBuffer);
+    console.log("✓ pdfParse OK", { textLength: String(parsedPdf?.text ?? "").length });
+  } catch (pdfError) {
+    const msg = pdfError instanceof Error ? pdfError.message : String(pdfError);
+    console.error("❌ PDF PARSE ERROR:", {
+      message: msg,
+      code: (pdfError as NodeJS.ErrnoException).code,
+      stack: pdfError instanceof Error ? pdfError.stack : undefined,
+      bufferLength: pdfBuffer.length,
+      bufferStart: pdfBuffer.slice(0, 10).toString("hex"),
+    });
+    throw new Error(
+      `Impossibile leggere il PDF: ${msg}. ` +
+      `Verifica che il file sia un PDF valido, non corrotto, non password-protected.`
+    );
+  }
   const extractedText = String(parsedPdf?.text ?? "").trim();
 
   if (!extractedText) {
