@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, type ChangeEvent } from "react";
 import { X, AlertTriangle, Zap, FileText, AlertCircle, Loader2 } from "lucide-react";
 import type { TenderDocument, VariantRiskExposure, CompanyProfile } from "../types";
 import {
@@ -117,7 +117,7 @@ export function VariantClaimsRiskAnalyzer({
       .finally(() => setDeepInsightsLoading(false));
   }, [exposure]);
 
-  const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePdfUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const isPdf =

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, type ChangeEvent } from "react";
 import {
   X,
   CheckCircle2,
@@ -138,7 +138,7 @@ export function PreSubmissionComplianceAudit({
       .finally(() => setDeepInsightsLoading(false));
   }, [audit, tender, companyProfileProp]);
 
-  const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePdfUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const isPdf =

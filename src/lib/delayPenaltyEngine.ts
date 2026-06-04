@@ -559,7 +559,7 @@ export const TIMELINE_CRITICITA_STYLES: Record<
   TimelineCriticita,
   { box: string; text: string }
 > = {
-  BASSO: { box: "bg-emerald-950/20 border-emerald-900/50", text: "text-emerald-400" },
+  BASSA: { box: "bg-emerald-950/20 border-emerald-900/50", text: "text-emerald-400" },
   MEDIA: { box: "bg-amber-950/20 border-amber-900/50", text: "text-amber-400" },
   ALTA: { box: "bg-orange-950/20 border-orange-900/50", text: "text-orange-400" },
   CRITICA: { box: "bg-red-950/20 border-red-900/50", text: "text-red-400" },
