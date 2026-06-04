@@ -11,6 +11,7 @@ import type {
   QualificationAssessment,
   QualificationReadinessPath,
   QualificationRequirement,
+  QualificationVerdetto,
   CompanyProfile,
 } from "../types";
 import {
@@ -41,6 +42,7 @@ interface QualificationReadinessHubProps {
   onQualificationCheck?: (verdict: string) => void;
   tender: TenderDocument;
   companyProfile?: CompanyProfile | null;
+  gateMode?: boolean;
 }
 
 type HubTab = "summary" | "rti" | "acceleration" | "insights" | "progress";
@@ -59,11 +61,11 @@ const TAB_LABELS: Record<HubTab, string> = {
   progress: "Progress",
 };
 
-const VERDICT_LABEL: Record<QualificationAssessment["raccomandazioneFinale"], string> = {
-  PARTECIPA: "✓ Partecipa",
-  PARTECIPA_CON_RTI: "~ Partecipa con RTI",
-  AVVALIMENTO: "⚠ Avvalimento necessario",
-  NON_PARTECIPARE: "✗ Non partecipare",
+const VERDICT_LABEL: Record<QualificationVerdetto, string> = {
+  QUALIFICATO: "✓ Qualificato",
+  QUALIFICATO_PARZIALE: "~ Qualificato parziale",
+  NON_QUALIFICATO: "⚠ Non qualificato",
+  ESCLUSORIO: "✗ Esclusorio",
 };
 
 export function QualificationReadinessHub({

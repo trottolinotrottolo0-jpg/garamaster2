@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, type ChangeEvent } from "react";
 import { Leaf, Loader2, TrendingUp, FileText, Upload, Factory } from "lucide-react";
 import type { TenderDocument, CAMComplianceProfile, CAMDocumentoStato } from "../types";
 import {
@@ -107,7 +107,7 @@ export function CAMCompliancePanel({ tender, compact = false }: CAMCompliancePan
     refreshPart2(next);
   };
 
-  const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePdfUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const isPdf =
@@ -153,7 +153,7 @@ export function CAMCompliancePanel({ tender, compact = false }: CAMCompliancePan
     syncProfile(updateCAMAssessmentItem(profile, requirementId, punti, stato));
   };
 
-  const handleDocUpload = (requirementId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDocUpload = (requirementId: string, e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !docTracker) return;
     const updated = addCAMDocument(docTracker, requirementId, { fileName: file.name });
