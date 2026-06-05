@@ -259,11 +259,11 @@ export function DelayPenaltyExposureAnalyzer({
           {!isParsing && exposure && selectedTab === "timeline" && timelineAnalysis && (
             <div className="space-y-3">
               {(() => {
-                const ts = TIMELINE_CRITICITA_STYLES[timelineAnalysis.critica];
+                const ts = TIMELINE_CRITICITA_STYLES[timelineAnalysis.criticita];
                 return (
                   <div className={`rounded-lg p-3 border ${ts.box}`}>
                     <h3 className={`text-[10px] font-bold uppercase mb-2 ${ts.text}`}>
-                      Timeline Risk: {timelineAnalysis.critica}
+                      Timeline Risk: {timelineAnalysis.criticita}
                     </h3>
                     <div className="space-y-2 text-[9px]">
                       <div className="flex justify-between">
@@ -312,12 +312,12 @@ export function DelayPenaltyExposureAnalyzer({
               </div>
               <div
                 className={`rounded-lg p-3 border ${
-                  TIMELINE_CRITICITA_STYLES[timelineAnalysis.critica].box
+                  TIMELINE_CRITICITA_STYLES[timelineAnalysis.criticita].box
                 }`}
               >
                 <div
                   className={`text-[9px] ${
-                    TIMELINE_CRITICITA_STYLES[timelineAnalysis.critica].text
+                    TIMELINE_CRITICITA_STYLES[timelineAnalysis.criticita].text
                   } opacity-90`}
                 >
                   {timelineAnalysis.raccomandazione}

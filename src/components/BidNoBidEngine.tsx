@@ -527,16 +527,16 @@ export function BidNoBidEngine({
               {delayTimeline && (
                 <div
                   className={`text-[8px] rounded-lg p-2 border ${
-                    TIMELINE_CRITICITA_STYLES[delayTimeline.critica].box
+                    TIMELINE_CRITICITA_STYLES[delayTimeline.criticita].box
                   }`}
                 >
                   <div className="flex justify-between items-center mb-1">
                     <span
                       className={`font-bold uppercase ${
-                        TIMELINE_CRITICITA_STYLES[delayTimeline.critica].text
+                        TIMELINE_CRITICITA_STYLES[delayTimeline.criticita].text
                       }`}
                     >
-                      Timeline {delayTimeline.critica}
+                      Timeline {delayTimeline.criticita}
                     </span>
                     <span className="text-blue-400 font-mono">
                       +{delayTimeline.bufferSuggerito} gg buffer
